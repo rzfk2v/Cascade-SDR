@@ -22,7 +22,7 @@
           <button data-mode="spectrum">Waterfall</button>
           <button data-mode="scan">Scan</button>
           <button data-mode="radio">Radio</button>
-          <button data-mode="adsb" disabled title="coming in M4">ADS&#8209;B</button>
+          <button data-mode="adsb">ADS&#8209;B</button>
           <button data-mode="ais" disabled title="coming in M5">AIS</button>
         </nav>
 
@@ -36,6 +36,7 @@
             <span id="gain-val" class="muted">auto</span>
           </label>
           <label>PPM correction<input id="ppm" type="number" step="1" value="0" /></label>
+          <label class="check"><input id="bias-tee" type="checkbox" /> Bias-T (5 V to antenna)</label>
           <p id="status-line" class="status-line"></p>
         </section>
 
@@ -55,6 +56,13 @@
           </label>
         </section>
 
+        <section class="group" id="adsb-controls" hidden>
+          <h2>ADS-B</h2>
+          <p id="adsb-status" class="status-line">starting…</p>
+          <p id="adsb-count" class="level-meter"></p>
+          <p class="hint">1090 MHz needs a good antenna (ideally a 1090 LNA via Bias-T).</p>
+        </section>
+
         <section class="group" id="radio-controls" hidden>
           <h2>Radio</h2>
           <label>Demod
@@ -72,12 +80,15 @@
 
       <section class="display">
         <button id="zoom-out" class="zoom-out" title="Zoom out (×2)" hidden>⤢ Zoom out</button>
-        <div class="wf-wrap">
-          <canvas id="scope" class="scope"></canvas>
-          <canvas id="waterfall"></canvas>
-          <canvas id="overlay" class="overlay"></canvas>
+        <div class="fft-view" id="fft-view">
+          <div class="wf-wrap">
+            <canvas id="scope" class="scope"></canvas>
+            <canvas id="waterfall"></canvas>
+            <canvas id="overlay" class="overlay"></canvas>
+          </div>
+          <canvas id="axis" class="axis"></canvas>
         </div>
-        <canvas id="axis" class="axis"></canvas>
+        <div id="map" class="map" hidden></div>
       </section>
     </div>
 

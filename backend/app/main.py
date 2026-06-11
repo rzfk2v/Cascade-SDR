@@ -19,6 +19,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.device import DeviceManager
 from app.hub import Hub
+from app.modes.adsb import AdsbMode
 from app.modes.base import Mode
 from app.modes.radio import RadioMode
 from app.modes.scan import ScanMode
@@ -32,6 +33,7 @@ MODE_REGISTRY: dict[str, type[Mode]] = {
     SpectrumMode.name: SpectrumMode,
     RadioMode.name: RadioMode,
     ScanMode.name: ScanMode,
+    AdsbMode.name: AdsbMode,
 }
 
 app = FastAPI(title="SDR-Ultra")
@@ -94,6 +96,7 @@ async def handle_command(ws: WebSocket, msg: dict) -> None:
                 sample_rate=msg.get("sample_rate"),
                 gain=msg.get("gain"),
                 ppm=msg.get("ppm"),
+                bias_tee=msg.get("bias_tee"),
             )
         elif cmd == "config":
             manager.configure_mode(msg.get("params", {}))

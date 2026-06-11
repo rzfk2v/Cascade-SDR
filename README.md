@@ -12,8 +12,12 @@ Built to grow feature-by-feature. Status:
 | **Scan** | Swept wideband panorama (e.g. whole 88–108 band) to find signals | ✅ working |
 | **FM** radio | Click a signal to tune, drag to set bandwidth, audio in browser | ✅ working |
 | **AM** radio | Reuses the radio pipeline (envelope detect) | 🚧 basic (refined in M3) |
-| **ADS-B** | Aircraft on a map (via `dump1090`) | ⏳ planned (M4) |
+| **ADS-B** | Aircraft on a Leaflet map (via `dump1090`) | ✅ working* |
 | **AIS** | Ships on a map (via `AIS-catcher`) | ⏳ planned (M5) |
+
+\* Needs `dump1090` installed (`brew install dump1090-mutability`) **and a decent
+1090 MHz antenna** — the stock whip barely hears ADS-B. The pipeline runs and
+plots aircraft when it receives them; with the stock antenna you may see none.
 
 ### Using the radio
 Open the app, click **Waterfall** to see the band, then **click any signal to
@@ -48,6 +52,12 @@ ranges sweep more slowly (each ~2.4 MHz slice needs its own retune + capture).
 ### Layout
 Controls live in the left sidebar; the spectrum scope + waterfall fill the rest of
 the window and resize with it.
+
+### ADS-B (aircraft map)
+Select **ADS-B**: the backend spawns `dump1090`, reads its BaseStation feed
+(TCP 30003), and plots aircraft on an OpenStreetMap map. Switching to another mode
+kills `dump1090` and hands the dongle back. **Bias-T** (Device panel) can power a
+1090 MHz LNA — strongly recommended for real range. Gain/PPM are passed to dump1090.
 
 > FM **de-emphasis** defaults to 50 µs (Europe). In North America/Korea use 75 µs
 > — change `tau_us` in [backend/app/modes/radio.py](backend/app/modes/radio.py)

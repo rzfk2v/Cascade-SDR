@@ -137,12 +137,38 @@ body {
   cursor: pointer;
 }
 .zoom-out:hover { border-color: var(--accent); }
+.fft-view {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
 .wf-wrap {
   position: relative;
   flex: 1 1 auto;
   min-height: 0;
   display: flex;
   flex-direction: column;
+}
+.map {
+  position: absolute;
+  inset: 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  z-index: 1;
+}
+.plane-icon { background: none; border: none; }
+.plane-rot { font-size: 16px; line-height: 1; color: #16a3c7; text-shadow: 0 0 2px #fff; }
+.plane-label {
+  display: block;
+  font-size: 10px;
+  color: #0d1117;
+  background: rgba(255, 255, 255, 0.7);
+  border-radius: 3px;
+  padding: 0 2px;
+  white-space: nowrap;
+  margin-top: -1px;
 }
 #scope {
   flex: 0 0 26%;

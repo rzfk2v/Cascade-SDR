@@ -6,6 +6,7 @@ import { Waterfall } from "./waterfall";
 import { SpectrumScope } from "./scope";
 import { Tuner } from "./tuner";
 import { AudioPlayer } from "./audio";
+import { AdsbMap } from "./adsbmap";
 
 const sock = new SdrSocket();
 const waterfall = new Waterfall(
@@ -19,6 +20,13 @@ const tuner = new Tuner(
   document.getElementById("axis") as HTMLCanvasElement,
 );
 const audio = new AudioPlayer(48000);
+const adsbMap = new AdsbMap();
+
+const fftView = document.getElementById("fft-view")!;
+const mapDiv = document.getElementById("map")!;
+const adsbControls = document.getElementById("adsb-controls")!;
+const adsbStatus = document.getElementById("adsb-status")!;
+const adsbCount = document.getElementById("adsb-count")!;
 
 const dot = document.getElementById("dot")!;
 const connText = document.getElementById("conn-text")!;
@@ -30,6 +38,7 @@ const gainAuto = document.getElementById("gain-auto") as HTMLInputElement;
 const gainSlider = document.getElementById("gain") as HTMLInputElement;
 const gainVal = document.getElementById("gain-val")!;
 const ppmInput = document.getElementById("ppm") as HTMLInputElement;
+const biasTee = document.getElementById("bias-tee") as HTMLInputElement;
 let gainSteps: number[] = [];
 const radioControls = document.getElementById("radio-controls")!;
 const demodSel = document.getElementById("demod") as HTMLSelectElement;
@@ -62,12 +71,15 @@ sock.onJson((msg) => {
       syncGain(msg);
       if (typeof msg.ppm === "number" && document.activeElement !== ppmInput)
         ppmInput.value = msg.ppm.toString();
+      if (typeof msg.bias_tee === "boolean") biasTee.checked = msg.bias_tee;
       highlightMode(msg.mode);
       tuner.setBand(msg.center_freq, msg.sample_rate);
       tuner.setActive(msg.mode === "radio");
       radioControls.hidden = msg.mode !== "radio";
       scanControls.hidden = msg.mode !== "scan";
+      adsbControls.hidden = msg.mode !== "adsb";
       zoomOutBtn.hidden = !(msg.mode === "scan" || msg.mode === "spectrum");
+      showAdsb(msg.mode === "adsb");
       break;
     case "spectrum_config":
       tuner.setBand(msg.center_freq, msg.sample_rate);
@@ -85,6 +97,13 @@ sock.onJson((msg) => {
     case "radio_level":
       levelMeter.textContent = `${msg.db.toFixed(0)} dB ${msg.open ? "▶" : "🔇"}`;
       levelMeter.classList.toggle("open", msg.open);
+      break;
+    case "adsb_status":
+      adsbStatus.textContent = msg.message;
+      break;
+    case "aircraft":
+      adsbMap.update(msg.aircraft);
+      adsbCount.textContent = `${msg.positioned} shown · ${msg.count} tracked`;
       break;
     case "error":
       statusLine.textContent = `⚠ ${msg.message}`;
@@ -132,6 +151,17 @@ function syncGain(s: any): void {
     gainVal.textContent = `${gainSteps[idx]} dB`;
   } else {
     gainVal.textContent = `${s.gain} dB`;
+  }
+}
+
+function showAdsb(on: boolean): void {
+  fftView.hidden = on;
+  mapDiv.hidden = !on;
+  if (on) {
+    adsbMap.ensure("map");
+  } else {
+    // canvases were display:none -> re-measure now that they're visible again
+    requestAnimationFrame(layoutCanvases);
   }
 }
 
@@ -272,6 +302,9 @@ gainSlider.addEventListener("input", () => {
 });
 ppmInput.addEventListener("change", () =>
   sock.send({ cmd: "tune", ppm: parseInt(ppmInput.value, 10) || 0 }),
+);
+biasTee.addEventListener("change", () =>
+  sock.send({ cmd: "tune", bias_tee: biasTee.checked }),
 );
 
 // --- responsive canvas sizing -------------------------------------------

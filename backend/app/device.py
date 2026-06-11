@@ -44,6 +44,7 @@ class DeviceManager:
         self.gain: float | str = "auto"
         self.freq_correction: int = 0       # crystal offset, ppm
         self._applied_ppm: int = 0          # last ppm written to the device
+        self.bias_tee: bool = False         # 5V bias-T for powering an LNA
         self.valid_gains: list[float] = []  # device gain steps (dB), filled on open
         self.mode: Optional[Mode] = None
         self.mode_name: str = "idle"
@@ -74,6 +75,7 @@ class DeviceManager:
             "gain": self.gain,
             "ppm": self.freq_correction,
             "gains": self.valid_gains,
+            "bias_tee": self.bias_tee,
             "device_present": self.device_present(),
             "clients": self.hub.client_count,
         }
@@ -135,7 +137,8 @@ class DeviceManager:
     async def retune(self, center_freq: float | None = None,
                      sample_rate: float | None = None,
                      gain: float | str | None = None,
-                     ppm: int | None = None) -> None:
+                     ppm: int | None = None,
+                     bias_tee: bool | None = None) -> None:
         """Update radio settings. The worker applies them between read blocks."""
         if center_freq is not None:
             self.center_freq = float(center_freq)
@@ -145,6 +148,8 @@ class DeviceManager:
             self.gain = gain
         if ppm is not None:
             self.freq_correction = int(ppm)
+        if bias_tee is not None:
+            self.bias_tee = bool(bias_tee)
         self._retune_event.set()
         await self._announce()
 
@@ -212,6 +217,10 @@ class DeviceManager:
             sdr.gain = self.gain  # pyrtlsdr accepts 'auto' or a float
         except Exception:
             sdr.gain = 0.0
+        try:
+            sdr.set_bias_tee(self.bias_tee)
+        except Exception:
+            pass
 
     def _iq_worker(self, mode: Mode) -> None:
         """Owns the device for this mode's lifetime, via two threads:
