@@ -1,0 +1,11 @@
+# pyrtlsdr 0.3.0 + setuptools<81 is the combination that works with the stock
+# Homebrew `librtlsdr` (osmocom build). Newer pyrtlsdr (0.4.x) hard-binds the
+# keenerd-only `rtlsdr_set_dithering` symbol at import and fails on that library;
+# pyrtlsdr 0.3.0 still imports `pkg_resources`, which setuptools>=81 removed.
+pyrtlsdr==0.3.0
+setuptools<81
+numpy>=1.26
+scipy>=1.11
+fastapi>=0.110
+uvicorn[standard]>=0.29
+pyais>=2.6

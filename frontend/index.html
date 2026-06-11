@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SDR-Ultra</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <h1>SDR&#8209;Ultra</h1>
+      <div class="conn">
+        <span id="dot" class="dot"></span>
+        <span id="conn-text">connecting…</span>
+      </div>
+    </header>
+
+    <nav class="modes" id="mode-tabs">
+      <button data-mode="idle" class="active">Idle</button>
+      <button data-mode="spectrum">Waterfall</button>
+      <button data-mode="scan">Scan</button>
+      <button data-mode="radio">Radio</button>
+      <button data-mode="adsb" disabled title="coming in M4">ADS&#8209;B</button>
+      <button data-mode="ais" disabled title="coming in M5">AIS</button>
+    </nav>
+
+    <section class="controls">
+      <label>
+        Center (MHz)
+        <input id="freq" type="number" step="0.1" value="100.0" />
+      </label>
+      <label>
+        Sample rate (MS/s)
+        <input id="rate" type="number" step="0.1" value="2.4" />
+      </label>
+      <button id="apply">Tune dongle</button>
+      <span id="status-line" class="status-line"></span>
+    </section>
+
+    <section class="controls scan-controls" id="scan-controls" hidden>
+      <label>
+        Scan from (MHz)
+        <input id="scan-start" type="number" step="0.5" value="88" />
+      </label>
+      <label>
+        to (MHz)
+        <input id="scan-stop" type="number" step="0.5" value="108" />
+      </label>
+      <button id="scan-apply">Apply range</button>
+      <label>
+        Preset
+        <select id="scan-preset">
+          <option value="">—</option>
+          <option value="88,108">FM broadcast 88–108</option>
+          <option value="118,137">Airband 118–137</option>
+          <option value="144,148">2 m ham 144–148</option>
+          <option value="430,440">70 cm ham 430–440</option>
+        </select>
+      </label>
+    </section>
+
+    <section class="controls radio-controls" id="radio-controls" hidden>
+      <label>
+        Demod
+        <select id="demod">
+          <option value="fm">FM</option>
+          <option value="am">AM</option>
+        </select>
+      </label>
+      <label>
+        Bandwidth (kHz)
+        <input id="bw" type="number" step="5" value="200" />
+      </label>
+      <label>
+        Volume
+        <input id="vol" type="range" min="0" max="1.5" step="0.05" value="0.7" />
+      </label>
+      <label>
+        Squelch (dB)
+        <input id="sql" type="range" min="-80" max="5" step="1" value="-80" />
+      </label>
+      <span id="level-meter" class="level-meter"></span>
+      <span id="tuned-line" class="status-line"></span>
+    </section>
+
+    <p class="hint" id="hint">
+      Click a signal in the waterfall to tune it · drag across a signal to set bandwidth
+    </p>
+
+    <main>
+      <div class="wf-wrap">
+        <canvas id="scope" class="scope" width="1024" height="140"></canvas>
+        <canvas id="waterfall" width="1024" height="400"></canvas>
+        <canvas id="overlay" class="overlay" width="1024" height="540"></canvas>
+      </div>
+      <canvas id="axis" class="axis" width="1024" height="24"></canvas>
+    </main>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

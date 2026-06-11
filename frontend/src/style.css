@@ -1,0 +1,141 @@
+:root {
+  --bg: #0d1117;
+  --panel: #161b22;
+  --border: #30363d;
+  --text: #c9d1d9;
+  --muted: #8b949e;
+  --accent: #2f81f7;
+  --ok: #3fb950;
+  --err: #f85149;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.6rem 1rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+}
+.topbar h1 { font-size: 1.05rem; margin: 0; letter-spacing: 0.02em; }
+
+.conn { display: flex; align-items: center; gap: 0.4rem; color: var(--muted); font-size: 0.85rem; }
+.dot { width: 9px; height: 9px; border-radius: 50%; background: var(--err); transition: background 0.2s; }
+.dot.ok { background: var(--ok); }
+
+.modes {
+  display: flex;
+  gap: 0.25rem;
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid var(--border);
+}
+.modes button {
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.35rem 0.8rem;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+.modes button:hover:not(:disabled) { color: var(--text); border-color: var(--accent); }
+.modes button.active { color: #fff; background: var(--accent); border-color: var(--accent); }
+.modes button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.controls {
+  display: flex;
+  align-items: flex-end;
+  gap: 1rem;
+  padding: 0.7rem 1rem;
+  flex-wrap: wrap;
+}
+.controls label { display: flex; flex-direction: column; font-size: 0.75rem; color: var(--muted); gap: 0.2rem; }
+.controls input {
+  width: 9rem;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 0.35rem 0.5rem;
+  font-size: 0.95rem;
+}
+.controls #apply {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 0.45rem 1rem;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+.status-line { font-size: 0.8rem; color: var(--muted); margin-left: auto; }
+.status-line.err { color: var(--err); }
+
+.radio-controls { border-top: 1px solid var(--border); }
+.radio-controls select,
+.radio-controls input[type="number"] {
+  width: 7rem;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 0.35rem 0.5rem;
+  font-size: 0.95rem;
+}
+.hint { color: var(--muted); font-size: 0.78rem; padding: 0 1rem; margin: 0.2rem 0; }
+
+.level-meter { font-size: 0.8rem; color: var(--muted); align-self: center; }
+.level-meter.open { color: var(--ok); }
+
+main { padding: 1rem; }
+.wf-wrap {
+  position: relative;
+  width: 100%;
+  max-width: 1024px;
+}
+.wf-wrap .scope,
+.wf-wrap #waterfall {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.scope {
+  border: 1px solid var(--border);
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
+  background: var(--panel);
+}
+#waterfall {
+  border: 1px solid var(--border);
+  border-bottom: none;
+  background: #000;
+  image-rendering: pixelated;
+}
+.overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  cursor: crosshair;
+}
+.axis {
+  display: block;
+  width: 100%;
+  max-width: 1024px;
+  height: 24px;
+  border: 1px solid var(--border);
+  border-top: none;
+  border-radius: 0 0 8px 8px;
+  background: var(--panel);
+}
