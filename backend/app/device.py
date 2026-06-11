@@ -42,6 +42,9 @@ class DeviceManager:
         self.center_freq: float = 100_000_000.0
         self.sample_rate: float = 2_400_000.0
         self.gain: float | str = "auto"
+        self.freq_correction: int = 0       # crystal offset, ppm
+        self._applied_ppm: int = 0          # last ppm written to the device
+        self.valid_gains: list[float] = []  # device gain steps (dB), filled on open
         self.mode: Optional[Mode] = None
         self.mode_name: str = "idle"
         self._loop: Optional[asyncio.AbstractEventLoop] = None
@@ -69,6 +72,8 @@ class DeviceManager:
             "center_freq": self.center_freq,
             "sample_rate": self.sample_rate,
             "gain": self.gain,
+            "ppm": self.freq_correction,
+            "gains": self.valid_gains,
             "device_present": self.device_present(),
             "clients": self.hub.client_count,
         }
@@ -129,7 +134,8 @@ class DeviceManager:
 
     async def retune(self, center_freq: float | None = None,
                      sample_rate: float | None = None,
-                     gain: float | str | None = None) -> None:
+                     gain: float | str | None = None,
+                     ppm: int | None = None) -> None:
         """Update radio settings. The worker applies them between read blocks."""
         if center_freq is not None:
             self.center_freq = float(center_freq)
@@ -137,6 +143,8 @@ class DeviceManager:
             self.sample_rate = float(sample_rate)
         if gain is not None:
             self.gain = gain
+        if ppm is not None:
+            self.freq_correction = int(ppm)
         self._retune_event.set()
         await self._announce()
 
@@ -190,6 +198,15 @@ class DeviceManager:
 
     def _apply_settings(self, sdr) -> None:
         sdr.sample_rate = self.sample_rate
+        # Only write ppm when it actually changes. librtlsdr errors on a no-op
+        # set (returns -2), and that failed control transfer can wedge the next
+        # USB call — so never write the default 0 to a fresh device.
+        if int(self.freq_correction) != self._applied_ppm:
+            try:
+                sdr.freq_correction = int(self.freq_correction)
+                self._applied_ppm = int(self.freq_correction)
+            except Exception:
+                pass
         sdr.center_freq = self.center_freq
         try:
             sdr.gain = self.gain  # pyrtlsdr accepts 'auto' or a float
@@ -244,8 +261,14 @@ class DeviceManager:
         reader_thread = None
         try:
             sdr = RtlSdr()  # type: ignore[operator]
+            self._applied_ppm = 0  # fresh device starts at 0 ppm
             self._apply_settings(sdr)
             self._sdr = sdr
+            try:
+                self.valid_gains = [round(g, 1) for g in sdr.valid_gains_db]
+                self.emit_json(self.status())  # now that gain steps are known
+            except Exception:
+                pass
             mode.on_start()
             if mode.controls_tuning:
                 # Mode drives retuning itself (e.g. scan); no separate reader.

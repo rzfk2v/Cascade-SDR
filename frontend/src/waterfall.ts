@@ -19,9 +19,19 @@ export class Waterfall {
     this.ctx = ctx;
     this.w = canvas.width;
     this.h = canvas.height;
-    this.rowImage = this.ctx.createImageData(this.w, 1);
+    this.rowImage = this.ctx.createImageData(Math.max(1, this.w), 1);
     this.ctx.fillStyle = "#000";
     this.ctx.fillRect(0, 0, this.w, this.h);
+  }
+
+  // Resize the backing store to a new pixel size (history is cleared).
+  resize(w: number, h: number): void {
+    this.canvas.width = w;
+    this.canvas.height = h;
+    this.w = w;
+    this.h = h;
+    this.rowImage = this.ctx.createImageData(Math.max(1, w), 1);
+    this.clear();
   }
 
   pushRow(row: Float32Array): void {

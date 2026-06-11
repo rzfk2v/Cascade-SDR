@@ -70,14 +70,24 @@ class ScanMode(Mode):
     def sweep(self, sdr, stop_event) -> None:
         sr = float(self.manager.sample_rate)
         sdr.sample_rate = sr
-        try:
-            sdr.gain = self.manager.gain
-        except Exception:
-            pass
         usable_bw = sr * self.USABLE
         self.manager.emit_json(self._scan_config_msg())
+        applied_ppm = int(self.manager.freq_correction)  # already set on device open
 
         while not stop_event.is_set():
+            # apply current gain/ppm at the top of each sweep (cheap, picks up
+            # changes made while scanning). Only write ppm on change (a no-op
+            # set errors in librtlsdr and can wedge the next USB call).
+            try:
+                sdr.gain = self.manager.gain
+            except Exception:
+                pass
+            if int(self.manager.freq_correction) != applied_ppm:
+                try:
+                    sdr.freq_correction = int(self.manager.freq_correction)
+                    applied_ppm = int(self.manager.freq_correction)
+                except Exception:
+                    pass
             start, stop = self.start_freq, self.stop_freq
             span = stop - start
             if span <= 0:

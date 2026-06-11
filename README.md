@@ -35,6 +35,20 @@ stitches the slices into one wide spectrum + waterfall. **Click any peak** to
 re-center the dongle there and drop straight into Radio mode to listen. Wider
 ranges sweep more slowly (each ~2.4 MHz slice needs its own retune + capture).
 
+### Zoom, gain, PPM
+- **Drag** across the scope/waterfall to zoom: in **Scan** it narrows the swept
+  range (e.g. drag into the busy part around 1090 MHz); in **Waterfall** it
+  re-centers and narrows the captured band; in **Radio** it sets demod bandwidth.
+  Use **Zoom out** (top-right) to widen ×2.
+- **Gain** — uncheck *Auto gain* for a manual slider over the device's gain steps.
+  High manual gain helps weak signals (e.g. ADS-B); too much overloads.
+- **PPM correction** — RTL-SDR crystals are off by tens of ppm; set this so the
+  displayed/tuned frequency is accurate (important for narrowband + digital modes).
+
+### Layout
+Controls live in the left sidebar; the spectrum scope + waterfall fill the rest of
+the window and resize with it.
+
 > FM **de-emphasis** defaults to 50 µs (Europe). In North America/Korea use 75 µs
 > — change `tau_us` in [backend/app/modes/radio.py](backend/app/modes/radio.py)
 > (`DeEmphasis(...)`). A UI toggle can be added later.

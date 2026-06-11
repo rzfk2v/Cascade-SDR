@@ -10,10 +10,18 @@ export class SpectrumScope {
   private ceil = -10;
   private last: Float32Array | null = null;
 
-  constructor(canvas: HTMLCanvasElement) {
+  constructor(private canvas: HTMLCanvasElement) {
     this.ctx = canvas.getContext("2d")!;
     this.w = canvas.width;
     this.h = canvas.height;
+  }
+
+  resize(w: number, h: number): void {
+    this.canvas.width = w;
+    this.canvas.height = h;
+    this.w = w;
+    this.h = h;
+    this.draw();
   }
 
   clear(): void {

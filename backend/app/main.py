@@ -93,6 +93,7 @@ async def handle_command(ws: WebSocket, msg: dict) -> None:
                 center_freq=msg.get("center_freq"),
                 sample_rate=msg.get("sample_rate"),
                 gain=msg.get("gain"),
+                ppm=msg.get("ppm"),
             )
         elif cmd == "config":
             manager.configure_mode(msg.get("params", {}))

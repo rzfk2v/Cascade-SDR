@@ -26,6 +26,11 @@ const statusLine = document.getElementById("status-line")!;
 const tunedLine = document.getElementById("tuned-line")!;
 const freqInput = document.getElementById("freq") as HTMLInputElement;
 const rateInput = document.getElementById("rate") as HTMLInputElement;
+const gainAuto = document.getElementById("gain-auto") as HTMLInputElement;
+const gainSlider = document.getElementById("gain") as HTMLInputElement;
+const gainVal = document.getElementById("gain-val")!;
+const ppmInput = document.getElementById("ppm") as HTMLInputElement;
+let gainSteps: number[] = [];
 const radioControls = document.getElementById("radio-controls")!;
 const demodSel = document.getElementById("demod") as HTMLSelectElement;
 const bwInput = document.getElementById("bw") as HTMLInputElement;
@@ -36,6 +41,7 @@ const scanControls = document.getElementById("scan-controls")!;
 const scanStart = document.getElementById("scan-start") as HTMLInputElement;
 const scanStop = document.getElementById("scan-stop") as HTMLInputElement;
 const scanPreset = document.getElementById("scan-preset") as HTMLSelectElement;
+const zoomOutBtn = document.getElementById("zoom-out") as HTMLButtonElement;
 
 let currentMode = "idle";
 
@@ -53,11 +59,15 @@ sock.onJson((msg) => {
     case "status":
       currentMode = msg.mode;
       renderStatus(msg);
+      syncGain(msg);
+      if (typeof msg.ppm === "number" && document.activeElement !== ppmInput)
+        ppmInput.value = msg.ppm.toString();
       highlightMode(msg.mode);
       tuner.setBand(msg.center_freq, msg.sample_rate);
       tuner.setActive(msg.mode === "radio");
       radioControls.hidden = msg.mode !== "radio";
       scanControls.hidden = msg.mode !== "scan";
+      zoomOutBtn.hidden = !(msg.mode === "scan" || msg.mode === "spectrum");
       break;
     case "spectrum_config":
       tuner.setBand(msg.center_freq, msg.sample_rate);
@@ -104,6 +114,27 @@ function renderStatus(s: any): void {
   rateInput.value = (s.sample_rate / 1e6).toString();
 }
 
+function syncGain(s: any): void {
+  if (Array.isArray(s.gains) && s.gains.length && s.gains.length !== gainSteps.length) {
+    gainSteps = s.gains;
+    gainSlider.max = (gainSteps.length - 1).toString();
+  }
+  const auto = s.gain === "auto" || s.gain == null;
+  gainAuto.checked = auto;
+  gainSlider.disabled = auto;
+  if (auto) {
+    gainVal.textContent = "auto";
+  } else if (gainSteps.length) {
+    // snap slider to the nearest known step
+    let idx = gainSteps.findIndex((g) => g >= s.gain - 0.05);
+    if (idx < 0) idx = gainSteps.length - 1;
+    gainSlider.value = idx.toString();
+    gainVal.textContent = `${gainSteps[idx]} dB`;
+  } else {
+    gainVal.textContent = `${s.gain} dB`;
+  }
+}
+
 function highlightMode(mode: string): void {
   document.querySelectorAll("#mode-tabs button").forEach((b) => {
     b.classList.toggle("active", (b as HTMLElement).dataset.mode === mode);
@@ -138,11 +169,28 @@ tuner.onTune = async (freqHz) => {
     tuner.setTuned(freqHz);
   }
 };
-tuner.onBandwidth = (bwHz, centerHz) => {
+tuner.onSelect = (loHz, hiHz) => {
   if (currentMode === "radio") {
-    sock.send({ cmd: "config", params: { tuned_freq: centerHz, bandwidth: bwHz } });
+    // drag sets the demod bandwidth + re-centers the channel
+    sock.send({
+      cmd: "config",
+      params: { tuned_freq: (loHz + hiHz) / 2, bandwidth: hiHz - loHz },
+    });
+  } else if (currentMode === "scan") {
+    // drag zooms the scan into the selected sub-range
+    scanStart.value = (loHz / 1e6).toFixed(3);
+    scanStop.value = (hiHz / 1e6).toFixed(3);
+    waterfall.clear();
+    scope.clear();
+    sock.send({ cmd: "config", params: { start_freq: loHz, stop_freq: hiHz } });
+  } else {
+    // spectrum/idle: re-center the dongle and narrow the captured band
+    const center = (loHz + hiHz) / 2;
+    const rate = Math.min(2.4e6, Math.max(0.96e6, hiHz - loHz)); // RTL valid range
+    waterfall.clear();
+    scope.clear();
+    sock.send({ cmd: "tune", center_freq: center, sample_rate: rate });
   }
-  // in scan/waterfall a drag falls through to onTune(center) -> jump to radio
 };
 
 // --- radio controls ------------------------------------------------------
@@ -178,6 +226,23 @@ scanPreset.addEventListener("change", () => {
   applyScanRange();
 });
 
+// zoom out (×2) — widens the scan range or the captured band
+zoomOutBtn.addEventListener("click", () => {
+  const center = tuner.centerFreq;
+  const span = tuner.sampleRate * 2;
+  waterfall.clear();
+  scope.clear();
+  if (currentMode === "scan") {
+    const lo = Math.max(0, center - span / 2);
+    const hi = center + span / 2;
+    scanStart.value = (lo / 1e6).toFixed(3);
+    scanStop.value = (hi / 1e6).toFixed(3);
+    sock.send({ cmd: "config", params: { start_freq: lo, stop_freq: hi } });
+  } else if (currentMode === "spectrum") {
+    sock.send({ cmd: "tune", sample_rate: Math.min(2.4e6, tuner.sampleRate * 2) });
+  }
+});
+
 // --- dongle tuning -------------------------------------------------------
 document.getElementById("apply")!.addEventListener("click", () => {
   sock.send({
@@ -186,5 +251,61 @@ document.getElementById("apply")!.addEventListener("click", () => {
     sample_rate: parseFloat(rateInput.value) * 1e6,
   });
 });
+
+// --- gain + ppm ----------------------------------------------------------
+gainAuto.addEventListener("change", () => {
+  if (gainAuto.checked) {
+    gainSlider.disabled = true;
+    gainVal.textContent = "auto";
+    sock.send({ cmd: "tune", gain: "auto" });
+  } else {
+    gainSlider.disabled = false;
+    const g = gainSteps[parseInt(gainSlider.value, 10)] ?? 0;
+    gainVal.textContent = `${g} dB`;
+    sock.send({ cmd: "tune", gain: g });
+  }
+});
+gainSlider.addEventListener("input", () => {
+  const g = gainSteps[parseInt(gainSlider.value, 10)] ?? 0;
+  gainVal.textContent = `${g} dB`;
+  sock.send({ cmd: "tune", gain: g });
+});
+ppmInput.addEventListener("change", () =>
+  sock.send({ cmd: "tune", ppm: parseInt(ppmInput.value, 10) || 0 }),
+);
+
+// --- responsive canvas sizing -------------------------------------------
+const scopeCanvas = document.getElementById("scope") as HTMLCanvasElement;
+const wfCanvas = document.getElementById("waterfall") as HTMLCanvasElement;
+const overlayCanvas = document.getElementById("overlay") as HTMLCanvasElement;
+const axisCanvas = document.getElementById("axis") as HTMLCanvasElement;
+
+function fit(c: HTMLCanvasElement): { w: number; h: number } {
+  const r = c.getBoundingClientRect();
+  return { w: Math.max(1, Math.round(r.width)), h: Math.max(1, Math.round(r.height)) };
+}
+
+function layoutCanvases(): void {
+  const s = fit(scopeCanvas);
+  scope.resize(s.w, s.h);
+  const wf = fit(wfCanvas);
+  waterfall.resize(wf.w, wf.h);
+  const ov = fit(overlayCanvas);
+  overlayCanvas.width = ov.w;
+  overlayCanvas.height = ov.h;
+  const ax = fit(axisCanvas);
+  axisCanvas.width = ax.w;
+  axisCanvas.height = ax.h;
+  tuner.drawAxis();
+  tuner.draw();
+}
+
+let resizeTimer = 0;
+window.addEventListener("resize", () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = window.setTimeout(layoutCanvases, 120);
+});
+// initial sizing after the flex layout settles
+requestAnimationFrame(() => requestAnimationFrame(layoutCanvases));
 
 sock.connect();

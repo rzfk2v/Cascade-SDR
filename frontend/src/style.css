@@ -7,135 +7,178 @@
   --accent: #2f81f7;
   --ok: #3fb950;
   --err: #f85149;
+  --sidebar-w: 270px;
 }
 
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 
+html, body { height: 100%; margin: 0; }
 body {
-  margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   background: var(--bg);
   color: var(--text);
 }
 
-.topbar {
+.app {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0.6rem 1rem;
-  border-bottom: 1px solid var(--border);
-  background: var(--panel);
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
 }
-.topbar h1 { font-size: 1.05rem; margin: 0; letter-spacing: 0.02em; }
 
-.conn { display: flex; align-items: center; gap: 0.4rem; color: var(--muted); font-size: 0.85rem; }
-.dot { width: 9px; height: 9px; border-radius: 50%; background: var(--err); transition: background 0.2s; }
+/* ---- sidebar ---- */
+.sidebar {
+  width: var(--sidebar-w);
+  flex: 0 0 var(--sidebar-w);
+  height: 100%;
+  overflow-y: auto;
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.brand { display: flex; align-items: center; justify-content: space-between; }
+.brand h1 { font-size: 1rem; margin: 0; letter-spacing: 0.02em; }
+.conn { display: flex; align-items: center; gap: 0.35rem; color: var(--muted); font-size: 0.75rem; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--err); transition: background 0.2s; }
 .dot.ok { background: var(--ok); }
 
-.modes {
-  display: flex;
-  gap: 0.25rem;
-  padding: 0.5rem 1rem;
-  border-bottom: 1px solid var(--border);
-}
+.modes { display: grid; grid-template-columns: 1fr 1fr; gap: 0.3rem; }
 .modes button {
   background: transparent;
   color: var(--muted);
   border: 1px solid var(--border);
   border-radius: 6px;
-  padding: 0.35rem 0.8rem;
+  padding: 0.4rem 0.5rem;
   cursor: pointer;
-  font-size: 0.9rem;
+  font-size: 0.85rem;
 }
 .modes button:hover:not(:disabled) { color: var(--text); border-color: var(--accent); }
 .modes button.active { color: #fff; background: var(--accent); border-color: var(--accent); }
 .modes button:disabled { opacity: 0.4; cursor: not-allowed; }
 
-.controls {
+.group {
   display: flex;
-  align-items: flex-end;
-  gap: 1rem;
-  padding: 0.7rem 1rem;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
 }
-.controls label { display: flex; flex-direction: column; font-size: 0.75rem; color: var(--muted); gap: 0.2rem; }
-.controls input {
-  width: 9rem;
+.group h2 {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin: 0 0 0.1rem;
+}
+.group label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+.group label.check { flex-direction: row; align-items: center; gap: 0.4rem; color: var(--text); font-size: 0.82rem; }
+.group input, .group select {
   background: var(--panel);
   border: 1px solid var(--border);
   color: var(--text);
   border-radius: 6px;
   padding: 0.35rem 0.5rem;
-  font-size: 0.95rem;
+  font-size: 0.9rem;
+  width: 100%;
 }
-.controls #apply {
+.group label.check input { width: auto; }
+.group input[type="range"] { padding: 0; }
+.group button {
   background: var(--accent);
   color: #fff;
   border: none;
   border-radius: 6px;
-  padding: 0.45rem 1rem;
+  padding: 0.45rem 0.6rem;
   cursor: pointer;
-  font-size: 0.9rem;
+  font-size: 0.85rem;
 }
-.status-line { font-size: 0.8rem; color: var(--muted); margin-left: auto; }
+.muted { color: var(--muted); font-size: 0.78rem; }
+.status-line { font-size: 0.72rem; color: var(--muted); margin: 0.1rem 0 0; }
 .status-line.err { color: var(--err); }
+.level-meter { font-size: 0.8rem; color: var(--muted); margin: 0; }
+.level-meter.open { color: var(--ok); }
+.hint { color: var(--muted); font-size: 0.72rem; margin: 0; }
 
-.radio-controls { border-top: 1px solid var(--border); }
-.radio-controls select,
-.radio-controls input[type="number"] {
-  width: 7rem;
-  background: var(--panel);
+/* ---- display area ---- */
+.display {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 0.6rem;
+  gap: 0;
+}
+.zoom-out {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  z-index: 5;
+  background: rgba(22, 27, 34, 0.85);
   border: 1px solid var(--border);
   color: var(--text);
   border-radius: 6px;
-  padding: 0.35rem 0.5rem;
-  font-size: 0.95rem;
+  padding: 0.3rem 0.55rem;
+  font-size: 0.75rem;
+  cursor: pointer;
 }
-.hint { color: var(--muted); font-size: 0.78rem; padding: 0 1rem; margin: 0.2rem 0; }
-
-.level-meter { font-size: 0.8rem; color: var(--muted); align-self: center; }
-.level-meter.open { color: var(--ok); }
-
-main { padding: 1rem; }
+.zoom-out:hover { border-color: var(--accent); }
 .wf-wrap {
   position: relative;
-  width: 100%;
-  max-width: 1024px;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
-.wf-wrap .scope,
-.wf-wrap #waterfall {
+#scope {
+  flex: 0 0 26%;
+  min-height: 0;
+  width: 100%;
   display: block;
-  width: 100%;
-  height: auto;
-}
-.scope {
+  background: var(--panel);
   border: 1px solid var(--border);
   border-bottom: none;
   border-radius: 8px 8px 0 0;
-  background: var(--panel);
 }
 #waterfall {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  display: block;
+  background: #000;
   border: 1px solid var(--border);
   border-bottom: none;
-  background: #000;
   image-rendering: pixelated;
 }
 .overlay {
   position: absolute;
-  top: 0;
-  left: 0;
+  inset: 0;
   width: 100%;
   height: 100%;
   cursor: crosshair;
 }
 .axis {
-  display: block;
+  flex: 0 0 22px;
+  height: 22px;
+  min-height: 0;
   width: 100%;
-  max-width: 1024px;
-  height: 24px;
+  display: block;
+  background: var(--panel);
   border: 1px solid var(--border);
   border-top: none;
   border-radius: 0 0 8px 8px;
-  background: var(--panel);
 }

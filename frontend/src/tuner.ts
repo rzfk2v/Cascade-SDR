@@ -11,8 +11,8 @@ export class Tuner {
   bandwidth = 200e3;
   active = false; // show the cursor (radio mode)
 
-  onTune?: (freqHz: number) => void;
-  onBandwidth?: (bwHz: number, centerHz: number) => void;
+  onTune?: (freqHz: number) => void;        // click
+  onSelect?: (loHz: number, hiHz: number) => void;  // drag a range
 
   private octx: CanvasRenderingContext2D;
   private actx: CanvasRenderingContext2D;
@@ -79,13 +79,9 @@ export class Tuner {
     const f1 = this.freqAt(start);
     const f2 = this.freqAt(end);
     if (Math.abs(end - start) < 0.004) {
-      // treat as a click -> tune here
-      this.onTune?.(this.freqAt(end));
+      this.onTune?.(this.freqAt(end));            // click -> tune
     } else {
-      const center = (f1 + f2) / 2;
-      const bw = Math.abs(f2 - f1);
-      this.onBandwidth?.(bw, center);
-      this.onTune?.(center);
+      this.onSelect?.(Math.min(f1, f2), Math.max(f1, f2));  // drag -> select range
     }
     this.draw();
   }
@@ -127,7 +123,8 @@ export class Tuner {
     this.actx.fillStyle = "#8b949e";
     this.actx.font = "11px -apple-system, system-ui, sans-serif";
     this.actx.textBaseline = "top";
-    const ticks = 9;
+    // adapt tick count to width so MHz labels (~55 px each) don't overlap
+    const ticks = Math.max(3, Math.min(13, Math.floor(w / 80) + 1));
     for (let i = 0; i < ticks; i++) {
       const frac = i / (ticks - 1);
       const x = frac * w;
