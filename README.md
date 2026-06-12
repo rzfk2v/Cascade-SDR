@@ -58,8 +58,12 @@ Radio supports **WFM** (broadcast), **NFM** (narrow — ham/marine/PMR voice),
 sensible default bandwidth you can then fine-tune.
 
 ### Display, bookmarks, persistence
+- **Band label**: under the device status it names the service(s) on the current
+  frequency range (FM broadcast, Airband, Marine VHF, 2 m/70 cm ham, TETRA, DAB,
+  ADS-B, …) so you know what kind of traffic to expect (EU/Sweden band plan).
 - **Display** panel: **Auto contrast** (or manual floor/ceiling dB) for the
-  waterfall, and **Peak hold** on the spectrum scope (catches bursty signals).
+  waterfall, and **Peak hold** on the spectrum scope — peaks linger then fade over
+  ~1–2 s so brief/bursty signals flash and are easy to spot.
 - **Bookmarks**: save the current frequency (+ demod) with a name; click to recall,
   × to delete.
 - **Settings persist** across reloads (gain, PPM, bias-T, demod, volume, squelch,

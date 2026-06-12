@@ -124,6 +124,7 @@ body {
 .bm-empty { color: var(--muted); font-size: 0.75rem; }
 .status-line { font-size: 0.72rem; color: var(--muted); margin: 0.1rem 0 0; }
 .status-line.err { color: var(--err); }
+.band-info { font-size: 0.78rem; color: var(--accent); margin: 0.1rem 0 0; }
 .level-meter { font-size: 0.8rem; color: var(--muted); margin: 0; }
 .level-meter.open { color: var(--ok); }
 .hint { color: var(--muted); font-size: 0.72rem; margin: 0; }

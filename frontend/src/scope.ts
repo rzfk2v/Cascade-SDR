@@ -11,6 +11,8 @@ export class SpectrumScope {
   private last: Float32Array | null = null;
   private peak: Float32Array | null = null;
   private peakHold = false;
+  private peakDecayDbPerSec = 24; // peaks linger then fade over ~1-2 s
+  private lastPeakTime = 0;
 
   constructor(private canvas: HTMLCanvasElement) {
     this.ctx = canvas.getContext("2d")!;
@@ -35,16 +37,23 @@ export class SpectrumScope {
   setPeakHold(on: boolean): void {
     this.peakHold = on;
     this.peak = null; // reset accumulation
+    this.lastPeakTime = 0;
   }
 
   pushRow(row: Float32Array): void {
     this.last = row;
     if (this.peakHold) {
+      const now = performance.now();
+      const dt = this.lastPeakTime ? (now - this.lastPeakTime) / 1000 : 0;
+      this.lastPeakTime = now;
+      const drop = this.peakDecayDbPerSec * dt; // dB this peak decays since last row
       if (!this.peak || this.peak.length !== row.length) {
         this.peak = row.slice();
       } else {
         for (let i = 0; i < row.length; i++) {
-          if (row[i] > this.peak[i]) this.peak[i] = row[i];
+          // hold the max, but let it sag so transients show briefly then fade
+          const decayed = this.peak[i] - drop;
+          this.peak[i] = row[i] > decayed ? row[i] : decayed;
         }
       }
     }

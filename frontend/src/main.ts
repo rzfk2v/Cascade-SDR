@@ -14,6 +14,7 @@ import {
   saveBookmarks,
   type Bookmark,
 } from "./storage";
+import { bandAt, bandsInSpan } from "./bands";
 
 const sock = new SdrSocket();
 const waterfall = new Waterfall(
@@ -75,6 +76,29 @@ const wfCeil = document.getElementById("wf-ceil") as HTMLInputElement;
 const peakHold = document.getElementById("peak-hold") as HTMLInputElement;
 const bmName = document.getElementById("bm-name") as HTMLInputElement;
 const bmList = document.getElementById("bm-list")!;
+const bandInfo = document.getElementById("band-info")!;
+let viewCenter = 100e6;
+let viewRate = 2.4e6;
+let viewTuned = 100e6;
+
+function updateBandInfo(): void {
+  let label = "";
+  if (currentMode === "adsb") {
+    label = "ADS-B · 1090 MHz (Mode S)";
+  } else if (currentMode === "ais") {
+    label = "Marine AIS · 162 MHz";
+  } else if (currentMode === "radio") {
+    const b = bandAt(viewTuned / 1e6);
+    label = b ? `Band: ${b}` : "";
+  } else if (currentMode === "spectrum" || currentMode === "scan") {
+    const names = bandsInSpan(
+      (viewCenter - viewRate / 2) / 1e6,
+      (viewCenter + viewRate / 2) / 1e6,
+    );
+    label = names.length ? `Band: ${names.slice(0, 4).join(" · ")}` : "";
+  }
+  bandInfo.textContent = label;
+}
 
 let currentMode = "idle";
 
@@ -98,6 +122,9 @@ sock.onJson((msg) => {
       break;
     case "status":
       currentMode = msg.mode;
+      viewCenter = msg.center_freq;
+      viewRate = msg.sample_rate;
+      updateBandInfo();
       renderStatus(msg);
       syncGain(msg);
       if (typeof msg.ppm === "number" && document.activeElement !== ppmInput)
@@ -115,9 +142,14 @@ sock.onJson((msg) => {
       showMapMode(msg.mode);
       break;
     case "spectrum_config":
+      viewCenter = msg.center_freq;
+      viewRate = msg.sample_rate;
+      updateBandInfo();
       tuner.setBand(msg.center_freq, msg.sample_rate);
       break;
     case "radio_config":
+      viewTuned = msg.tuned_freq;
+      updateBandInfo();
       tuner.setTuned(msg.tuned_freq);
       tuner.setBandwidth(msg.bandwidth);
       demodSel.value = msg.demod;
