@@ -6,7 +6,7 @@
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
-interface Aircraft {
+export interface Aircraft {
   icao: string;
   flight?: string;
   alt?: number;
@@ -14,6 +14,28 @@ interface Aircraft {
   track?: number;
   lat?: number;
   lon?: number;
+  vert_rate?: number;
+  squawk?: string;
+  ground?: boolean;
+  msgs?: number;
+  age?: number;
+}
+
+function popupHtml(ac: Aircraft): string {
+  const rows: [string, string][] = [];
+  rows.push(["Callsign", ac.flight || "—"]);
+  rows.push(["ICAO", ac.icao.toUpperCase()]);
+  if (ac.squawk) rows.push(["Squawk", ac.squawk]);
+  if (ac.alt != null) rows.push(["Altitude", `${ac.alt.toLocaleString()} ft`]);
+  if (ac.vert_rate != null) rows.push(["Climb", `${ac.vert_rate > 0 ? "+" : ""}${ac.vert_rate} ft/min`]);
+  if (ac.speed != null) rows.push(["Speed", `${ac.speed} kt`]);
+  if (ac.track != null) rows.push(["Track", `${ac.track}°`]);
+  if (ac.ground) rows.push(["State", "on ground"]);
+  if (ac.age != null) rows.push(["Seen", `${ac.age}s ago`]);
+  const body = rows
+    .map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`)
+    .join("");
+  return `<div class="ac-popup"><b>${ac.flight || ac.icao.toUpperCase()}</b><table>${body}</table></div>`;
 }
 
 export class AdsbMap {
@@ -56,10 +78,15 @@ export class AdsbMap {
       let m = this.markers.get(ac.icao);
       if (!m) {
         m = L.marker([ac.lat, ac.lon], { icon }).addTo(this.map);
+        m.bindPopup(popupHtml(ac));
         this.markers.set(ac.icao, m);
       } else {
         m.setLatLng([ac.lat, ac.lon]);
         m.setIcon(icon);
+        const popup = m.getPopup();
+        if (popup) {
+          popup.setContent(popupHtml(ac)); // refresh details (even while open)
+        }
       }
     }
     // remove aircraft no longer reported
@@ -75,5 +102,13 @@ export class AdsbMap {
       const group = L.featureGroup([...this.markers.values()]);
       this.map.fitBounds(group.getBounds().pad(0.3), { maxZoom: 9 });
     }
+  }
+
+  // Pan to an aircraft (from the list) and open its detail popup.
+  focus(icao: string): void {
+    const m = this.markers.get(icao);
+    if (!m || !this.map) return;
+    this.map.panTo(m.getLatLng());
+    m.openPopup();
   }
 }

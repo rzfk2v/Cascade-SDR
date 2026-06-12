@@ -140,6 +140,14 @@ class AdsbMode(Mode):
         num(13, "track", lambda x: round(float(x)))
         num(14, "lat", float)
         num(15, "lon", float)
+        num(16, "vert_rate", lambda x: round(float(x)))
+        sq = p[17].strip()
+        if sq:
+            ac["squawk"] = sq
+        og = p[21].strip()
+        if og:
+            ac["ground"] = og in ("1", "-1")
+        ac["msgs"] = ac.get("msgs", 0) + 1
 
     def _prune(self, now: float) -> None:
         stale = [k for k, v in self.aircraft.items() if now - v["t"] > STALE_SECONDS]
@@ -150,7 +158,8 @@ class AdsbMode(Mode):
         out = []
         for ac in self.aircraft.values():
             item = {"icao": ac["icao"], "age": round(now - ac["t"], 1)}
-            for k in ("flight", "alt", "speed", "track", "lat", "lon"):
+            for k in ("flight", "alt", "speed", "track", "lat", "lon",
+                      "vert_rate", "squawk", "ground", "msgs"):
                 if k in ac:
                     item[k] = ac[k]
             out.append(item)

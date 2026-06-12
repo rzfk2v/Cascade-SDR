@@ -6,7 +6,7 @@ import { Waterfall } from "./waterfall";
 import { SpectrumScope } from "./scope";
 import { Tuner } from "./tuner";
 import { AudioPlayer } from "./audio";
-import { AdsbMap } from "./adsbmap";
+import { AdsbMap, type Aircraft } from "./adsbmap";
 
 const sock = new SdrSocket();
 const waterfall = new Waterfall(
@@ -27,6 +27,10 @@ const mapDiv = document.getElementById("map")!;
 const adsbControls = document.getElementById("adsb-controls")!;
 const adsbStatus = document.getElementById("adsb-status")!;
 const adsbCount = document.getElementById("adsb-count")!;
+const aircraftPanel = document.getElementById("aircraft-panel")!;
+const apBody = document.getElementById("ap-body")!;
+const apCount = document.getElementById("ap-count")!;
+const rxLoc = document.getElementById("rx-loc") as HTMLInputElement;
 
 const dot = document.getElementById("dot")!;
 const connText = document.getElementById("conn-text")!;
@@ -104,6 +108,7 @@ sock.onJson((msg) => {
     case "aircraft":
       adsbMap.update(msg.aircraft);
       adsbCount.textContent = `${msg.positioned} shown · ${msg.count} tracked`;
+      renderAircraftList(msg.aircraft);
       break;
     case "error":
       statusLine.textContent = `⚠ ${msg.message}`;
@@ -157,6 +162,7 @@ function syncGain(s: any): void {
 function showAdsb(on: boolean): void {
   fftView.hidden = on;
   mapDiv.hidden = !on;
+  aircraftPanel.hidden = !on;
   if (on) {
     adsbMap.ensure("map");
   } else {
@@ -164,6 +170,52 @@ function showAdsb(on: boolean): void {
     requestAnimationFrame(layoutCanvases);
   }
 }
+
+function rxLatLon(): [number, number] | null {
+  const m = rxLoc.value.split(",").map((s) => parseFloat(s.trim()));
+  if (m.length === 2 && isFinite(m[0]) && isFinite(m[1])) return [m[0], m[1]];
+  return null;
+}
+
+function haversineKm(a: [number, number], lat: number, lon: number): number {
+  const R = 6371;
+  const dLat = ((lat - a[0]) * Math.PI) / 180;
+  const dLon = ((lon - a[1]) * Math.PI) / 180;
+  const s =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((a[0] * Math.PI) / 180) * Math.cos((lat * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(s), Math.sqrt(1 - s));
+}
+
+function renderAircraftList(list: Aircraft[]): void {
+  const rx = rxLatLon();
+  const rows = list.map((ac) => {
+    const dist =
+      rx && ac.lat != null && ac.lon != null ? haversineKm(rx, ac.lat, ac.lon) : null;
+    return { ac, dist };
+  });
+  // nearest first; aircraft without a position go last
+  rows.sort((a, b) => (a.dist ?? 1e9) - (b.dist ?? 1e9));
+
+  apCount.textContent = `(${list.length})`;
+  apBody.innerHTML = rows
+    .map(({ ac, dist }) => {
+      const name = ac.flight || ac.icao.toUpperCase();
+      const alt = ac.alt != null ? ac.alt.toLocaleString() : "—";
+      const spd = ac.speed != null ? ac.speed : "—";
+      const trk = ac.track != null ? `${ac.track}°` : "—";
+      const d = dist != null ? `${dist.toFixed(0)} km` : "—";
+      const cls = ac.lat != null ? "" : ' class="no-pos"';
+      return `<tr data-icao="${ac.icao}"${cls}><td>${name}</td><td>${alt}</td><td>${spd}</td><td>${trk}</td><td>${d}</td></tr>`;
+    })
+    .join("");
+}
+
+apBody.addEventListener("click", (e) => {
+  const tr = (e.target as HTMLElement).closest("tr");
+  const icao = tr?.dataset.icao;
+  if (icao) adsbMap.focus(icao);
+});
 
 function highlightMode(mode: string): void {
   document.querySelectorAll("#mode-tabs button").forEach((b) => {

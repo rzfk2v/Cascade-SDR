@@ -158,6 +158,52 @@ body {
   overflow: hidden;
   z-index: 1;
 }
+.aircraft-panel {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  z-index: 5;
+  width: 270px;
+  max-height: calc(100% - 2rem);
+  display: flex;
+  flex-direction: column;
+  background: rgba(13, 17, 23, 0.92);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.ap-head {
+  padding: 0.45rem 0.6rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  border-bottom: 1px solid var(--border);
+}
+.ap-table {
+  display: block;
+  overflow-y: auto;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+  width: 100%;
+}
+.ap-table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--panel);
+  color: var(--muted);
+  font-weight: 500;
+  text-align: left;
+  padding: 0.3rem 0.6rem;
+}
+.ap-table td { padding: 0.3rem 0.6rem; border-top: 1px solid var(--border); }
+.ap-table tbody tr { cursor: pointer; }
+.ap-table tbody tr:hover { background: rgba(47, 129, 247, 0.18); }
+.ap-table tr.no-pos td { color: var(--muted); }
+
+.ac-popup b { color: var(--accent); }
+.ac-popup table { border-collapse: collapse; margin-top: 0.2rem; }
+.ac-popup td { padding: 1px 8px 1px 0; font-size: 12px; }
+.ac-popup td:first-child { color: #57606a; }
+
 .plane-icon { background: none; border: none; }
 .plane-rot { font-size: 16px; line-height: 1; color: #16a3c7; text-shadow: 0 0 2px #fff; }
 .plane-label {
