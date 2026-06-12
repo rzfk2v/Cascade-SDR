@@ -23,7 +23,7 @@
           <button data-mode="scan">Scan</button>
           <button data-mode="radio">Radio</button>
           <button data-mode="adsb">ADS&#8209;B</button>
-          <button data-mode="ais" disabled title="coming in M5">AIS</button>
+          <button data-mode="ais">AIS</button>
         </nav>
 
         <section class="group">
@@ -66,6 +66,13 @@
           <p class="hint">Used for distance/bearing. 1090 MHz needs a good antenna (ideally a 1090 LNA via Bias-T).</p>
         </section>
 
+        <section class="group" id="ais-controls" hidden>
+          <h2>AIS</h2>
+          <p id="ais-status" class="status-line">starting…</p>
+          <p id="ais-count" class="level-meter"></p>
+          <p class="hint">162 MHz marine band. Data is NOT shared online. Needs a VHF/marine antenna.</p>
+        </section>
+
         <section class="group" id="radio-controls" hidden>
           <h2>Radio</h2>
           <label>Demod
@@ -93,11 +100,9 @@
         </div>
         <div id="map" class="map" hidden></div>
         <div id="aircraft-panel" class="aircraft-panel" hidden>
-          <div class="ap-head">Aircraft <span id="ap-count" class="muted"></span></div>
+          <div class="ap-head"><span id="ap-title">Aircraft</span> <span id="ap-count" class="muted"></span></div>
           <table class="ap-table">
-            <thead>
-              <tr><th>Flight</th><th>Alt</th><th>Spd</th><th>Trk</th><th>Dist</th></tr>
-            </thead>
+            <thead id="ap-head"></thead>
             <tbody id="ap-body"></tbody>
           </table>
         </div>

@@ -6,7 +6,7 @@ import { Waterfall } from "./waterfall";
 import { SpectrumScope } from "./scope";
 import { Tuner } from "./tuner";
 import { AudioPlayer } from "./audio";
-import { AdsbMap, type Aircraft } from "./adsbmap";
+import { AdsbMap, type Aircraft, type Vessel } from "./adsbmap";
 
 const sock = new SdrSocket();
 const waterfall = new Waterfall(
@@ -30,7 +30,12 @@ const adsbCount = document.getElementById("adsb-count")!;
 const aircraftPanel = document.getElementById("aircraft-panel")!;
 const apBody = document.getElementById("ap-body")!;
 const apCount = document.getElementById("ap-count")!;
+const apTitle = document.getElementById("ap-title")!;
+const apHead = document.getElementById("ap-head")!;
 const rxLoc = document.getElementById("rx-loc") as HTMLInputElement;
+const aisControls = document.getElementById("ais-controls")!;
+const aisStatus = document.getElementById("ais-status")!;
+const aisCount = document.getElementById("ais-count")!;
 
 const dot = document.getElementById("dot")!;
 const connText = document.getElementById("conn-text")!;
@@ -82,8 +87,9 @@ sock.onJson((msg) => {
       radioControls.hidden = msg.mode !== "radio";
       scanControls.hidden = msg.mode !== "scan";
       adsbControls.hidden = msg.mode !== "adsb";
+      aisControls.hidden = msg.mode !== "ais";
       zoomOutBtn.hidden = !(msg.mode === "scan" || msg.mode === "spectrum");
-      showAdsb(msg.mode === "adsb");
+      showMapMode(msg.mode);
       break;
     case "spectrum_config":
       tuner.setBand(msg.center_freq, msg.sample_rate);
@@ -109,6 +115,14 @@ sock.onJson((msg) => {
       adsbMap.update(msg.aircraft);
       adsbCount.textContent = `${msg.positioned} shown · ${msg.count} tracked`;
       renderAircraftList(msg.aircraft);
+      break;
+    case "ais_status":
+      aisStatus.textContent = msg.message;
+      break;
+    case "vessels":
+      adsbMap.updateVessels(msg.vessels);
+      aisCount.textContent = `${msg.positioned} shown · ${msg.count} tracked`;
+      renderVesselList(msg.vessels);
       break;
     case "error":
       statusLine.textContent = `⚠ ${msg.message}`;
@@ -159,12 +173,19 @@ function syncGain(s: any): void {
   }
 }
 
-function showAdsb(on: boolean): void {
-  fftView.hidden = on;
-  mapDiv.hidden = !on;
-  aircraftPanel.hidden = !on;
-  if (on) {
+function showMapMode(mode: string): void {
+  const onMap = mode === "adsb" || mode === "ais";
+  fftView.hidden = onMap;
+  mapDiv.hidden = !onMap;
+  aircraftPanel.hidden = !onMap;
+  if (onMap) {
     adsbMap.ensure("map");
+    apTitle.textContent = mode === "ais" ? "Vessels" : "Aircraft";
+    // drop the layer/list belonging to the other map mode
+    if (mode === "adsb") adsbMap.clearVessels();
+    else adsbMap.clearAircraft();
+    apBody.innerHTML = "";
+    apCount.textContent = "";
   } else {
     // canvases were display:none -> re-measure now that they're visible again
     requestAnimationFrame(layoutCanvases);
@@ -197,6 +218,8 @@ function renderAircraftList(list: Aircraft[]): void {
   // nearest first; aircraft without a position go last
   rows.sort((a, b) => (a.dist ?? 1e9) - (b.dist ?? 1e9));
 
+  apHead.innerHTML =
+    "<tr><th>Flight</th><th>Alt</th><th>Spd</th><th>Trk</th><th>Dist</th></tr>";
   apCount.textContent = `(${list.length})`;
   apBody.innerHTML = rows
     .map(({ ac, dist }) => {
@@ -211,10 +234,32 @@ function renderAircraftList(list: Aircraft[]): void {
     .join("");
 }
 
+function renderVesselList(list: Vessel[]): void {
+  const rx = rxLatLon();
+  const rows = list.map((v) => ({
+    v,
+    dist: rx && v.lat != null && v.lon != null ? haversineKm(rx, v.lat, v.lon) : null,
+  }));
+  rows.sort((a, b) => (a.dist ?? 1e9) - (b.dist ?? 1e9));
+
+  apHead.innerHTML = "<tr><th>Vessel</th><th>Spd</th><th>Crs</th><th>Dist</th></tr>";
+  apCount.textContent = `(${list.length})`;
+  apBody.innerHTML = rows
+    .map(({ v, dist }) => {
+      const name = v.name || String(v.mmsi);
+      const spd = v.speed != null ? `${v.speed}` : "—";
+      const crs = v.course != null ? `${v.course}°` : "—";
+      const d = dist != null ? `${dist.toFixed(0)} km` : "—";
+      const cls = v.lat != null ? "" : ' class="no-pos"';
+      return `<tr data-mmsi="${v.mmsi}"${cls}><td>${name}</td><td>${spd}</td><td>${crs}</td><td>${d}</td></tr>`;
+    })
+    .join("");
+}
+
 apBody.addEventListener("click", (e) => {
-  const tr = (e.target as HTMLElement).closest("tr");
-  const icao = tr?.dataset.icao;
-  if (icao) adsbMap.focus(icao);
+  const tr = (e.target as HTMLElement).closest("tr") as HTMLElement | null;
+  if (tr?.dataset.icao) adsbMap.focus(tr.dataset.icao);
+  else if (tr?.dataset.mmsi) adsbMap.vesselFocus(tr.dataset.mmsi);
 });
 
 function highlightMode(mode: string): void {

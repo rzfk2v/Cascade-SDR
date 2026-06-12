@@ -13,11 +13,15 @@ Built to grow feature-by-feature. Status:
 | **FM** radio | Click a signal to tune, drag to set bandwidth, audio in browser | ✅ working |
 | **AM** radio | Reuses the radio pipeline (envelope detect) | 🚧 basic (refined in M3) |
 | **ADS-B** | Aircraft on a Leaflet map (via `dump1090`) | ✅ working* |
-| **AIS** | Ships on a map (via `AIS-catcher`) | ⏳ planned (M5) |
+| **AIS** | Ships on a Leaflet map (via `AIS-catcher`) | ✅ working** |
 
 \* Needs `dump1090` installed (`brew install dump1090-mutability`) **and a decent
 1090 MHz antenna** — the stock whip barely hears ADS-B. The pipeline runs and
 plots aircraft when it receives them; with the stock antenna you may see none.
+
+\*\* Needs `AIS-catcher` (build from source, see below). AIS (162 MHz) works with a
+normal VHF/whip antenna near water. **By default we pass `-X off` so your received
+data is NOT uploaded to the aiscatcher.org community feed.**
 
 ### Using the radio
 Open the app, click **Waterfall** to see the band, then **click any signal to
@@ -58,6 +62,30 @@ Select **ADS-B**: the backend spawns `dump1090`, reads its BaseStation feed
 (TCP 30003), and plots aircraft on an OpenStreetMap map. Switching to another mode
 kills `dump1090` and hands the dongle back. **Bias-T** (Device panel) can power a
 1090 MHz LNA — strongly recommended for real range. Gain/PPM are passed to dump1090.
+Click a plane or a row in the **Aircraft** list for full detail (callsign, ICAO,
+squawk, altitude, climb, speed, track); the list is sorted by distance from your
+location (set it in the ADS-B panel).
+
+### AIS (ships map)
+Select **AIS**: the backend spawns `AIS-catcher` (listening on the 162 MHz marine
+channels), receives NMEA over UDP, decodes it with `pyais`, and plots vessels on
+the map with a sortable **Vessels** list (name/MMSI, speed, course, distance).
+AIS works with an ordinary VHF/whip antenna if you're near water.
+
+`AIS-catcher` isn't in Homebrew, so build it from source once:
+
+```bash
+brew install cmake
+git clone --depth 1 https://github.com/jvde-github/AIS-catcher.git ~/.local/src/AIS-catcher
+cd ~/.local/src/AIS-catcher && mkdir build && cd build
+# On recent macOS the CLT libc++ headers can be incomplete; point clang at the SDK's:
+export CPLUS_INCLUDE_PATH="$(xcrun --show-sdk-path)/usr/include/c++/v1"
+cmake .. && make -j4
+cp AIS-catcher /opt/homebrew/bin/AIS-catcher
+```
+
+> Privacy: AIS-catcher shares received data to aiscatcher.org **by default**. We
+> launch it with `-X off` so nothing leaves your machine.
 
 > FM **de-emphasis** defaults to 50 µs (Europe). In North America/Korea use 75 µs
 > — change `tau_us` in [backend/app/modes/radio.py](backend/app/modes/radio.py)

@@ -21,6 +21,34 @@ export interface Aircraft {
   age?: number;
 }
 
+export interface Vessel {
+  mmsi: number;
+  name?: string;
+  lat?: number;
+  lon?: number;
+  speed?: number;
+  course?: number;
+  heading?: number;
+  ship_type?: number;
+  callsign?: string;
+  dest?: string;
+  age?: number;
+}
+
+function vesselPopupHtml(v: Vessel): string {
+  const rows: [string, string][] = [];
+  rows.push(["Name", v.name || "—"]);
+  rows.push(["MMSI", String(v.mmsi)]);
+  if (v.callsign) rows.push(["Callsign", v.callsign]);
+  if (v.speed != null) rows.push(["Speed", `${v.speed} kn`]);
+  if (v.course != null) rows.push(["Course", `${v.course}°`]);
+  if (v.heading != null) rows.push(["Heading", `${v.heading}°`]);
+  if (v.dest) rows.push(["Destination", v.dest]);
+  if (v.age != null) rows.push(["Seen", `${v.age}s ago`]);
+  const body = rows.map(([k, val]) => `<tr><td>${k}</td><td>${val}</td></tr>`).join("");
+  return `<div class="ac-popup"><b>${v.name || v.mmsi}</b><table>${body}</table></div>`;
+}
+
 function popupHtml(ac: Aircraft): string {
   const rows: [string, string][] = [];
   rows.push(["Callsign", ac.flight || "—"]);
@@ -41,6 +69,7 @@ function popupHtml(ac: Aircraft): string {
 export class AdsbMap {
   private map: L.Map | null = null;
   private markers = new Map<string, L.Marker>();
+  private vesselMarkers = new Map<string, L.Marker>();
   private didAutoCenter = false;
 
   // Create the map the first time ADS-B mode is shown; re-fit if already created.
@@ -110,5 +139,66 @@ export class AdsbMap {
     if (!m || !this.map) return;
     this.map.panTo(m.getLatLng());
     m.openPopup();
+  }
+
+  // --- vessels (AIS) -----------------------------------------------------
+  updateVessels(list: Vessel[]): void {
+    if (!this.map) return;
+    const seen = new Set<string>();
+    for (const v of list) {
+      if (typeof v.lat !== "number" || typeof v.lon !== "number") continue;
+      const id = String(v.mmsi);
+      seen.add(id);
+      const dir = v.heading ?? v.course ?? 0;
+      const label = v.name || String(v.mmsi);
+      const icon = L.divIcon({
+        className: "ship-icon",
+        html:
+          `<div class="ship-rot" style="transform:rotate(${dir}deg)">▲</div>` +
+          `<span class="plane-label">${label}</span>`,
+        iconSize: [18, 18],
+        iconAnchor: [9, 9],
+      });
+      let m = this.vesselMarkers.get(id);
+      if (!m) {
+        m = L.marker([v.lat, v.lon], { icon }).addTo(this.map);
+        m.bindPopup(vesselPopupHtml(v));
+        this.vesselMarkers.set(id, m);
+      } else {
+        m.setLatLng([v.lat, v.lon]);
+        m.setIcon(icon);
+        m.getPopup()?.setContent(vesselPopupHtml(v));
+      }
+    }
+    for (const [id, m] of this.vesselMarkers) {
+      if (!seen.has(id)) {
+        this.map.removeLayer(m);
+        this.vesselMarkers.delete(id);
+      }
+    }
+    if (!this.didAutoCenter && this.vesselMarkers.size > 0) {
+      this.didAutoCenter = true;
+      const group = L.featureGroup([...this.vesselMarkers.values()]);
+      this.map.fitBounds(group.getBounds().pad(0.3), { maxZoom: 11 });
+    }
+  }
+
+  vesselFocus(mmsi: string): void {
+    const m = this.vesselMarkers.get(mmsi);
+    if (!m || !this.map) return;
+    this.map.panTo(m.getLatLng());
+    m.openPopup();
+  }
+
+  // Clear one layer when switching modes; reset auto-center for the new layer.
+  clearAircraft(): void {
+    for (const m of this.markers.values()) this.map?.removeLayer(m);
+    this.markers.clear();
+    this.didAutoCenter = false;
+  }
+  clearVessels(): void {
+    for (const m of this.vesselMarkers.values()) this.map?.removeLayer(m);
+    this.vesselMarkers.clear();
+    this.didAutoCenter = false;
   }
 }
