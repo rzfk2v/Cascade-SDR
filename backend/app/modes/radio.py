@@ -22,10 +22,12 @@ import time
 import numpy as np
 
 from app.dsp.blocks import (
+    BlockAgc,
     ComplexChannelizer,
     DeEmphasis,
     FmDiscriminator,
     RealDecimator,
+    SsbDemod,
 )
 from app.dsp.fft import Spectrum
 from app.hub import FrameTag
@@ -33,7 +35,16 @@ from app.modes.base import Mode
 
 AUDIO_RATE = 48_000
 IF_DECIM = 10          # 2.4 MS/s -> 240 kHz IF
-WBFM_DEVIATION = 75_000.0
+
+# Per-demodulator defaults: channel bandwidth (Hz), audio low-pass (Hz),
+# FM deviation (Hz, FM only). Picked when the user switches demod.
+DEMODS = {
+    "wfm": {"bw": 200_000, "audio": 15_000, "dev": 75_000, "deemph": True},
+    "nfm": {"bw": 12_500, "audio": 4_000, "dev": 5_000, "deemph": False},
+    "am":  {"bw": 10_000, "audio": 5_000},
+    "usb": {"bw": 2_800, "audio": 3_000},
+    "lsb": {"bw": 2_800, "audio": 3_000},
+}
 
 
 class RadioMode(Mode):
@@ -52,9 +63,9 @@ class RadioMode(Mode):
     def __init__(self, manager) -> None:
         super().__init__(manager)
         # Channel parameters (set from the client; read by the worker thread).
-        self.demod = "fm"            # 'fm' | 'am'
+        self.demod = "wfm"           # wfm | nfm | am | usb | lsb
         self.tuned_freq = self.default_center_freq
-        self.bandwidth = 200_000.0   # WBFM broadcast
+        self.bandwidth = float(DEMODS["wfm"]["bw"])
         self.volume = 0.7
         self.squelch_db = -80.0      # channel-power gate; -80 = effectively open
         self._need_rebuild = True
@@ -65,6 +76,10 @@ class RadioMode(Mode):
         self._disc = FmDiscriminator()
         self._audio_decim: RealDecimator | None = None
         self._deemph: DeEmphasis | None = None
+        self._cplx_decim: ComplexChannelizer | None = None  # SSB audio-rate stage
+        self._ssb: SsbDemod | None = None
+        self._agc: BlockAgc | None = None
+        self._fm_dev = 75_000.0
         # Waterfall
         self._spectrum = Spectrum(self.FFT_SIZE)
         self._min_interval = 1.0 / self.MAX_ROWS_PER_SEC
@@ -73,7 +88,11 @@ class RadioMode(Mode):
     # --- configuration from the client (thread-safe attribute writes) -------
     def configure(self, params: dict) -> None:
         if "demod" in params:
-            self.demod = str(params["demod"]).lower()
+            d = str(params["demod"]).lower()
+            if d in DEMODS and d != self.demod:
+                self.demod = d
+                self.bandwidth = float(DEMODS[d]["bw"])  # sensible default per demod
+                self._need_rebuild = True
         if "tuned_freq" in params and params["tuned_freq"] is not None:
             self.tuned_freq = float(params["tuned_freq"])
             self._user_tuned = True
@@ -124,15 +143,29 @@ class RadioMode(Mode):
 
     def _build_chain(self) -> None:
         sr = self.manager.sample_rate
-        cutoff = max(self.bandwidth / 2.0, 5_000.0)
-        self._chan = ComplexChannelizer(sr, IF_DECIM, cutoff)
+        cfg = DEMODS.get(self.demod, DEMODS["wfm"])
+        # Stage 1: select the channel and bring it to the IF rate (240 kHz).
+        self._chan = ComplexChannelizer(sr, IF_DECIM, max(self.bandwidth / 2.0, 1_500.0))
         if_rate = self._chan.out_rate
-        # Audio path: IF -> 48 kHz. For FM keep 15 kHz; AM is narrower.
         audio_decim = int(round(if_rate / AUDIO_RATE))
-        audio_cut = 15_000.0 if self.demod == "fm" else min(self.bandwidth / 2.0, 5_000.0)
-        self._audio_decim = RealDecimator(if_rate, audio_decim, audio_cut)
-        self._deemph = DeEmphasis(self._audio_decim.out_rate, tau_us=50.0)
-        self._disc = FmDiscriminator()
+
+        self._deemph = None
+        self._cplx_decim = None
+        self._ssb = None
+        self._agc = None
+        if self.demod in ("wfm", "nfm"):
+            self._disc = FmDiscriminator()
+            self._fm_dev = float(cfg["dev"])
+            self._audio_decim = RealDecimator(if_rate, audio_decim, cfg["audio"])
+            if cfg.get("deemph"):
+                self._deemph = DeEmphasis(self._audio_decim.out_rate, tau_us=50.0)
+        elif self.demod == "am":
+            self._audio_decim = RealDecimator(if_rate, audio_decim, cfg["audio"])
+        else:  # usb / lsb
+            # complex decimate IF -> audio rate, then one-sided sideband filter
+            self._cplx_decim = ComplexChannelizer(if_rate, audio_decim, cfg["audio"] + 500)
+            self._ssb = SsbDemod(self._cplx_decim.out_rate, lsb=(self.demod == "lsb"))
+            self._agc = BlockAgc()
         self._need_rebuild = False
 
     def process(self, samples: np.ndarray) -> None:
@@ -147,8 +180,7 @@ class RadioMode(Mode):
         if self._need_rebuild or self._chan is None:
             self._build_chain()
 
-        assert self._chan is not None and self._audio_decim is not None
-        assert self._deemph is not None
+        assert self._chan is not None
 
         # 3) select + demodulate the channel
         self._chan.set_shift(self.tuned_freq - self.manager.center_freq)
@@ -165,15 +197,21 @@ class RadioMode(Mode):
                 {"type": "radio_level", "db": round(level_db, 1), "open": not squelched}
             )
 
-        if self.demod == "am":
-            audio = np.abs(baseband)
-            audio = self._audio_decim.process(audio)
-            audio = audio - np.mean(audio)                # strip carrier DC
-        else:  # FM
+        if self.demod in ("wfm", "nfm"):
             disc = self._disc.process(baseband)           # radians/sample
-            disc *= if_rate / (2.0 * np.pi * WBFM_DEVIATION)
+            disc *= if_rate / (2.0 * np.pi * self._fm_dev)
             audio = self._audio_decim.process(disc)
-            audio = self._deemph.process(audio)
+            if self._deemph is not None:
+                audio = self._deemph.process(audio)
+        elif self.demod == "am":
+            env = self._audio_decim.process(np.abs(baseband))
+            carrier = float(np.mean(env))                  # carrier-normalised:
+            audio = (env - carrier) / carrier if carrier > 1e-6 else env * 0.0
+        else:  # usb / lsb
+            assert self._cplx_decim is not None and self._ssb is not None
+            audio = self._ssb.process(self._cplx_decim.process(baseband))
+            if self._agc is not None:
+                audio = self._agc.process(audio)
 
         # 4) scale to int16 PCM and emit (silence when squelched, to keep the
         #    audio stream continuous and the player's buffer fed)

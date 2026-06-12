@@ -9,6 +9,8 @@ export class SpectrumScope {
   private floor = -90;
   private ceil = -10;
   private last: Float32Array | null = null;
+  private peak: Float32Array | null = null;
+  private peakHold = false;
 
   constructor(private canvas: HTMLCanvasElement) {
     this.ctx = canvas.getContext("2d")!;
@@ -26,11 +28,26 @@ export class SpectrumScope {
 
   clear(): void {
     this.last = null;
+    this.peak = null;
     this.ctx.clearRect(0, 0, this.w, this.h);
+  }
+
+  setPeakHold(on: boolean): void {
+    this.peakHold = on;
+    this.peak = null; // reset accumulation
   }
 
   pushRow(row: Float32Array): void {
     this.last = row;
+    if (this.peakHold) {
+      if (!this.peak || this.peak.length !== row.length) {
+        this.peak = row.slice();
+      } else {
+        for (let i = 0; i < row.length; i++) {
+          if (row[i] > this.peak[i]) this.peak[i] = row[i];
+        }
+      }
+    }
     this.autoRange(row);
     this.draw();
   }
@@ -73,6 +90,21 @@ export class SpectrumScope {
       ctx.lineTo(this.w, y);
       ctx.stroke();
       ctx.fillText(`${db}`, 2, y - 2);
+    }
+
+    // peak-hold trace (behind the live trace)
+    if (this.peak) {
+      const pn = this.peak.length;
+      ctx.beginPath();
+      for (let x = 0; x < this.w; x++) {
+        const bin = Math.min(pn - 1, ((x * pn) / this.w) | 0);
+        const y = this.yOf(this.peak[bin]);
+        if (x === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.strokeStyle = "rgba(248,81,73,0.7)";
+      ctx.lineWidth = 1;
+      ctx.stroke();
     }
 
     if (!this.last) return;

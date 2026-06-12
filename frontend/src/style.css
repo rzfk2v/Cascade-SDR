@@ -106,6 +106,22 @@ body {
   font-size: 0.85rem;
 }
 .muted { color: var(--muted); font-size: 0.78rem; }
+.bm-add { display: flex; gap: 0.35rem; }
+.bm-add input { flex: 1; min-width: 0; }
+.bm-add button { flex: 0 0 auto; }
+.bm-list { display: flex; flex-direction: column; gap: 0.2rem; max-height: 160px; overflow-y: auto; }
+.bm-row { display: flex; align-items: center; gap: 0.3rem; font-size: 0.8rem; }
+.bm-row button.recall {
+  flex: 1; text-align: left; background: var(--bg); color: var(--text);
+  border: 1px solid var(--border); border-radius: 6px; padding: 0.3rem 0.5rem; cursor: pointer;
+}
+.bm-row button.recall:hover { border-color: var(--accent); }
+.bm-row button.del {
+  flex: 0 0 auto; background: transparent; color: var(--muted); border: none;
+  cursor: pointer; font-size: 1rem; padding: 0 0.2rem;
+}
+.bm-row button.del:hover { color: var(--err); }
+.bm-empty { color: var(--muted); font-size: 0.75rem; }
 .status-line { font-size: 0.72rem; color: var(--muted); margin: 0.1rem 0 0; }
 .status-line.err { color: var(--err); }
 .level-meter { font-size: 0.8rem; color: var(--muted); margin: 0; }

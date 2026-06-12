@@ -10,8 +10,7 @@ Built to grow feature-by-feature. Status:
 |------|--------------|--------|
 | **Waterfall** | Live scrolling spectrogram (FFT) + frequency axis | ✅ working |
 | **Scan** | Swept wideband panorama (e.g. whole 88–108 band) to find signals | ✅ working |
-| **FM** radio | Click a signal to tune, drag to set bandwidth, audio in browser | ✅ working |
-| **AM** radio | Reuses the radio pipeline (envelope detect) | 🚧 basic (refined in M3) |
+| **Radio** | WFM / NFM / AM / USB / LSB; click-to-tune, squelch, audio in browser | ✅ working |
 | **ADS-B** | Aircraft on a Leaflet map (via `dump1090`) | ✅ working* |
 | **AIS** | Ships on a Leaflet map (via `AIS-catcher`) | ✅ working** |
 
@@ -52,6 +51,19 @@ ranges sweep more slowly (each ~2.4 MHz slice needs its own retune + capture).
   High manual gain helps weak signals (e.g. ADS-B); too much overloads.
 - **PPM correction** — RTL-SDR crystals are off by tens of ppm; set this so the
   displayed/tuned frequency is accurate (important for narrowband + digital modes).
+
+### Demodulators
+Radio supports **WFM** (broadcast), **NFM** (narrow — ham/marine/PMR voice),
+**AM** (carrier-normalised), and **USB/LSB** (SSB, with AGC). Switching demod sets a
+sensible default bandwidth you can then fine-tune.
+
+### Display, bookmarks, persistence
+- **Display** panel: **Auto contrast** (or manual floor/ceiling dB) for the
+  waterfall, and **Peak hold** on the spectrum scope (catches bursty signals).
+- **Bookmarks**: save the current frequency (+ demod) with a name; click to recall,
+  × to delete.
+- **Settings persist** across reloads (gain, PPM, bias-T, demod, volume, squelch,
+  contrast, peak-hold, scan range, receiver location, bookmarks) via localStorage.
 
 ### Layout
 Controls live in the left sidebar; the spectrum scope + waterfall fill the rest of

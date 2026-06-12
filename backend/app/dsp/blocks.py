@@ -90,6 +90,53 @@ class FmDiscriminator:
         return np.angle(y * np.conj(prev))
 
 
+class BlockAgc:
+    """Cheap block-based automatic gain control for SSB/AM voice.
+
+    Adjusts a single gain per block toward a target RMS, smoothed across blocks so
+    weak and strong signals end up at a similar, audible level without per-sample
+    cost. Not for FM (constant-amplitude).
+    """
+
+    def __init__(self, target: float = 0.25, smooth: float = 0.25,
+                 max_gain: float = 200.0) -> None:
+        self.gain = 1.0
+        self.target = target
+        self.smooth = smooth
+        self.max_gain = max_gain
+
+    def process(self, x: np.ndarray) -> np.ndarray:
+        if x.size == 0:
+            return x
+        rms = float(np.sqrt(np.mean(x * x))) + 1e-6
+        desired = min(self.max_gain, self.target / rms)
+        self.gain += self.smooth * (desired - self.gain)
+        return x * self.gain
+
+
+class SsbDemod:
+    """Single-sideband demodulator (filter/phasing method).
+
+    Input is complex baseband centred on the (suppressed) carrier. A one-sided
+    complex band-pass keeps only the wanted sideband — for USB the positive audio
+    band, for LSB the negative — which yields the analytic signal of the sideband;
+    its real part is the demodulated audio.
+    """
+
+    def __init__(self, audio_rate: float, lsb: bool = False,
+                 low: float = 200.0, high: float = 2800.0, numtaps: int = 151) -> None:
+        center = (low + high) / 2.0 * (-1.0 if lsb else 1.0)
+        half = (high - low) / 2.0
+        lp = firwin(numtaps, half / (audio_rate / 2.0))
+        n = np.arange(numtaps) - (numtaps - 1) / 2.0
+        self._b = (lp * np.exp(1j * 2 * np.pi * center * n / audio_rate)).astype(np.complex128)
+        self._zi = np.zeros(numtaps - 1, dtype=np.complex128)
+
+    def process(self, x: np.ndarray) -> np.ndarray:
+        y, self._zi = lfilter(self._b, 1.0, x, zi=self._zi)
+        return np.real(y) * 2.0  # ×2 compensates the discarded sideband's energy
+
+
 class DeEmphasis:
     """First-order de-emphasis (RC) filter applied at the audio rate."""
 

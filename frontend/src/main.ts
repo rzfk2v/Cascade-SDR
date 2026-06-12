@@ -7,6 +7,13 @@ import { SpectrumScope } from "./scope";
 import { Tuner } from "./tuner";
 import { AudioPlayer } from "./audio";
 import { AdsbMap, type Aircraft, type Vessel } from "./adsbmap";
+import {
+  loadSettings,
+  saveSettings,
+  loadBookmarks,
+  saveBookmarks,
+  type Bookmark,
+} from "./storage";
 
 const sock = new SdrSocket();
 const waterfall = new Waterfall(
@@ -49,6 +56,7 @@ const gainVal = document.getElementById("gain-val")!;
 const ppmInput = document.getElementById("ppm") as HTMLInputElement;
 const biasTee = document.getElementById("bias-tee") as HTMLInputElement;
 let gainSteps: number[] = [];
+let desiredGainDb = 0; // last manual gain (dB), used before the step list arrives
 const radioControls = document.getElementById("radio-controls")!;
 const demodSel = document.getElementById("demod") as HTMLSelectElement;
 const bwInput = document.getElementById("bw") as HTMLInputElement;
@@ -60,6 +68,13 @@ const scanStart = document.getElementById("scan-start") as HTMLInputElement;
 const scanStop = document.getElementById("scan-stop") as HTMLInputElement;
 const scanPreset = document.getElementById("scan-preset") as HTMLSelectElement;
 const zoomOutBtn = document.getElementById("zoom-out") as HTMLButtonElement;
+const displayControls = document.getElementById("display-controls")!;
+const wfAuto = document.getElementById("wf-auto") as HTMLInputElement;
+const wfFloor = document.getElementById("wf-floor") as HTMLInputElement;
+const wfCeil = document.getElementById("wf-ceil") as HTMLInputElement;
+const peakHold = document.getElementById("peak-hold") as HTMLInputElement;
+const bmName = document.getElementById("bm-name") as HTMLInputElement;
+const bmList = document.getElementById("bm-list")!;
 
 let currentMode = "idle";
 
@@ -69,6 +84,13 @@ sock.onJson((msg) => {
     case "_open":
       dot.classList.add("ok");
       connText.textContent = "connected";
+      // push persisted device settings so ppm/gain/bias-T stick across reloads
+      sock.send({
+        cmd: "tune",
+        ppm: parseInt(ppmInput.value, 10) || 0,
+        bias_tee: biasTee.checked,
+        gain: gainAuto.checked ? "auto" : desiredGainDb,
+      });
       break;
     case "_close":
       dot.classList.remove("ok");
@@ -89,6 +111,7 @@ sock.onJson((msg) => {
       adsbControls.hidden = msg.mode !== "adsb";
       aisControls.hidden = msg.mode !== "ais";
       zoomOutBtn.hidden = !(msg.mode === "scan" || msg.mode === "spectrum");
+      displayControls.hidden = !["spectrum", "scan", "radio"].includes(msg.mode);
       showMapMode(msg.mode);
       break;
     case "spectrum_config":
@@ -279,7 +302,20 @@ document.getElementById("mode-tabs")!.addEventListener("click", async (e) => {
     scope.clear();
   }
   sock.send({ cmd: "set_mode", mode });
+  if (mode === "radio") sendRadioPrefs();
 });
+
+// Apply persisted demod/volume/squelch after entering radio mode.
+function sendRadioPrefs(): void {
+  sock.send({
+    cmd: "config",
+    params: {
+      demod: demodSel.value,
+      volume: parseFloat(volInput.value),
+      squelch: parseFloat(sqlInput.value),
+    },
+  });
+}
 
 // --- click / drag to tune ------------------------------------------------
 tuner.onTune = async (freqHz) => {
@@ -291,6 +327,7 @@ tuner.onTune = async (freqHz) => {
     // coming from waterfall/scan: re-center the dongle on the signal, then listen
     await audio.init();
     sock.send({ cmd: "set_mode", mode: "radio" });
+    sendRadioPrefs();
     sock.send({ cmd: "tune", center_freq: freqHz });
     sock.send({ cmd: "config", params: { tuned_freq: freqHz } });
     tuner.setTuned(freqHz);
@@ -353,6 +390,18 @@ scanPreset.addEventListener("change", () => {
   applyScanRange();
 });
 
+// --- display: contrast + peak hold ---------------------------------------
+function applyContrast(): void {
+  const auto = wfAuto.checked;
+  wfFloor.disabled = auto;
+  wfCeil.disabled = auto;
+  waterfall.setRange(parseFloat(wfFloor.value), parseFloat(wfCeil.value), auto);
+}
+wfAuto.addEventListener("change", applyContrast);
+wfFloor.addEventListener("input", applyContrast);
+wfCeil.addEventListener("input", applyContrast);
+peakHold.addEventListener("change", () => scope.setPeakHold(peakHold.checked));
+
 // zoom out (×2) — widens the scan range or the captured band
 zoomOutBtn.addEventListener("click", () => {
   const center = tuner.centerFreq;
@@ -388,12 +437,14 @@ gainAuto.addEventListener("change", () => {
   } else {
     gainSlider.disabled = false;
     const g = gainSteps[parseInt(gainSlider.value, 10)] ?? 0;
+    desiredGainDb = g;
     gainVal.textContent = `${g} dB`;
     sock.send({ cmd: "tune", gain: g });
   }
 });
 gainSlider.addEventListener("input", () => {
   const g = gainSteps[parseInt(gainSlider.value, 10)] ?? 0;
+  desiredGainDb = g;
   gainVal.textContent = `${g} dB`;
   sock.send({ cmd: "tune", gain: g });
 });
@@ -403,6 +454,104 @@ ppmInput.addEventListener("change", () =>
 biasTee.addEventListener("change", () =>
   sock.send({ cmd: "tune", bias_tee: biasTee.checked }),
 );
+
+// --- settings persistence (localStorage) ---------------------------------
+const persistValues: Record<string, HTMLInputElement | HTMLSelectElement> = {
+  ppm: ppmInput, demod: demodSel, vol: volInput, sql: sqlInput,
+  scanStart, scanStop, wfFloor, wfCeil, rxLoc,
+};
+const persistChecks: Record<string, HTMLInputElement> = {
+  gainAuto, biasTee, wfAuto, peakHold,
+};
+
+function persist(): void {
+  const s: Record<string, string | number | boolean> = { gainDb: desiredGainDb };
+  for (const k in persistValues) s[k] = persistValues[k].value;
+  for (const k in persistChecks) s[k] = persistChecks[k].checked;
+  saveSettings(s);
+}
+
+function restoreSettings(): void {
+  const s = loadSettings();
+  for (const k in persistValues)
+    if (s[k] !== undefined) persistValues[k].value = String(s[k]);
+  for (const k in persistChecks)
+    if (s[k] !== undefined) persistChecks[k].checked = Boolean(s[k]);
+  if (typeof s.gainDb === "number") desiredGainDb = s.gainDb;
+  applyContrast();
+  scope.setPeakHold(peakHold.checked);
+  gainSlider.disabled = gainAuto.checked;
+  gainVal.textContent = gainAuto.checked ? "auto" : `${desiredGainDb} dB`;
+}
+
+[...Object.values(persistValues), ...Object.values(persistChecks), gainSlider].forEach(
+  (el) => {
+    el.addEventListener("change", persist);
+    el.addEventListener("input", persist);
+  },
+);
+
+// --- bookmarks -----------------------------------------------------------
+function currentFreqHz(): number {
+  return currentMode === "radio" ? tuner.tuned : tuner.centerFreq;
+}
+
+function renderBookmarks(): void {
+  const list = loadBookmarks();
+  if (!list.length) {
+    bmList.innerHTML = '<div class="bm-empty">No bookmarks yet.</div>';
+    return;
+  }
+  bmList.innerHTML = list
+    .map((b, i) => {
+      const label = b.name || `${b.mhz.toFixed(3)} MHz`;
+      const sub = `${b.demod ? b.demod.toUpperCase() + " · " : ""}${b.mhz.toFixed(3)}`;
+      return `<div class="bm-row"><button class="recall" data-i="${i}">${label} <span class="muted">${sub}</span></button><button class="del" data-i="${i}" title="delete">×</button></div>`;
+    })
+    .join("");
+}
+
+document.getElementById("bm-save")!.addEventListener("click", () => {
+  const list = loadBookmarks();
+  list.push({
+    name: bmName.value.trim(),
+    mhz: currentFreqHz() / 1e6,
+    demod: currentMode === "radio" ? demodSel.value : undefined,
+  });
+  saveBookmarks(list);
+  bmName.value = "";
+  renderBookmarks();
+});
+
+bmList.addEventListener("click", async (e) => {
+  const btn = (e.target as HTMLElement).closest("button");
+  if (!btn) return;
+  const i = parseInt((btn as HTMLElement).dataset.i!, 10);
+  const list = loadBookmarks();
+  const b = list[i];
+  if (!b) return;
+  if (btn.classList.contains("del")) {
+    list.splice(i, 1);
+    saveBookmarks(list);
+    renderBookmarks();
+    return;
+  }
+  await recallBookmark(b);
+});
+
+async function recallBookmark(b: Bookmark): Promise<void> {
+  await audio.init();
+  sock.send({ cmd: "set_mode", mode: "radio" });
+  if (b.demod) demodSel.value = b.demod;
+  sendRadioPrefs();
+  const hz = b.mhz * 1e6;
+  sock.send({ cmd: "tune", center_freq: hz });
+  sock.send({ cmd: "config", params: { tuned_freq: hz } });
+  tuner.setTuned(hz);
+}
+
+restoreSettings();
+renderBookmarks();
 
 // --- responsive canvas sizing -------------------------------------------
 const scopeCanvas = document.getElementById("scope") as HTMLCanvasElement;

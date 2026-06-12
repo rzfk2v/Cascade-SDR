@@ -9,9 +9,11 @@ export class Waterfall {
   private w: number;
   private h: number;
   private rowImage: ImageData;
-  // dBFS range mapped to the colour ramp. Auto-adjusts slowly toward the signal.
+  // dBFS range mapped to the colour ramp. Auto-adjusts slowly toward the signal,
+  // unless the user sets a manual range.
   private floor = -90;
   private ceil = -20;
+  private auto = true;
 
   constructor(private canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext("2d", { willReadFrequently: true });
@@ -56,7 +58,18 @@ export class Waterfall {
     this.ctx.putImageData(this.rowImage, 0, 0);
   }
 
+  // Manual contrast: fix the colour-map dB window. Pass auto=true to resume
+  // automatic ranging.
+  setRange(floor: number, ceil: number, auto: boolean): void {
+    this.auto = auto;
+    if (!auto) {
+      this.floor = Math.min(floor, ceil - 1);
+      this.ceil = Math.max(ceil, floor + 1);
+    }
+  }
+
   private autoRange(row: Float32Array): void {
+    if (!this.auto) return;
     // Track a slow min/max so the colours adapt to gain/antenna without flicker.
     let mn = Infinity;
     let mx = -Infinity;
