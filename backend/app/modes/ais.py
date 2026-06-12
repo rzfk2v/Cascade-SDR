@@ -27,6 +27,41 @@ _POS_TYPES = {1, 2, 3, 18, 19, 27}
 _STATIC_TYPES = {5, 24}
 
 
+def ship_type_label(code: int) -> str:
+    """Map an AIS ship-and-cargo-type code (0-99) to a readable category."""
+    if code in (30,):
+        return "Fishing"
+    if code in (31, 32, 52):
+        return "Tug/Towing"
+    if code == 33:
+        return "Dredger"
+    if code == 35:
+        return "Military"
+    if code == 36:
+        return "Sailing"
+    if code == 37:
+        return "Pleasure craft"
+    if 40 <= code <= 49:
+        return "High-speed craft"
+    if code == 50:
+        return "Pilot vessel"
+    if code == 51:
+        return "Search & rescue"
+    if code == 53:
+        return "Port tender"
+    if code == 55:
+        return "Law enforcement"
+    if 60 <= code <= 69:
+        return "Passenger"
+    if 70 <= code <= 79:
+        return "Cargo"
+    if 80 <= code <= 89:
+        return "Tanker"
+    if 90 <= code <= 99:
+        return "Other"
+    return ""
+
+
 class _NmeaProtocol(asyncio.DatagramProtocol):
     def __init__(self, on_line) -> None:
         self.on_line = on_line
@@ -161,7 +196,14 @@ class AisMode(Mode):
             if name:
                 v["name"] = name
             if d.get("ship_type") is not None:
-                v["ship_type"] = d["ship_type"]
+                try:
+                    code = int(d["ship_type"])
+                    v["ship_type"] = code
+                    label = ship_type_label(code)
+                    if label:
+                        v["type"] = label
+                except (TypeError, ValueError):
+                    pass
             cs = (d.get("callsign") or "").strip()
             if cs:
                 v["callsign"] = cs
@@ -178,7 +220,7 @@ class AisMode(Mode):
         for v in self.vessels.values():
             item = {"mmsi": v["mmsi"], "age": round(now - v["t"], 1)}
             for k in ("name", "lat", "lon", "speed", "course", "heading",
-                      "ship_type", "callsign", "dest"):
+                      "ship_type", "type", "callsign", "dest"):
                 if k in v:
                     item[k] = v[k]
             out.append(item)

@@ -75,14 +75,17 @@ Select **ADS-B**: the backend spawns `dump1090`, reads its BaseStation feed
 kills `dump1090` and hands the dongle back. **Bias-T** (Device panel) can power a
 1090 MHz LNA — strongly recommended for real range. Gain/PPM are passed to dump1090.
 Click a plane or a row in the **Aircraft** list for full detail (callsign, ICAO,
-squawk, altitude, climb, speed, track); the list is sorted by distance from your
-location (set it in the ADS-B panel).
+**type/category** — light/small/large/heavy/rotorcraft, squawk, altitude, climb,
+speed, track); the list is sorted by distance from your location (set it in the
+ADS-B panel). Each aircraft also draws a **track trail** as it moves.
 
 ### AIS (ships map)
 Select **AIS**: the backend spawns `AIS-catcher` (listening on the 162 MHz marine
 channels), receives NMEA over UDP, decodes it with `pyais`, and plots vessels on
 the map with a sortable **Vessels** list (name/MMSI, speed, course, distance).
-AIS works with an ordinary VHF/whip antenna if you're near water.
+AIS works with an ordinary VHF/whip antenna if you're near water. Vessel popups
+show the **ship type** (cargo/tanker/passenger/fishing/sailing/…) once a static
+message arrives, and each vessel draws a **track trail** as it moves.
 
 `AIS-catcher` isn't in Homebrew, so build it from source once:
 

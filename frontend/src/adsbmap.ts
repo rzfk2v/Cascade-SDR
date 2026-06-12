@@ -17,6 +17,7 @@ export interface Aircraft {
   vert_rate?: number;
   squawk?: string;
   ground?: boolean;
+  type?: string;
   msgs?: number;
   age?: number;
 }
@@ -30,6 +31,7 @@ export interface Vessel {
   course?: number;
   heading?: number;
   ship_type?: number;
+  type?: string;
   callsign?: string;
   dest?: string;
   age?: number;
@@ -39,6 +41,7 @@ function vesselPopupHtml(v: Vessel): string {
   const rows: [string, string][] = [];
   rows.push(["Name", v.name || "—"]);
   rows.push(["MMSI", String(v.mmsi)]);
+  if (v.type) rows.push(["Type", v.type]);
   if (v.callsign) rows.push(["Callsign", v.callsign]);
   if (v.speed != null) rows.push(["Speed", `${v.speed} kn`]);
   if (v.course != null) rows.push(["Course", `${v.course}°`]);
@@ -53,6 +56,7 @@ function popupHtml(ac: Aircraft): string {
   const rows: [string, string][] = [];
   rows.push(["Callsign", ac.flight || "—"]);
   rows.push(["ICAO", ac.icao.toUpperCase()]);
+  if (ac.type) rows.push(["Type", ac.type]);
   if (ac.squawk) rows.push(["Squawk", ac.squawk]);
   if (ac.alt != null) rows.push(["Altitude", `${ac.alt.toLocaleString()} ft`]);
   if (ac.vert_rate != null) rows.push(["Climb", `${ac.vert_rate > 0 ? "+" : ""}${ac.vert_rate} ft/min`]);
@@ -70,7 +74,44 @@ export class AdsbMap {
   private map: L.Map | null = null;
   private markers = new Map<string, L.Marker>();
   private vesselMarkers = new Map<string, L.Marker>();
+  private aircraftTracks = new Map<string, { line: L.Polyline; pts: L.LatLngTuple[] }>();
+  private vesselTracks = new Map<string, { line: L.Polyline; pts: L.LatLngTuple[] }>();
   private didAutoCenter = false;
+
+  private static MAX_TRACK_PTS = 400;
+
+  // Append a position to a target's trail polyline (creating it on first sight).
+  private addTrackPoint(
+    store: Map<string, { line: L.Polyline; pts: L.LatLngTuple[] }>,
+    id: string,
+    lat: number,
+    lon: number,
+    color: string,
+  ): void {
+    let t = store.get(id);
+    if (!t) {
+      t = { line: L.polyline([], { color, weight: 1.5, opacity: 0.55 }).addTo(this.map!), pts: [] };
+      store.set(id, t);
+    }
+    const last = t.pts[t.pts.length - 1];
+    if (!last || last[0] !== lat || last[1] !== lon) {
+      t.pts.push([lat, lon]);
+      if (t.pts.length > AdsbMap.MAX_TRACK_PTS) t.pts.shift();
+      t.line.setLatLngs(t.pts);
+    }
+  }
+
+  private pruneTracks(
+    store: Map<string, { line: L.Polyline; pts: L.LatLngTuple[] }>,
+    seen: Set<string>,
+  ): void {
+    for (const [id, t] of store) {
+      if (!seen.has(id)) {
+        this.map?.removeLayer(t.line);
+        store.delete(id);
+      }
+    }
+  }
 
   // Create the map the first time ADS-B mode is shown; re-fit if already created.
   ensure(containerId: string): void {
@@ -94,6 +135,7 @@ export class AdsbMap {
     for (const ac of list) {
       if (typeof ac.lat !== "number" || typeof ac.lon !== "number") continue;
       seen.add(ac.icao);
+      this.addTrackPoint(this.aircraftTracks, ac.icao, ac.lat, ac.lon, "#16a3c7");
       const label =
         (ac.flight || ac.icao) + (ac.alt != null ? ` · ${ac.alt} ft` : "");
       const icon = L.divIcon({
@@ -125,6 +167,7 @@ export class AdsbMap {
         this.markers.delete(icao);
       }
     }
+    this.pruneTracks(this.aircraftTracks, seen);
     // center on traffic the first time we actually see some
     if (!this.didAutoCenter && this.markers.size > 0) {
       this.didAutoCenter = true;
@@ -149,6 +192,7 @@ export class AdsbMap {
       if (typeof v.lat !== "number" || typeof v.lon !== "number") continue;
       const id = String(v.mmsi);
       seen.add(id);
+      this.addTrackPoint(this.vesselTracks, id, v.lat, v.lon, "#1f9d55");
       const dir = v.heading ?? v.course ?? 0;
       const label = v.name || String(v.mmsi);
       const icon = L.divIcon({
@@ -176,6 +220,7 @@ export class AdsbMap {
         this.vesselMarkers.delete(id);
       }
     }
+    this.pruneTracks(this.vesselTracks, seen);
     if (!this.didAutoCenter && this.vesselMarkers.size > 0) {
       this.didAutoCenter = true;
       const group = L.featureGroup([...this.vesselMarkers.values()]);
@@ -193,12 +238,16 @@ export class AdsbMap {
   // Clear one layer when switching modes; reset auto-center for the new layer.
   clearAircraft(): void {
     for (const m of this.markers.values()) this.map?.removeLayer(m);
+    for (const t of this.aircraftTracks.values()) this.map?.removeLayer(t.line);
     this.markers.clear();
+    this.aircraftTracks.clear();
     this.didAutoCenter = false;
   }
   clearVessels(): void {
     for (const m of this.vesselMarkers.values()) this.map?.removeLayer(m);
+    for (const t of this.vesselTracks.values()) this.map?.removeLayer(t.line);
     this.vesselMarkers.clear();
+    this.vesselTracks.clear();
     this.didAutoCenter = false;
   }
 }

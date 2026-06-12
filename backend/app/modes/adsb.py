@@ -1,26 +1,33 @@
 """ADS-B mode — aircraft positions via dump1090.
 
-ADS-B (1090 MHz Mode-S) demodulation is genuinely hard, so we don't reimplement
-it: we spawn ``dump1090`` (FlightAware build), which owns the dongle in this mode,
-and read its BaseStation/SBS feed on TCP 30003. We aggregate the CSV messages by
-ICAO address into per-aircraft state and forward the list to the browser, which
-plots it on a map.
+ADS-B (1090 MHz Mode-S) demodulation is hard, so we run ``dump1090`` (FlightAware
+build), which owns the dongle in this mode. We have it write its decoded
+``aircraft.json`` to a temp directory once a second and simply forward each
+snapshot to the browser, which plots the aircraft (and their tracks) on a map.
+aircraft.json is richer than the SBS feed — it carries the emitter **category**
+(light / large / heavy / rotorcraft / …), which is our "what kind of aircraft".
 
-This is a subprocess mode (``owns_device = False``): the DeviceManager runs
-:meth:`run` as a task and cancels it on mode switch; the ``finally`` makes sure
-dump1090 is killed so the device is released before any other mode opens it.
+Subprocess mode (``owns_device = False``): the DeviceManager cancels :meth:`run`
+on mode switch; the ``finally`` kills dump1090 so the dongle is released.
 """
 from __future__ import annotations
 
 import asyncio
+import json
+import os
 import shutil
-import time
+import tempfile
 
 from app.modes.base import Mode
 
-SBS_HOST = "127.0.0.1"
-SBS_PORT = 30003
-STALE_SECONDS = 60.0
+# ADS-B emitter categories -> human label
+AC_CATEGORY = {
+    "A1": "Light", "A2": "Small", "A3": "Large", "A4": "Large (high-vortex)",
+    "A5": "Heavy", "A6": "High-performance", "A7": "Rotorcraft",
+    "B1": "Glider", "B2": "Lighter-than-air", "B3": "Parachutist",
+    "B4": "Ultralight", "B6": "Drone (UAV)", "B7": "Spacecraft",
+    "C1": "Surface vehicle", "C2": "Surface vehicle", "C3": "Obstacle",
+}
 
 
 class AdsbMode(Mode):
@@ -29,17 +36,15 @@ class AdsbMode(Mode):
 
     def __init__(self, manager) -> None:
         super().__init__(manager)
-        self.aircraft: dict[str, dict] = {}
         self._proc: asyncio.subprocess.Process | None = None
+        self._jsondir: str | None = None
+        self._latest = {"type": "aircraft", "aircraft": [], "count": 0, "positioned": 0}
 
-    def _dump1090_cmd(self) -> list[str]:
+    def _cmd(self) -> list[str]:
         exe = shutil.which("dump1090") or shutil.which("dump1090-fa") or "dump1090"
         cmd = [
-            exe,
-            "--device-type", "rtlsdr",
-            "--net",
-            "--net-bind-address", SBS_HOST,
-            "--quiet",
+            exe, "--device-type", "rtlsdr",
+            "--write-json", self._jsondir, "--write-json-every", "1", "--quiet",
         ]
         if self.manager.gain != "auto":
             cmd += ["--gain", str(self.manager.gain)]
@@ -55,51 +60,35 @@ class AdsbMode(Mode):
             })
             return
 
+        self._jsondir = tempfile.mkdtemp(prefix="sdrultra-adsb-")
         self._proc = await asyncio.create_subprocess_exec(
-            *self._dump1090_cmd(),
+            *self._cmd(),
             stdout=asyncio.subprocess.DEVNULL,
             stderr=asyncio.subprocess.DEVNULL,
         )
         self.manager.emit_json({"type": "adsb_status", "message": "starting dump1090…"})
+        path = os.path.join(self._jsondir, "aircraft.json")
 
-        reader = writer = None
         try:
-            # dump1090 needs a moment to grab the device and open port 30003
-            for _ in range(40):
+            announced = False
+            while True:
                 if self._proc.returncode is not None:
                     raise RuntimeError(
-                        "dump1090 exited immediately — is the dongle free and connected?"
+                        "dump1090 exited — is the dongle free and connected?"
                     )
-                try:
-                    reader, writer = await asyncio.open_connection(SBS_HOST, SBS_PORT)
-                    break
-                except OSError:
-                    await asyncio.sleep(0.3)
-            if reader is None:
-                raise RuntimeError("could not connect to dump1090 (SBS port 30003)")
-
-            self.manager.emit_json({"type": "adsb_status", "message": "dump1090 running"})
-            last_emit = 0.0
-            while True:
-                try:
-                    line = await asyncio.wait_for(reader.readline(), timeout=1.0)
-                    if not line:
-                        break  # dump1090 closed the connection
-                    self._parse_sbs(line.decode(errors="ignore"))
-                except asyncio.TimeoutError:
-                    pass
-                now = time.monotonic()
-                if now - last_emit >= 1.0:
-                    last_emit = now
-                    self._prune(now)
-                    self._emit(now)
+                await asyncio.sleep(1.0)
+                msg = self._read(path)
+                if msg is not None:
+                    if not announced:
+                        self.manager.emit_json(
+                            {"type": "adsb_status", "message": "dump1090 running"}
+                        )
+                        announced = True
+                    self.manager.emit_json(msg)
         finally:
-            if writer is not None:
-                try:
-                    writer.close()
-                except Exception:
-                    pass
             await self._kill_proc()
+            if self._jsondir:
+                shutil.rmtree(self._jsondir, ignore_errors=True)
 
     async def _kill_proc(self) -> None:
         if self._proc is None or self._proc.returncode is not None:
@@ -113,62 +102,51 @@ class AdsbMode(Mode):
             except Exception:
                 pass
 
-    # --- SBS BaseStation CSV parsing ---------------------------------------
-    def _parse_sbs(self, line: str) -> None:
-        p = line.strip().split(",")
-        if len(p) < 22 or p[0] != "MSG":
-            return
-        icao = p[4].strip()
-        if not icao:
-            return
-        ac = self.aircraft.setdefault(icao, {"icao": icao})
-        ac["t"] = time.monotonic()
+    def _read(self, path: str) -> dict | None:
+        try:
+            with open(path) as f:
+                data = json.load(f)
+        except Exception:
+            return None  # not written yet, or mid-write
 
-        def num(idx: int, key: str, cast) -> None:
-            v = p[idx].strip()
-            if v:
-                try:
-                    ac[key] = cast(v)
-                except ValueError:
-                    pass
-
-        cs = p[10].strip()
-        if cs:
-            ac["flight"] = cs
-        num(11, "alt", lambda x: int(float(x)))
-        num(12, "speed", lambda x: round(float(x)))
-        num(13, "track", lambda x: round(float(x)))
-        num(14, "lat", float)
-        num(15, "lon", float)
-        num(16, "vert_rate", lambda x: round(float(x)))
-        sq = p[17].strip()
-        if sq:
-            ac["squawk"] = sq
-        og = p[21].strip()
-        if og:
-            ac["ground"] = og in ("1", "-1")
-        ac["msgs"] = ac.get("msgs", 0) + 1
-
-    def _prune(self, now: float) -> None:
-        stale = [k for k, v in self.aircraft.items() if now - v["t"] > STALE_SECONDS]
-        for k in stale:
-            del self.aircraft[k]
-
-    def _aircraft_msg(self, now: float) -> dict:
         out = []
-        for ac in self.aircraft.values():
-            item = {"icao": ac["icao"], "age": round(now - ac["t"], 1)}
-            for k in ("flight", "alt", "speed", "track", "lat", "lon",
-                      "vert_rate", "squawk", "ground", "msgs"):
-                if k in ac:
-                    item[k] = ac[k]
+        for a in data.get("aircraft", []):
+            hexid = (a.get("hex") or "").strip()
+            if not hexid:
+                continue
+            item: dict = {"icao": hexid}
+            flight = (a.get("flight") or "").strip()
+            if flight:
+                item["flight"] = flight
+            alt = a.get("alt_baro")
+            if isinstance(alt, (int, float)):
+                item["alt"] = int(alt)
+            elif alt == "ground":
+                item["ground"] = True
+            if a.get("gs") is not None:
+                item["speed"] = round(a["gs"])
+            if a.get("track") is not None:
+                item["track"] = round(a["track"])
+            if a.get("lat") is not None and a.get("lon") is not None:
+                item["lat"] = a["lat"]
+                item["lon"] = a["lon"]
+            if a.get("baro_rate") is not None:
+                item["vert_rate"] = round(a["baro_rate"])
+            if a.get("squawk"):
+                item["squawk"] = a["squawk"]
+            cat = a.get("category")
+            if cat:
+                item["type"] = AC_CATEGORY.get(cat, cat)
+            if a.get("messages") is not None:
+                item["msgs"] = a["messages"]
+            if a.get("seen") is not None:
+                item["age"] = round(a["seen"], 1)
             out.append(item)
-        positioned = sum(1 for a in out if "lat" in a)
-        return {"type": "aircraft", "aircraft": out,
-                "count": len(out), "positioned": positioned}
 
-    def _emit(self, now: float) -> None:
-        self.manager.emit_json(self._aircraft_msg(now))
+        positioned = sum(1 for a in out if "lat" in a)
+        self._latest = {"type": "aircraft", "aircraft": out,
+                        "count": len(out), "positioned": positioned}
+        return self._latest
 
     def snapshot(self) -> list[dict]:
-        return [self._aircraft_msg(time.monotonic())]
+        return [self._latest]
