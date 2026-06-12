@@ -22,6 +22,7 @@
           <button data-mode="spectrum">Waterfall</button>
           <button data-mode="scan">Scan</button>
           <button data-mode="radio">Radio</button>
+          <button data-mode="dab">DAB</button>
           <button data-mode="adsb">ADS&#8209;B</button>
           <button data-mode="ais">AIS</button>
         </nav>
@@ -76,6 +77,16 @@
           <p class="hint">Used for distance/bearing. 1090 MHz needs a good antenna (ideally a 1090 LNA via Bias-T).</p>
         </section>
 
+        <section class="group" id="dab-controls" hidden>
+          <h2>DAB</h2>
+          <label>Block (Band III)
+            <select id="dab-channel"></select>
+          </label>
+          <p id="dab-status" class="status-line">tuning…</p>
+          <p id="dab-ensemble" class="band-info"></p>
+          <p class="hint">DAB+ ~174–240 MHz. One block carries many stations; pick a station on the right. Sweden's DAB coverage is sparse — try local blocks.</p>
+        </section>
+
         <section class="group" id="ais-controls" hidden>
           <h2>AIS</h2>
           <p id="ais-status" class="status-line">starting…</p>
@@ -124,6 +135,14 @@
           <canvas id="axis" class="axis"></canvas>
         </div>
         <div id="map" class="map" hidden></div>
+        <div id="dab-view" class="dab-view" hidden>
+          <div class="dab-head">
+            <span id="dab-ens-name">—</span>
+            <span id="dab-now" class="muted"></span>
+          </div>
+          <div id="dab-stations" class="dab-stations"></div>
+          <audio id="dab-audio" hidden></audio>
+        </div>
         <div id="aircraft-panel" class="aircraft-panel" hidden>
           <div class="ap-head"><span id="ap-title">Aircraft</span> <span id="ap-count" class="muted"></span></div>
           <table class="ap-table">

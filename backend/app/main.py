@@ -22,6 +22,7 @@ from app.hub import Hub
 from app.modes.adsb import AdsbMode
 from app.modes.ais import AisMode
 from app.modes.base import Mode
+from app.modes.dab import DabMode
 from app.modes.radio import RadioMode
 from app.modes.scan import ScanMode
 from app.modes.spectrum import SpectrumMode
@@ -36,6 +37,7 @@ MODE_REGISTRY: dict[str, type[Mode]] = {
     ScanMode.name: ScanMode,
     AdsbMode.name: AdsbMode,
     AisMode.name: AisMode,
+    DabMode.name: DabMode,
 }
 
 app = FastAPI(title="SDR-Ultra")

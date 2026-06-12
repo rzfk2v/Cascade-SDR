@@ -221,6 +221,41 @@ body {
 .ac-popup td { padding: 1px 8px 1px 0; font-size: 12px; }
 .ac-popup td:first-child { color: #57606a; }
 
+.dab-view {
+  position: absolute;
+  inset: 0.6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.8rem;
+  overflow: hidden;
+}
+.dab-head { display: flex; align-items: baseline; justify-content: space-between; }
+#dab-ens-name { font-size: 1.05rem; font-weight: 600; }
+.dab-stations {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 0.4rem;
+  overflow-y: auto;
+  align-content: start;
+}
+.dab-station {
+  text-align: left;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.5rem 0.6rem;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+.dab-station:hover { border-color: var(--accent); }
+.dab-station.playing { background: var(--accent); color: #fff; border-color: var(--accent); }
+.dab-empty { color: var(--muted); font-size: 0.85rem; }
+
 .plane-icon { background: none; border: none; }
 .plane-rot { font-size: 16px; line-height: 1; color: #16a3c7; text-shadow: 0 0 2px #fff; }
 .ship-icon { background: none; border: none; }

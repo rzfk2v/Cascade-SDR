@@ -11,6 +11,7 @@ Built to grow feature-by-feature. Status:
 | **Waterfall** | Live scrolling spectrogram (FFT) + frequency axis | ✅ working |
 | **Scan** | Swept wideband panorama (e.g. whole 88–108 band) to find signals | ✅ working |
 | **Radio** | WFM / NFM / AM / USB / LSB; click-to-tune, squelch, audio in browser | ✅ working |
+| **DAB** | DAB/DAB+ digital radio — ensemble station list + playback (via `welle-cli`) | ✅ working† |
 | **ADS-B** | Aircraft on a Leaflet map (via `dump1090`) | ✅ working* |
 | **AIS** | Ships on a Leaflet map (via `AIS-catcher`) | ✅ working** |
 
@@ -82,6 +83,26 @@ Click a plane or a row in the **Aircraft** list for full detail (callsign, ICAO,
 **type/category** — light/small/large/heavy/rotorcraft, squawk, altitude, climb,
 speed, track); the list is sorted by distance from your location (set it in the
 ADS-B panel). Each aircraft also draws a **track trail** as it moves.
+
+### DAB radio (†)
+Select **DAB**, pick a **Band III block** (5A–13F). The backend runs `welle-cli`,
+which tunes the block and decodes the **ensemble**; the station list appears on the
+right — click a station to play it (the browser streams it from welle-cli). One
+block carries many stations. Switching modes stops welle-cli and frees the dongle.
+
+`welle-cli` isn't in Homebrew, so build it once:
+
+```bash
+brew install cmake fftw faad2 mpg123 libsamplerate lame
+git clone --depth 1 https://github.com/AlbrechtL/welle.io.git ~/.local/src/welle.io
+cd ~/.local/src/welle.io && mkdir build && cd build
+export CPLUS_INCLUDE_PATH="$(xcrun --show-sdk-path)/usr/include/c++/v1"   # macOS CLT libc++
+cmake .. -DBUILD_WELLE_IO=OFF -DBUILD_WELLE_CLI=ON -DRTLSDR=ON -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+make -j4 welle-cli && cp welle-cli /opt/homebrew/bin/welle-cli
+```
+
+> Needs a Band III antenna. Verified live in Stockholm: block **12C** = the
+> **SR STOCKHOLM** ensemble (P1–P4, etc.).
 
 ### AIS (ships map)
 Select **AIS**: the backend spawns `AIS-catcher` (listening on the 162 MHz marine

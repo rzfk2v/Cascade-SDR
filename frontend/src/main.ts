@@ -44,6 +44,26 @@ const rxLoc = document.getElementById("rx-loc") as HTMLInputElement;
 const aisControls = document.getElementById("ais-controls")!;
 const aisStatus = document.getElementById("ais-status")!;
 const aisCount = document.getElementById("ais-count")!;
+const dabControls = document.getElementById("dab-controls")!;
+const dabChannel = document.getElementById("dab-channel") as HTMLSelectElement;
+const dabStatus = document.getElementById("dab-status")!;
+const dabEnsembleSide = document.getElementById("dab-ensemble")!;
+const dabView = document.getElementById("dab-view")!;
+const dabEnsName = document.getElementById("dab-ens-name")!;
+const dabNow = document.getElementById("dab-now")!;
+const dabStationsEl = document.getElementById("dab-stations")!;
+const dabAudio = document.getElementById("dab-audio") as HTMLAudioElement;
+let dabPlayingSid: number | null = null;
+
+// populate Band III blocks (5A..12D, 13A..13F)
+(() => {
+  const blocks: string[] = [];
+  for (let n = 5; n <= 12; n++) for (const L of "ABCD") blocks.push(`${n}${L}`);
+  for (const L of "ABCDEF") blocks.push(`13${L}`);
+  dabChannel.innerHTML = blocks
+    .map((b) => `<option value="${b}"${b === "12C" ? " selected" : ""}>${b}</option>`)
+    .join("");
+})();
 
 const dot = document.getElementById("dot")!;
 const connText = document.getElementById("conn-text")!;
@@ -137,9 +157,10 @@ sock.onJson((msg) => {
       scanControls.hidden = msg.mode !== "scan";
       adsbControls.hidden = msg.mode !== "adsb";
       aisControls.hidden = msg.mode !== "ais";
+      dabControls.hidden = msg.mode !== "dab";
       zoomOutBtn.hidden = !(msg.mode === "scan" || msg.mode === "spectrum");
       displayControls.hidden = !["spectrum", "scan", "radio"].includes(msg.mode);
-      showMapMode(msg.mode);
+      showView(msg.mode);
       break;
     case "spectrum_config":
       viewCenter = msg.center_freq;
@@ -178,6 +199,12 @@ sock.onJson((msg) => {
       adsbMap.updateVessels(msg.vessels);
       aisCount.textContent = `${msg.positioned} shown · ${msg.count} tracked`;
       renderVesselList(msg.vessels);
+      break;
+    case "dab_status":
+      dabStatus.textContent = msg.message;
+      break;
+    case "dab_ensemble":
+      renderDab(msg);
       break;
     case "error":
       statusLine.textContent = `⚠ ${msg.message}`;
@@ -228,22 +255,28 @@ function syncGain(s: any): void {
   }
 }
 
-function showMapMode(mode: string): void {
-  const onMap = mode === "adsb" || mode === "ais";
-  fftView.hidden = onMap;
-  mapDiv.hidden = !onMap;
-  aircraftPanel.hidden = !onMap;
-  if (onMap) {
+function showView(mode: string): void {
+  const isMap = mode === "adsb" || mode === "ais";
+  const isDab = mode === "dab";
+  const isFft = !isMap && !isDab; // spectrum / scan / radio / idle
+  fftView.hidden = !isFft;
+  mapDiv.hidden = !isMap;
+  aircraftPanel.hidden = !isMap;
+  dabView.hidden = !isDab;
+  if (isMap) {
     adsbMap.ensure("map");
     apTitle.textContent = mode === "ais" ? "Vessels" : "Aircraft";
-    // drop the layer/list belonging to the other map mode
     if (mode === "adsb") adsbMap.clearVessels();
     else adsbMap.clearAircraft();
     apBody.innerHTML = "";
     apCount.textContent = "";
-  } else {
+  } else if (isFft) {
     // canvases were display:none -> re-measure now that they're visible again
     requestAnimationFrame(layoutCanvases);
+  }
+  if (!isDab) {
+    dabAudio.pause();
+    dabPlayingSid = null;
   }
 }
 
@@ -335,6 +368,7 @@ document.getElementById("mode-tabs")!.addEventListener("click", async (e) => {
   }
   sock.send({ cmd: "set_mode", mode });
   if (mode === "radio") sendRadioPrefs();
+  if (mode === "dab") sock.send({ cmd: "config", params: { channel: dabChannel.value } });
 });
 
 // Apply persisted demod/volume/squelch after entering radio mode.
@@ -584,6 +618,55 @@ async function recallBookmark(b: Bookmark): Promise<void> {
 
 restoreSettings();
 renderBookmarks();
+
+// --- DAB ----------------------------------------------------------------
+let dabPort = 7979;
+
+function renderDab(msg: any): void {
+  dabPort = msg.web_port || 7979;
+  const services: any[] = msg.services || [];
+  dabEnsName.textContent = msg.ensemble || "(searching…)";
+  dabStatus.textContent = services.length
+    ? `${services.length} stations · SNR ${msg.snr} dB`
+    : `no ensemble yet · SNR ${msg.snr} dB`;
+  dabEnsembleSide.textContent = msg.ensemble || "";
+  if (!services.length) {
+    dabStationsEl.innerHTML =
+      `<div class="dab-empty">No stations on block ${msg.channel} yet. ` +
+      `DAB needs a good Band III antenna — try another block.</div>`;
+    return;
+  }
+  dabStationsEl.innerHTML = services
+    .map(
+      (s) =>
+        `<button class="dab-station${s.sid === dabPlayingSid ? " playing" : ""}" ` +
+        `data-sid="${s.sid}" data-mp3="${s.mp3 || ""}">${s.label}</button>`,
+    )
+    .join("");
+}
+
+dabStationsEl.addEventListener("click", async (e) => {
+  const btn = (e.target as HTMLElement).closest(".dab-station") as HTMLElement | null;
+  if (!btn || !btn.dataset.mp3) return;
+  dabPlayingSid = Number(btn.dataset.sid);
+  dabAudio.src = `http://${location.hostname}:${dabPort}${btn.dataset.mp3}`;
+  dabNow.textContent = "▶ " + btn.textContent;
+  dabStationsEl.querySelectorAll(".dab-station").forEach((el) =>
+    el.classList.toggle("playing", Number((el as HTMLElement).dataset.sid) === dabPlayingSid),
+  );
+  try {
+    await dabAudio.play();
+  } catch {
+    /* autoplay/network — ignore */
+  }
+});
+
+dabChannel.addEventListener("change", () => {
+  dabAudio.pause();
+  dabPlayingSid = null;
+  dabNow.textContent = "";
+  sock.send({ cmd: "config", params: { channel: dabChannel.value } });
+});
 
 // --- responsive canvas sizing -------------------------------------------
 const scopeCanvas = document.getElementById("scope") as HTMLCanvasElement;
