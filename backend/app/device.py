@@ -35,6 +35,15 @@ except Exception:  # pragma: no cover - import guarded for hardware-less dev
     RtlSdr = None  # type: ignore
     _HAVE_RTLSDR = False
 
+# R820T/R820T2 tuner reach (Hz). Requests outside this can't lock and make
+# librtlsdr raise an I/O error, so we clamp to it.
+MIN_TUNE_HZ = 24_000_000
+MAX_TUNE_HZ = 1_766_000_000
+
+
+def clamp_freq(hz: float) -> float:
+    return max(MIN_TUNE_HZ, min(MAX_TUNE_HZ, float(hz)))
+
 
 class DeviceManager:
     def __init__(self, hub: Hub) -> None:
@@ -141,7 +150,7 @@ class DeviceManager:
                      bias_tee: bool | None = None) -> None:
         """Update radio settings. The worker applies them between read blocks."""
         if center_freq is not None:
-            self.center_freq = float(center_freq)
+            self.center_freq = clamp_freq(center_freq)
         if sample_rate is not None:
             self.sample_rate = float(sample_rate)
         if gain is not None:

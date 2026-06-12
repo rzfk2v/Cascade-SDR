@@ -45,13 +45,14 @@ class ScanMode(Mode):
 
     # --- config -------------------------------------------------------------
     def configure(self, params: dict) -> None:
+        from app.device import clamp_freq
         if params.get("start_freq"):
-            self.start_freq = float(params["start_freq"])
+            self.start_freq = clamp_freq(params["start_freq"])
         if params.get("stop_freq"):
-            self.stop_freq = float(params["stop_freq"])
+            self.stop_freq = clamp_freq(params["stop_freq"])
         # keep at least a sensible minimum span
         if self.stop_freq - self.start_freq < 1_000_000:
-            self.stop_freq = self.start_freq + 1_000_000
+            self.stop_freq = clamp_freq(self.start_freq + 1_000_000)
         self.manager.emit_json(self._scan_config_msg())
 
     def _scan_config_msg(self) -> dict:
