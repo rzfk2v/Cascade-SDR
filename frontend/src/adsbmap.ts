@@ -37,6 +37,32 @@ export interface Vessel {
   age?: number;
 }
 
+export interface Station {
+  call: string;
+  lat?: number;
+  lon?: number;
+  comment?: string;
+  speed?: number;
+  course?: number;
+  altitude?: number;
+  symbol?: string;
+  kind?: string;
+  age?: number;
+}
+
+function stationPopupHtml(s: Station): string {
+  const rows: [string, string][] = [];
+  rows.push(["Station", s.call]);
+  if (s.kind) rows.push(["Type", s.kind]);
+  if (s.speed != null) rows.push(["Speed", `${s.speed} km/h`]);
+  if (s.course != null) rows.push(["Course", `${s.course}°`]);
+  if (s.altitude != null) rows.push(["Altitude", `${Math.round(s.altitude)} m`]);
+  if (s.comment) rows.push(["Comment", s.comment]);
+  if (s.age != null) rows.push(["Seen", `${s.age}s ago`]);
+  const body = rows.map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join("");
+  return `<div class="ac-popup"><b>${s.call}</b><table>${body}</table></div>`;
+}
+
 function vesselPopupHtml(v: Vessel): string {
   const rows: [string, string][] = [];
   rows.push(["Name", v.name || "—"]);
@@ -74,8 +100,10 @@ export class AdsbMap {
   private map: L.Map | null = null;
   private markers = new Map<string, L.Marker>();
   private vesselMarkers = new Map<string, L.Marker>();
+  private stationMarkers = new Map<string, L.Marker>();
   private aircraftTracks = new Map<string, { line: L.Polyline; pts: L.LatLngTuple[] }>();
   private vesselTracks = new Map<string, { line: L.Polyline; pts: L.LatLngTuple[] }>();
+  private stationTracks = new Map<string, { line: L.Polyline; pts: L.LatLngTuple[] }>();
   private didAutoCenter = false;
 
   private static MAX_TRACK_PTS = 400;
@@ -233,6 +261,62 @@ export class AdsbMap {
     if (!m || !this.map) return;
     this.map.panTo(m.getLatLng());
     m.openPopup();
+  }
+
+  // --- APRS stations -----------------------------------------------------
+  updateStations(list: Station[]): void {
+    if (!this.map) return;
+    const seen = new Set<string>();
+    for (const s of list) {
+      if (typeof s.lat !== "number" || typeof s.lon !== "number") continue;
+      seen.add(s.call);
+      this.addTrackPoint(this.stationTracks, s.call, s.lat, s.lon, "#e8a33d");
+      const icon = L.divIcon({
+        className: "station-icon",
+        html:
+          `<div class="station-dot"></div>` +
+          `<span class="plane-label">${s.call}</span>`,
+        iconSize: [12, 12],
+        iconAnchor: [6, 6],
+      });
+      let m = this.stationMarkers.get(s.call);
+      if (!m) {
+        m = L.marker([s.lat, s.lon], { icon }).addTo(this.map);
+        m.bindPopup(stationPopupHtml(s));
+        this.stationMarkers.set(s.call, m);
+      } else {
+        m.setLatLng([s.lat, s.lon]);
+        m.setIcon(icon);
+        m.getPopup()?.setContent(stationPopupHtml(s));
+      }
+    }
+    for (const [id, m] of this.stationMarkers) {
+      if (!seen.has(id)) {
+        this.map.removeLayer(m);
+        this.stationMarkers.delete(id);
+      }
+    }
+    this.pruneTracks(this.stationTracks, seen);
+    if (!this.didAutoCenter && this.stationMarkers.size > 0) {
+      this.didAutoCenter = true;
+      const group = L.featureGroup([...this.stationMarkers.values()]);
+      this.map.fitBounds(group.getBounds().pad(0.3), { maxZoom: 10 });
+    }
+  }
+
+  stationFocus(call: string): void {
+    const m = this.stationMarkers.get(call);
+    if (!m || !this.map) return;
+    this.map.panTo(m.getLatLng());
+    m.openPopup();
+  }
+
+  clearStations(): void {
+    for (const m of this.stationMarkers.values()) this.map?.removeLayer(m);
+    for (const t of this.stationTracks.values()) this.map?.removeLayer(t.line);
+    this.stationMarkers.clear();
+    this.stationTracks.clear();
+    this.didAutoCenter = false;
   }
 
   // Clear one layer when switching modes; reset auto-center for the new layer.

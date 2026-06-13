@@ -20,7 +20,7 @@ and install, see the [README](../README.md).
   (below) with a **frequency axis**; in ADS-B/AIS it becomes a **map**, in DAB a
   **station list**.
 - **Top of sidebar** — connection dot (green = backend connected) and the mode
-  tabs: **Idle · Spectrum · Scan · Replay · DAB · ADS-B · AIS**.
+  tabs: **Idle · Spectrum · Scan · Replay · DAB · ADS-B · AIS · APRS**.
 - **Band label** — under the device status, names the service on the current
   frequency (e.g. “FM broadcast”, “Marine VHF”) so you know what you're looking at.
 
@@ -177,6 +177,23 @@ Plots vessels from their 162 MHz AIS transmissions.
 
 **Try:** near a coast/harbour, watch vessels and read their names/types as their
 static messages arrive (every few minutes).
+
+---
+
+## APRS (packet-radio stations map)
+
+Plots amateur **APRS** stations heard on **144.800 MHz** (EU). Needs
+[`direwolf`](https://github.com/wb2osz/direwolf) installed (`brew install direwolf`).
+
+- Switch to **APRS**; stations appear as dots with their **callsign** and a trail;
+  the **Stations list** is sorted by distance.
+- **Click** a station → callsign, packet type, speed/course, altitude, comment.
+- Reception is direct or via **digipeaters**, so you can hear stations from
+  surprisingly far. Beacons are infrequent (minutes apart) — leave it running.
+- North America uses **144.390 MHz** — set the Center frequency accordingly.
+
+**Try:** leave it on for a while near any town; mobile stations (cars/handhelds)
+and weather stations should trickle in.
 
 ---
 

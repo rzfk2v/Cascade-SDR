@@ -300,6 +300,11 @@ body {
 .plane-rot { font-size: 16px; line-height: 1; color: #16a3c7; text-shadow: 0 0 2px #fff; }
 .ship-icon { background: none; border: none; }
 .ship-rot { font-size: 14px; line-height: 1; color: #1f9d55; text-shadow: 0 0 2px #fff; }
+.station-icon { background: none; border: none; }
+.station-dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: #e8a33d; border: 1.5px solid #fff; box-shadow: 0 0 2px #000;
+}
 .plane-label {
   display: block;
   font-size: 10px;

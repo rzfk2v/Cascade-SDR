@@ -15,6 +15,7 @@ It builds on the following open-source projects — thanks to their authors.
 | [Starlette](https://www.starlette.io) | BSD-3-Clause | ASGI framework |
 | [Uvicorn](https://www.uvicorn.org) | BSD-3-Clause | ASGI server |
 | [pyais](https://github.com/M0r13n/pyais) | MIT | AIS NMEA decoding |
+| [aprslib](https://github.com/rossengeorgiev/aprs-python) | GPL-2.0-or-later | APRS (TNC2) packet parsing |
 | [pywebview](https://pywebview.flowrl.com) | BSD-3-Clause | optional native desktop window (`app.desktop`) |
 
 ## Web frontend
@@ -32,6 +33,8 @@ It builds on the following open-source projects — thanks to their authors.
 |---|---|---|
 | [dump1090-fa](https://github.com/flightaware/dump1090) | GPL-2.0 | ADS-B |
 | [AIS-catcher](https://github.com/jvde-github/AIS-catcher) | GPL-3.0 | AIS |
+| [direwolf](https://github.com/wb2osz/direwolf) | GPL-2.0+ | APRS (AX.25 soundcard TNC) |
+| [rtl_fm](https://github.com/osmocom/rtl-sdr) (rtl-sdr) | GPL-2.0 | FM audio feed for APRS |
 | [welle.io](https://github.com/AlbrechtL/welle.io) (`welle-cli`) | GPL-2.0 | DAB |
 
 These tools are **not bundled** — Cascade SDR launches them if you install them

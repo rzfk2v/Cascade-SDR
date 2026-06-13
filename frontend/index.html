@@ -28,6 +28,7 @@
           <button data-mode="dab">DAB</button>
           <button data-mode="adsb">ADS&#8209;B</button>
           <button data-mode="ais">AIS</button>
+          <button data-mode="aprs">APRS</button>
         </nav>
 
         <section class="group">
@@ -107,6 +108,15 @@
           <p id="ais-status" class="status-line">starting…</p>
           <p id="ais-count" class="level-meter"></p>
           <p class="hint">162 MHz marine band. Data is NOT shared online. Needs a VHF/marine antenna.</p>
+        </section>
+
+        <section class="group" id="aprs-controls" hidden>
+          <h2>APRS</h2>
+          <p id="aprs-status" class="status-line">starting…</p>
+          <p id="aprs-count" class="level-meter"></p>
+          <p class="hint">144.800 MHz packet (EU). Needs <b>direwolf</b> installed
+            (<code>brew install direwolf</code>). Plots stations heard direct or via
+            digipeaters; beacons are infrequent, so give it time.</p>
         </section>
 
         <section class="group" id="replay-controls" hidden>

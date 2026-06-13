@@ -17,6 +17,7 @@ things to try. Status:
 | **DAB** | DAB/DAB+ digital radio — ensemble station list + playback (via `welle-cli`) | ✅ working† |
 | **ADS-B** | Aircraft on a Leaflet map (via `dump1090`) | ✅ working* |
 | **AIS** | Ships on a Leaflet map (via `AIS-catcher`) | ✅ working** |
+| **APRS** | Packet-radio stations on the map (via `rtl_fm` → `direwolf`) | ✅ working‡ |
 
 \* Needs `dump1090` installed (`brew install dump1090-mutability`) **and a decent
 1090 MHz antenna** — the stock whip barely hears ADS-B. The pipeline runs and
@@ -158,6 +159,22 @@ cp AIS-catcher /opt/homebrew/bin/AIS-catcher
 
 > Privacy: AIS-catcher shares received data to aiscatcher.org **by default**. We
 > launch it with `-X off` so nothing leaves your machine.
+
+### APRS (packet-radio stations map) (‡)
+Select **APRS**: the backend pipes `rtl_fm` (NBFM audio at 144.800 MHz, the EU
+APRS frequency) into [`direwolf`](https://github.com/wb2osz/direwolf) (the standard
+soundcard TNC), parses the decoded TNC2 packets with `aprslib`, and plots stations
+on the map with a **Stations** list (callsign, info, distance) and a track trail.
+Works with an ordinary VHF/whip antenna, but beacons are infrequent (minutes
+apart) so give it time. Install direwolf once:
+
+```bash
+brew install direwolf      # rtl_fm comes with the rtl-sdr package
+```
+
+> APRS in North America is **144.390 MHz** — change the Center frequency (the mode
+> defaults to the EU 144.800). One RTL-SDR can't do APRS and listen to FM at the
+> same time; APRS is its own mode.
 
 > FM **de-emphasis** defaults to 50 µs (Europe); switch it to 75 µs
 > (Americas/Korea) in the Radio panel when listening to WFM broadcast.
