@@ -55,8 +55,17 @@ ranges sweep more slowly (each ~2.4 MHz slice needs its own retune + capture).
 
 ### Demodulators
 Radio supports **WFM** (broadcast), **NFM** (narrow — ham/marine/PMR voice),
-**AM** (carrier-normalised), and **USB/LSB** (SSB, with AGC). Switching demod sets a
-sensible default bandwidth you can then fine-tune.
+**AM** (carrier-normalised), **USB/LSB** (SSB, with AGC), and **CW** (Morse —
+plays the tone and **decodes it to text** in an overlay; best on clean signals,
+self-calibrates after a character or so). Switching demod sets a sensible default
+bandwidth you can then fine-tune.
+
+### Recording
+- **Audio**: the *Record audio* button (Radio controls) captures what you're
+  hearing to a **WAV** download.
+- **IQ**: *Record IQ* (Device panel, Waterfall/Radio modes) writes the raw stream
+  to a standard **.cu8** file (replayable in rtl_sdr/gqrx/etc.), listed with
+  download/delete; the filename carries the center frequency and sample rate.
 
 ### Display, bookmarks, persistence
 - **Band label**: under the device status it names the service(s) on the current
