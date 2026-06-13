@@ -94,6 +94,8 @@ const bwInput = document.getElementById("bw") as HTMLInputElement;
 const volInput = document.getElementById("vol") as HTMLInputElement;
 const sqlInput = document.getElementById("sql") as HTMLInputElement;
 const levelMeter = document.getElementById("level-meter")!;
+const cwText = document.getElementById("cw-text")!;
+const cwOut = document.getElementById("cw-out")!;
 const scanControls = document.getElementById("scan-controls")!;
 const scanStart = document.getElementById("scan-start") as HTMLInputElement;
 const scanStop = document.getElementById("scan-stop") as HTMLInputElement;
@@ -185,6 +187,8 @@ sock.onJson((msg) => {
       tuner.setBandwidth(msg.bandwidth);
       demodSel.value = msg.demod;
       bwInput.value = Math.round(msg.bandwidth / 1000).toString();
+      cwText.hidden = msg.demod !== "cw";
+      if (msg.demod !== "cw") cwOut.textContent = "";
       if (msg.squelch > -100) sqlInput.value = Math.round(msg.squelch).toString();
       tunedLine.textContent =
         `tuned ${(msg.tuned_freq / 1e6).toFixed(3)} MHz · ` +
@@ -196,6 +200,10 @@ sock.onJson((msg) => {
       break;
     case "adsb_status":
       adsbStatus.textContent = msg.message;
+      break;
+    case "cw_text":
+      cwOut.textContent = (cwOut.textContent + msg.text).slice(-400);
+      cwText.scrollTop = cwText.scrollHeight;
       break;
     case "aircraft":
       adsbMap.update(msg.aircraft);
@@ -300,6 +308,7 @@ function showView(mode: string): void {
     dabAudio.pause();
     dabPlayingSid = null;
   }
+  if (mode !== "radio") cwText.hidden = true;
 }
 
 function rxLatLon(): [number, number] | null {

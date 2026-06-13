@@ -29,9 +29,12 @@ from app.dsp.blocks import (
     RealDecimator,
     SsbDemod,
 )
+from app.dsp.cw import CwDecoder
 from app.dsp.fft import Spectrum
 from app.hub import FrameTag
 from app.modes.base import Mode
+
+CW_ENV_RATE = 1000  # envelope rate for the Morse decoder
 
 AUDIO_RATE = 48_000
 IF_DECIM = 10          # 2.4 MS/s -> 240 kHz IF
@@ -44,6 +47,7 @@ DEMODS = {
     "am":  {"bw": 10_000, "audio": 5_000},
     "usb": {"bw": 2_800, "audio": 3_000},
     "lsb": {"bw": 2_800, "audio": 3_000},
+    "cw": {"bw": 800, "audio": 1_200},
 }
 
 
@@ -79,6 +83,8 @@ class RadioMode(Mode):
         self._cplx_decim: ComplexChannelizer | None = None  # SSB audio-rate stage
         self._ssb: SsbDemod | None = None
         self._agc: BlockAgc | None = None
+        self._env_decim: RealDecimator | None = None  # CW envelope -> ~1 kHz
+        self._cw: CwDecoder | None = None
         self._fm_dev = 75_000.0
         # Waterfall
         self._spectrum = Spectrum(self.FFT_SIZE)
@@ -153,6 +159,8 @@ class RadioMode(Mode):
         self._cplx_decim = None
         self._ssb = None
         self._agc = None
+        self._env_decim = None
+        self._cw = None
         if self.demod in ("wfm", "nfm"):
             self._disc = FmDiscriminator()
             self._fm_dev = float(cfg["dev"])
@@ -161,11 +169,15 @@ class RadioMode(Mode):
                 self._deemph = DeEmphasis(self._audio_decim.out_rate, tau_us=50.0)
         elif self.demod == "am":
             self._audio_decim = RealDecimator(if_rate, audio_decim, cfg["audio"])
-        else:  # usb / lsb
+        else:  # usb / lsb / cw  (SSB-style audio)
             # complex decimate IF -> audio rate, then one-sided sideband filter
             self._cplx_decim = ComplexChannelizer(if_rate, audio_decim, cfg["audio"] + 500)
             self._ssb = SsbDemod(self._cplx_decim.out_rate, lsb=(self.demod == "lsb"))
             self._agc = BlockAgc()
+            if self.demod == "cw":
+                env_decim = max(1, int(round(if_rate / CW_ENV_RATE)))
+                self._env_decim = RealDecimator(if_rate, env_decim, 200)
+                self._cw = CwDecoder(if_rate / env_decim)
         self._need_rebuild = False
 
     def process(self, samples: np.ndarray) -> None:
@@ -207,11 +219,15 @@ class RadioMode(Mode):
             env = self._audio_decim.process(np.abs(baseband))
             carrier = float(np.mean(env))                  # carrier-normalised:
             audio = (env - carrier) / carrier if carrier > 1e-6 else env * 0.0
-        else:  # usb / lsb
+        else:  # usb / lsb / cw
             assert self._cplx_decim is not None and self._ssb is not None
             audio = self._ssb.process(self._cplx_decim.process(baseband))
             if self._agc is not None:
                 audio = self._agc.process(audio)
+            if self.demod == "cw" and self._cw is not None and self._env_decim is not None:
+                text = self._cw.process(self._env_decim.process(np.abs(baseband)))
+                if text:
+                    self.manager.emit_json({"type": "cw_text", "text": text})
 
         # 4) scale to int16 PCM and emit (silence when squelched, to keep the
         #    audio stream continuous and the player's buffer fed)

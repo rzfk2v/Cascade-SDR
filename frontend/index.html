@@ -106,6 +106,7 @@
               <option value="am">AM</option>
               <option value="usb">USB</option>
               <option value="lsb">LSB</option>
+              <option value="cw">CW (Morse)</option>
             </select>
           </label>
           <label>Bandwidth (kHz)<input id="bw" type="number" step="5" value="200" /></label>
@@ -138,6 +139,9 @@
             <canvas id="overlay" class="overlay"></canvas>
           </div>
           <canvas id="axis" class="axis"></canvas>
+          <div id="cw-text" class="cw-text" hidden>
+            <span class="cw-label">CW</span><span id="cw-out"></span>
+          </div>
         </div>
         <div id="map" class="map" hidden></div>
         <div id="dab-view" class="dab-view" hidden>

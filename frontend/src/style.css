@@ -258,6 +258,29 @@ body {
 .dab-station.playing { background: var(--accent); color: #fff; border-color: var(--accent); }
 .dab-empty { color: var(--muted); font-size: 0.85rem; }
 
+.cw-text {
+  position: absolute;
+  left: 0.6rem;
+  right: 0.6rem;
+  bottom: 0.6rem;
+  z-index: 4;
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+  background: rgba(13, 17, 23, 0.88);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.5rem 0.7rem;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 1rem;
+  letter-spacing: 0.05em;
+  color: #4dd0e1;
+  max-height: 4.5rem;
+  overflow-y: auto;
+}
+.cw-label { color: var(--muted); font-size: 0.7rem; flex: 0 0 auto; }
+#cw-out { word-break: break-word; }
+
 .plane-icon { background: none; border: none; }
 .plane-rot { font-size: 16px; line-height: 1; color: #16a3c7; text-shadow: 0 0 2px #fff; }
 .ship-icon { background: none; border: none; }
