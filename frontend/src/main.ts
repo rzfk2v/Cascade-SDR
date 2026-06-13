@@ -60,8 +60,16 @@ let dabPlayingSid: number | null = null;
   const blocks: string[] = [];
   for (let n = 5; n <= 12; n++) for (const L of "ABCD") blocks.push(`${n}${L}`);
   for (const L of "ABCDEF") blocks.push(`13${L}`);
+  const STHLM: Record<string, string> = {
+    "12A": " — Stockholm",
+    "12C": " — Stockholm (SR)",
+    "12D": " — Stockholm",
+  };
   dabChannel.innerHTML = blocks
-    .map((b) => `<option value="${b}"${b === "12C" ? " selected" : ""}>${b}</option>`)
+    .map(
+      (b) =>
+        `<option value="${b}"${b === "12C" ? " selected" : ""}>${b}${STHLM[b] || ""}</option>`,
+    )
     .join("");
 })();
 
