@@ -136,6 +136,12 @@
               <option value="75">75 µs (Americas/Korea)</option>
             </select>
           </label>
+          <label class="check"><input id="rds-on" type="checkbox" checked /> RDS (FM station info)</label>
+          <div id="rds-box" class="rds-box" hidden>
+            <div id="rds-ps" class="rds-ps">—</div>
+            <div id="rds-rt" class="rds-rt"></div>
+            <div id="rds-meta" class="muted"></div>
+          </div>
           <label>Volume<input id="vol" type="range" min="0" max="1.5" step="0.05" value="0.7" /></label>
           <label>Squelch (dB)<input id="sql" type="range" min="-80" max="5" step="1" value="-80" /></label>
           <p id="level-meter" class="level-meter"></p>

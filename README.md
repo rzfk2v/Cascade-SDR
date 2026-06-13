@@ -74,7 +74,10 @@ Radio supports **WFM** (broadcast), **NFM** (narrow — ham/marine/PMR voice),
 plays the tone and **decodes it to text** in an overlay; best on clean signals,
 self-calibrates after a character or so). Switching demod sets a sensible default
 bandwidth you can then fine-tune. For WFM, an **FM de-emphasis** selector picks
-50 µs (Europe) or 75 µs (Americas/Korea).
+50 µs (Europe) or 75 µs (Americas/Korea), and **RDS** decoding (on by default)
+shows the **station name, radiotext, PI code and program type** from the 57 kHz
+data subcarrier — hand-written decoder (pilot PLL → coherent BPSK → biphase /
+differential → block-syndrome sync → group parsing), no external tool.
 
 ### Recording
 - **Audio**: the *Record audio* button (Radio controls) captures what you're

@@ -121,6 +121,17 @@ body {
 }
 .bm-row .recall:hover { border-color: var(--accent); }
 .bm-row .recall.playing { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+.rds-box {
+  background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+  padding: 0.45rem 0.55rem; display: flex; flex-direction: column; gap: 0.25rem;
+}
+.rds-ps {
+  font-family: ui-monospace, Menlo, monospace; font-size: 1.05rem; font-weight: 600;
+  letter-spacing: 0.06em; color: #4dd0e1;
+}
+.rds-rt { font-size: 0.74rem; color: var(--text); word-break: break-word; line-height: 1.35; }
+.rds-meta, #rds-meta { font-size: 0.68rem; }
 .bm-row button.del {
   flex: 0 0 auto; background: transparent; color: var(--muted); border: none;
   cursor: pointer; font-size: 1rem; padding: 0 0.2rem;

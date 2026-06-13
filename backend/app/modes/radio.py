@@ -31,6 +31,7 @@ from app.dsp.blocks import (
 )
 from app.dsp.cw import CwDecoder
 from app.dsp.fft import Spectrum
+from app.dsp.rds import RdsDemod
 from app.hub import FrameTag
 from app.modes.base import Mode
 
@@ -73,6 +74,9 @@ class RadioMode(Mode):
         self.volume = 0.7
         self.squelch_db = -80.0      # channel-power gate; -80 = effectively open
         self.deemph_us = 50.0        # FM de-emphasis: 50 µs (EU) / 75 µs (Americas)
+        self.rds_enabled = True      # decode RDS (station name/radiotext) on WFM
+        self._rds: RdsDemod | None = None
+        self._rds_dirty = False      # tuned to a new station -> reset RDS
         self._need_rebuild = True
         self._user_tuned = False     # has the client picked a channel yet?
         self._last_level_emit = 0.0
@@ -103,6 +107,7 @@ class RadioMode(Mode):
         if "tuned_freq" in params and params["tuned_freq"] is not None:
             self.tuned_freq = float(params["tuned_freq"])
             self._user_tuned = True
+            self._rds_dirty = True       # different station -> clear RDS
         if "bandwidth" in params and params["bandwidth"] is not None:
             self.bandwidth = float(params["bandwidth"])
             self._need_rebuild = True
@@ -116,6 +121,9 @@ class RadioMode(Mode):
             if tau in (50.0, 75.0) and tau != self.deemph_us:
                 self.deemph_us = tau
                 self._need_rebuild = True
+        if "rds" in params and params["rds"] is not None:
+            self.rds_enabled = bool(params["rds"])
+            self._need_rebuild = True
         self._announce_radio()
 
     def _radio_config_msg(self) -> dict:
@@ -127,6 +135,7 @@ class RadioMode(Mode):
             "volume": self.volume,
             "squelch": self.squelch_db,
             "deemph": self.deemph_us,
+            "rds": self.rds_enabled,
             "audio_rate": AUDIO_RATE,
         }
 
@@ -144,6 +153,9 @@ class RadioMode(Mode):
 
     def _announce_radio(self) -> None:
         self.manager.emit_json(self._radio_config_msg())
+
+    def _emit_rds(self, snap: dict) -> None:
+        self.manager.emit_json(snap)
 
     # --- lifecycle (worker thread) ------------------------------------------
     def on_start(self) -> None:
@@ -169,12 +181,18 @@ class RadioMode(Mode):
         self._agc = None
         self._env_decim = None
         self._cw = None
+        self._rds = None
         if self.demod in ("wfm", "nfm"):
             self._disc = FmDiscriminator()
             self._fm_dev = float(cfg["dev"])
             self._audio_decim = RealDecimator(if_rate, audio_decim, cfg["audio"])
             if cfg.get("deemph"):
                 self._deemph = DeEmphasis(self._audio_decim.out_rate, tau_us=self.deemph_us)
+            if self.demod == "wfm" and self.rds_enabled:
+                # RDS lives at 57 kHz in the MPX (the discriminator output), so it
+                # needs the full IF-rate signal, before audio decimation.
+                self._rds = RdsDemod(if_rate, self._emit_rds)
+                self._rds_dirty = False
         elif self.demod == "am":
             self._audio_decim = RealDecimator(if_rate, audio_decim, cfg["audio"])
         else:  # usb / lsb / cw  (SSB-style audio)
@@ -224,8 +242,16 @@ class RadioMode(Mode):
             )
 
         if self.demod in ("wfm", "nfm"):
-            disc = self._disc.process(baseband)           # radians/sample
+            disc = self._disc.process(baseband)           # radians/sample = MPX
             disc *= if_rate / (2.0 * np.pi * self._fm_dev)
+            # RDS: decode the 57 kHz subcarrier from the full MPX (pre-decimation)
+            if self.demod == "wfm" and self.rds_enabled:
+                if self._rds is None or self._rds_dirty:
+                    self._rds = RdsDemod(if_rate, self._emit_rds)
+                    self._rds_dirty = False
+                    self.manager.emit_json({"type": "rds", "pi": None, "pty": None,
+                                            "ps": "", "rt": ""})
+                self._rds.process(disc)
             audio = self._audio_decim.process(disc)
             if self._deemph is not None:
                 audio = self._deemph.process(audio)

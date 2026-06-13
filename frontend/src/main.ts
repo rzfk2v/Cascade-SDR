@@ -100,6 +100,11 @@ const replayList = document.getElementById("replay-list")!;
 let replayFile: string | null = null;
 const demodSel = document.getElementById("demod") as HTMLSelectElement;
 const deemphSel = document.getElementById("deemph") as HTMLSelectElement;
+const rdsOn = document.getElementById("rds-on") as HTMLInputElement;
+const rdsBox = document.getElementById("rds-box")!;
+const rdsPs = document.getElementById("rds-ps")!;
+const rdsRt = document.getElementById("rds-rt")!;
+const rdsMeta = document.getElementById("rds-meta")!;
 const bwInput = document.getElementById("bw") as HTMLInputElement;
 const volInput = document.getElementById("vol") as HTMLInputElement;
 const sqlInput = document.getElementById("sql") as HTMLInputElement;
@@ -144,6 +149,16 @@ function updateBandInfo(): void {
 }
 
 let currentMode = "idle";
+
+// RDS program-type names (EU RDS table, 0..31)
+const PTY = [
+  "None", "News", "Current affairs", "Info", "Sport", "Education", "Drama",
+  "Culture", "Science", "Varied", "Pop music", "Rock music", "Easy listening",
+  "Light classical", "Serious classical", "Other music", "Weather", "Finance",
+  "Children", "Social affairs", "Religion", "Phone-in", "Travel", "Leisure",
+  "Jazz", "Country", "National music", "Oldies", "Folk music", "Documentary",
+  "Alarm test", "Alarm",
+];
 
 // --- connection + status -------------------------------------------------
 sock.onJson((msg) => {
@@ -199,6 +214,9 @@ sock.onJson((msg) => {
       tuner.setBandwidth(msg.bandwidth);
       demodSel.value = msg.demod;
       if (msg.deemph) deemphSel.value = String(Math.round(msg.deemph));
+      if (typeof msg.rds === "boolean") rdsOn.checked = msg.rds;
+      rdsBox.hidden = !(msg.demod === "wfm" && rdsOn.checked);
+      if (msg.demod !== "wfm") { rdsPs.textContent = "—"; rdsRt.textContent = ""; rdsMeta.textContent = ""; }
       bwInput.value = Math.round(msg.bandwidth / 1000).toString();
       cwText.hidden = msg.demod !== "cw";
       if (msg.demod !== "cw") cwOut.textContent = "";
@@ -224,6 +242,14 @@ sock.onJson((msg) => {
     case "cw_text":
       cwOut.textContent = (cwOut.textContent + msg.text).slice(-400);
       cwText.scrollTop = cwText.scrollHeight;
+      break;
+    case "rds":
+      rdsPs.textContent = msg.ps || "—";
+      rdsRt.textContent = msg.rt || "";
+      rdsMeta.textContent = [
+        msg.pi ? `PI ${msg.pi}` : "",
+        msg.pty != null ? PTY[msg.pty] || `PTY ${msg.pty}` : "",
+      ].filter(Boolean).join(" · ");
       break;
     case "aircraft":
       adsbMap.update(msg.aircraft);
@@ -435,6 +461,7 @@ function sendRadioPrefs(): void {
       volume: parseFloat(volInput.value),
       squelch: parseFloat(sqlInput.value),
       deemph: parseFloat(deemphSel.value),
+      rds: rdsOn.checked,
     },
   });
 }
@@ -486,6 +513,10 @@ demodSel.addEventListener("change", () =>
 deemphSel.addEventListener("change", () =>
   sock.send({ cmd: "config", params: { deemph: parseFloat(deemphSel.value) } }),
 );
+rdsOn.addEventListener("change", () => {
+  rdsBox.hidden = !(demodSel.value === "wfm" && rdsOn.checked);
+  sock.send({ cmd: "config", params: { rds: rdsOn.checked } });
+});
 bwInput.addEventListener("change", () =>
   sock.send({ cmd: "config", params: { bandwidth: parseFloat(bwInput.value) * 1000 } }),
 );
@@ -621,7 +652,7 @@ const persistValues: Record<string, HTMLInputElement | HTMLSelectElement> = {
   scanStart, scanStop, wfFloor, wfCeil, rxLoc, deemph: deemphSel, averaging,
 };
 const persistChecks: Record<string, HTMLInputElement> = {
-  gainAuto, biasTee, wfAuto, peakHold,
+  gainAuto, biasTee, wfAuto, peakHold, rdsOn,
 };
 
 function persist(): void {
