@@ -17,6 +17,7 @@ import {
 import { bandAt, bandsInSpan } from "./bands";
 import { antennaText } from "./antenna";
 import { WavRecorder, downloadBlob } from "./recorder";
+import { AptImage } from "./aptimage";
 
 const sock = new SdrSocket();
 const waterfall = new Waterfall(
@@ -61,6 +62,13 @@ const acarsCount = document.getElementById("acars-count")!;
 const acarsView = document.getElementById("acars-view")!;
 const acarsLog = document.getElementById("acars-log")!;
 const acarsFeedCount = document.getElementById("acars-feedcount")!;
+const aptControls = document.getElementById("apt-controls")!;
+const aptStatus = document.getElementById("apt-status")!;
+const aptSat = document.getElementById("apt-sat") as HTMLSelectElement;
+const aptView = document.getElementById("apt-view")!;
+const replayApt = document.getElementById("replay-apt") as HTMLInputElement;
+const aptImage = new AptImage(document.getElementById("apt-canvas") as HTMLCanvasElement);
+let aptLineCount = 0;
 const dabControls = document.getElementById("dab-controls")!;
 const dabChannel = document.getElementById("dab-channel") as HTMLSelectElement;
 const dabStatus = document.getElementById("dab-status")!;
@@ -151,6 +159,8 @@ function updateBandInfo(): void {
     label = "APRS · 144.800 MHz (packet)";
   } else if (currentMode === "acars") {
     label = "ACARS · ~131 MHz (aircraft data)";
+  } else if (currentMode === "apt") {
+    label = "NOAA APT · 137 MHz (weather sat)";
   } else if (currentMode === "radio" || currentMode === "replay") {
     const b = bandAt(viewTuned / 1e6);
     label = b ? `Band: ${b}` : "";
@@ -217,6 +227,7 @@ sock.onJson((msg) => {
       aisControls.hidden = msg.mode !== "ais";
       aprsControls.hidden = msg.mode !== "aprs";
       acarsControls.hidden = msg.mode !== "acars";
+      aptControls.hidden = msg.mode !== "apt";
       dabControls.hidden = msg.mode !== "dab";
       zoomOutBtn.hidden = !["scan", "spectrum", "radio", "replay"].includes(msg.mode);
       displayControls.hidden = !["spectrum", "scan", "radio", "replay"].includes(msg.mode);
@@ -329,6 +340,10 @@ sock.onBinary((tag, body) => {
     const row = new Float32Array(body.buffer, body.byteOffset, body.byteLength / 4);
     waterfall.pushRow(row);
     scope.pushRow(row);
+  } else if (tag === FrameTag.APT) {
+    aptImage.pushLine(new Uint8Array(body.buffer, body.byteOffset, body.byteLength));
+    aptLineCount++;
+    aptStatus.textContent = `▶ decoding · ${aptLineCount} lines`;
   } else if (tag === FrameTag.AUDIO) {
     audio.pushInt16(body);                       // interleaved L,R stereo
     if (wavRec.recording) {
@@ -377,12 +392,19 @@ function showView(mode: string): void {
   const isMap = mode === "adsb" || mode === "ais" || mode === "aprs";
   const isDab = mode === "dab";
   const isAcars = mode === "acars";
-  const isFft = !isMap && !isDab && !isAcars; // spectrum / scan / radio / idle
+  const isApt = mode === "apt" || (mode === "replay" && replayApt.checked);
+  const isFft = !isMap && !isDab && !isAcars && !isApt; // spectrum / scan / radio / idle
   fftView.hidden = !isFft;
   mapDiv.hidden = !isMap;
   aircraftPanel.hidden = !isMap;
   dabView.hidden = !isDab;
   acarsView.hidden = !isAcars;
+  aptView.hidden = !isApt;
+  if (isApt) zoomOutBtn.hidden = true;
+  if (isApt) requestAnimationFrame(() => {
+    const r = aptView.getBoundingClientRect();
+    aptImage.resize(Math.round(r.width), Math.round(r.height));
+  });
   if (isMap) {
     adsbMap.ensure("map");
     apTitle.textContent =
@@ -541,6 +563,12 @@ document.getElementById("mode-tabs")!.addEventListener("click", async (e) => {
   if (mode === "replay") {
     renderReplayList();
     if (replayFile) sock.send({ cmd: "config", params: { file: replayFile, playing: true } });
+  }
+  if (mode === "apt") {
+    aptImage.clear();
+    aptLineCount = 0;
+    aptStatus.textContent = "waiting for a pass…";
+    sock.send({ cmd: "tune", center_freq: parseFloat(aptSat.value) });
   }
   if (mode === "dab") sock.send({ cmd: "config", params: { channel: dabChannel.value } });
 });
@@ -715,6 +743,31 @@ document.getElementById("apply")!.addEventListener("click", () => {
     sample_rate: parseFloat(rateInput.value) * 1e6,
   });
 });
+// --- APT (weather satellite) controls ------------------------------------
+aptSat.addEventListener("change", () => {
+  aptImage.clear();
+  aptLineCount = 0;
+  sock.send({ cmd: "tune", center_freq: parseFloat(aptSat.value) });
+});
+document.getElementById("apt-save")!.addEventListener("click", () => {
+  const url = aptImage.toPng();
+  if (!url) { aptStatus.textContent = "nothing to save yet"; return; }
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `apt_${new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19)}.png`;
+  a.click();
+});
+document.getElementById("apt-clear")!.addEventListener("click", () => {
+  aptImage.clear();
+  aptLineCount = 0;
+  aptStatus.textContent = "cleared";
+});
+replayApt.addEventListener("change", () => {
+  if (replayApt.checked) { aptImage.clear(); aptLineCount = 0; }
+  sock.send({ cmd: "config", params: { apt: replayApt.checked } });
+  showView(currentMode);
+});
+
 // live antenna advice as the user types a frequency (before tuning)
 freqInput.addEventListener("input", () => {
   const f = parseFloat(freqInput.value);
@@ -988,6 +1041,10 @@ function layoutCanvases(): void {
   axisCanvas.height = ax.h;
   tuner.drawAxis();
   tuner.draw();
+  if (!aptView.hidden) {
+    const r = aptView.getBoundingClientRect();
+    aptImage.resize(Math.round(r.width), Math.round(r.height));
+  }
 }
 
 let resizeTimer = 0;

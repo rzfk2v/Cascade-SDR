@@ -30,6 +30,7 @@ from app.dsp.blocks import (
     SsbDemod,
     StereoDecoder,
 )
+from app.dsp.apt import AptDecoder
 from app.dsp.cw import CwDecoder
 from app.dsp.fft import Spectrum
 from app.dsp.rds import RdsDemod
@@ -82,6 +83,9 @@ class RadioMode(Mode):
         self._stereo: StereoDecoder | None = None
         self._deemph_l: DeEmphasis | None = None
         self._deemph_r: DeEmphasis | None = None
+        self.apt_enabled = False     # decode NOAA APT image (137 MHz weather sats)
+        self._apt: AptDecoder | None = None
+        self._apt_dirty = False
         self._need_rebuild = True
         self._user_tuned = False     # has the client picked a channel yet?
         self._last_level_emit = 0.0
@@ -113,6 +117,7 @@ class RadioMode(Mode):
             self.tuned_freq = float(params["tuned_freq"])
             self._user_tuned = True
             self._rds_dirty = True       # different station -> clear RDS
+            self._apt_dirty = True       # different pass -> restart the image
         if "bandwidth" in params and params["bandwidth"] is not None:
             self.bandwidth = float(params["bandwidth"])
             self._need_rebuild = True
@@ -132,6 +137,9 @@ class RadioMode(Mode):
         if "stereo" in params and params["stereo"] is not None:
             self.stereo_enabled = bool(params["stereo"])
             self._need_rebuild = True
+        if "apt" in params and params["apt"] is not None:
+            self.apt_enabled = bool(params["apt"])
+            self._need_rebuild = True
         self._announce_radio()
 
     def _radio_config_msg(self) -> dict:
@@ -145,6 +153,7 @@ class RadioMode(Mode):
             "deemph": self.deemph_us,
             "rds": self.rds_enabled,
             "stereo": self.stereo_enabled,
+            "apt": self.apt_enabled,
             "audio_rate": AUDIO_RATE,
         }
 
@@ -165,6 +174,9 @@ class RadioMode(Mode):
 
     def _emit_rds(self, snap: dict) -> None:
         self.manager.emit_json(snap)
+
+    def _emit_apt(self, row) -> None:
+        self.manager.emit_binary(FrameTag.APT, row.tobytes())
 
     # --- lifecycle (worker thread) ------------------------------------------
     def on_start(self) -> None:
@@ -192,6 +204,7 @@ class RadioMode(Mode):
         self._cw = None
         self._rds = None
         self._stereo = None
+        self._apt = None
         self._deemph_l = self._deemph_r = None
         if self.demod in ("wfm", "nfm"):
             self._disc = FmDiscriminator()
@@ -210,6 +223,9 @@ class RadioMode(Mode):
                 # needs the full IF-rate signal, before audio decimation.
                 self._rds = RdsDemod(if_rate, self._emit_rds)
                 self._rds_dirty = False
+            if self.demod == "wfm" and self.apt_enabled:
+                self._apt = AptDecoder(self._audio_decim.out_rate, self._emit_apt)
+                self._apt_dirty = False
         elif self.demod == "am":
             self._audio_decim = RealDecimator(if_rate, audio_decim, cfg["audio"])
         else:  # usb / lsb / cw  (SSB-style audio)
@@ -233,8 +249,9 @@ class RadioMode(Mode):
 
         # Spectrum-only until the user picks a channel (click-to-tune): show the
         # waterfall but emit no audio. This is what makes one combined view serve
-        # as both "browse the band" and "listen".
-        if not self._user_tuned:
+        # as both "browse the band" and "listen". (APT decodes the centre channel
+        # without a click, so it's exempt.)
+        if not self._user_tuned and not self.apt_enabled:
             return
 
         # 2) (re)build the channel chain if bandwidth/demod changed
@@ -266,6 +283,13 @@ class RadioMode(Mode):
                                             "ps": "", "rt": ""})
                 self._rds.process(disc)
             mono = self._audio_decim.process(disc)
+            # NOAA APT: decode the 2400 Hz image subcarrier from the FM audio
+            # (before de-emphasis, which would tilt the subcarrier amplitude)
+            if self.demod == "wfm" and self.apt_enabled:
+                if self._apt is None or self._apt_dirty:
+                    self._apt = AptDecoder(self._audio_decim.out_rate, self._emit_apt)
+                    self._apt_dirty = False
+                self._apt.process(mono)
             # Stereo: recover L−R from the 38 kHz subcarrier (only when a pilot is
             # present), otherwise fall back to mono (L = R).
             if (self.demod == "wfm" and self.stereo_enabled

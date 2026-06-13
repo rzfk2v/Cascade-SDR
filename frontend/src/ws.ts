@@ -6,6 +6,7 @@ const BINARY_HEADER = 4;
 export const FrameTag = {
   FFT: 0x01,
   AUDIO: 0x02,
+  APT: 0x03,
 } as const;
 
 type JsonHandler = (msg: any) => void;

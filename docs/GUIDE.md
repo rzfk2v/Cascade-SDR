@@ -20,7 +20,7 @@ and install, see the [README](../README.md).
   (below) with a **frequency axis**; in ADS-B/AIS it becomes a **map**, in DAB a
   **station list**.
 - **Top of sidebar** — connection dot (green = backend connected) and the mode
-  tabs: **Idle · Spectrum · Scan · Replay · DAB · ADS-B · AIS · APRS · ACARS**.
+  tabs: **Idle · Spectrum · Scan · Replay · DAB · ADS-B · AIS · APRS · ACARS · APT**.
 - **Band label** — under the device status, names the service on the current
   frequency (e.g. “FM broadcast”, “Marine VHF”) so you know what you're looking at.
 
@@ -227,6 +227,28 @@ Shows **ACARS** messages — short text/data from aircraft on ~131 MHz AM. Needs
 
 **Try:** near an airport, leave it running; you'll catch weather requests, position
 reports, and ops messages as aircraft pass.
+
+---
+
+## APT (NOAA weather-satellite images)
+
+Decodes **NOAA APT** — a live grayscale image from a polar weather satellite as it
+passes overhead. Hand-written decoder, no external tool.
+
+- Switch to **APT**, pick the satellite (**NOAA 15** 137.620, **18** 137.9125,
+  **19** 137.100 MHz). The image builds **top-down at 2 lines/s** during the pass.
+- **Save PNG** downloads the full-resolution image; **Clear** restarts.
+- **Two ways to capture** (you chose both):
+  - *Live* — watch it draw during the pass.
+  - *Record then decode* — **Record IQ** during the pass, then in **Replay** tick
+    **"Decode as APT image"** and play it back.
+
+**You need a pass + the right antenna.** Check pass times (gpredict / n2yo.com),
+and set the dipole kit to a horizontal **"V" (~120°)** with elements ~53 cm (the
+antenna helper shows this when you're on 137 MHz). The stock whip barely works.
+
+**Try:** find the next NOAA pass for your location, start APT a minute before,
+and watch the coastline scroll in. (Meteor-M LRPT is digital and not supported.)
 
 ---
 

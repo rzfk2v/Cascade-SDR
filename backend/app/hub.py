@@ -20,7 +20,8 @@ class FrameTag(IntEnum):
     """First byte of every binary frame, identifying the payload kind."""
 
     FFT = 0x01      # waterfall magnitude row (float32 little-endian)
-    AUDIO = 0x02    # demodulated PCM (int16 little-endian, mono)
+    AUDIO = 0x02    # demodulated PCM (int16 little-endian, interleaved stereo)
+    APT = 0x03      # one NOAA APT image line (2080 bytes, uint8 grayscale)
 
 
 class Hub:

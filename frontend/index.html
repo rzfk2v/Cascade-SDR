@@ -30,6 +30,7 @@
           <button data-mode="ais">AIS</button>
           <button data-mode="aprs">APRS</button>
           <button data-mode="acars">ACARS</button>
+          <button data-mode="apt">APT</button>
         </nav>
 
         <section class="group">
@@ -121,6 +122,25 @@
             digipeaters; beacons are infrequent, so give it time.</p>
         </section>
 
+        <section class="group" id="apt-controls" hidden>
+          <h2>APT (weather sat)</h2>
+          <label>Satellite
+            <select id="apt-sat">
+              <option value="137620000">NOAA 15 · 137.620</option>
+              <option value="137912500">NOAA 18 · 137.9125</option>
+              <option value="137100000">NOAA 19 · 137.100</option>
+            </select>
+          </label>
+          <p id="apt-status" class="status-line">waiting for a pass…</p>
+          <div class="bm-add">
+            <button id="apt-save">⤓ Save PNG</button>
+            <button id="apt-clear">Clear</button>
+          </div>
+          <p class="hint">137 MHz needs a satellite <b>pass overhead</b> and a
+            137 MHz antenna (dipole in a horizontal "V"). Image builds top-down at
+            2 lines/s over ~10–15 min. Record IQ to decode again later in Replay.</p>
+        </section>
+
         <section class="group" id="acars-controls" hidden>
           <h2>ACARS</h2>
           <p id="acars-status" class="status-line">starting…</p>
@@ -133,6 +153,7 @@
         <section class="group" id="replay-controls" hidden>
           <h2>Replay</h2>
           <p id="replay-status" class="status-line">pick a recording…</p>
+          <label class="check"><input id="replay-apt" type="checkbox" /> Decode as APT image (137 MHz pass)</label>
           <div id="replay-list" class="bm-list"></div>
           <p class="hint">Plays a saved <b>.cu8</b> capture through the spectrum +
             demodulators — click a signal to listen. Loops automatically.</p>
@@ -209,6 +230,9 @@
           </div>
           <div id="dab-stations" class="dab-stations"></div>
           <audio id="dab-audio" hidden></audio>
+        </div>
+        <div id="apt-view" class="apt-view" hidden>
+          <canvas id="apt-canvas" class="apt-canvas"></canvas>
         </div>
         <div id="acars-view" class="acars-view" hidden>
           <div class="acars-head"><span>ACARS</span> <span id="acars-feedcount" class="muted"></span></div>

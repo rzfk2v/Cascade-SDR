@@ -239,6 +239,18 @@ body {
 .ac-popup td { padding: 1px 8px 1px 0; font-size: 12px; }
 .ac-popup td:first-child { color: #57606a; }
 
+.apt-view {
+  position: absolute;
+  inset: 0.6rem;
+  background: #000;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  display: flex;
+  justify-content: center;
+}
+.apt-canvas { display: block; height: 100%; image-rendering: pixelated; }
+
 .acars-view {
   position: absolute;
   inset: 0.6rem;

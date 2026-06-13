@@ -19,6 +19,7 @@ things to try. Status:
 | **AIS** | Ships on a Leaflet map (via `AIS-catcher`) | ✅ working** |
 | **APRS** | Packet-radio stations on the map (via `rtl_fm` → `direwolf`) | ✅ working‡ |
 | **ACARS** | Aircraft VHF data messages as a live feed (via `acarsdec`) | ✅ working§ |
+| **APT** | NOAA weather-satellite images at 137 MHz (hand-written decoder) | ✅ working¶ |
 
 \* Needs `dump1090` installed (`brew install dump1090-mutability`) **and a decent
 1090 MHz antenna** — the stock whip barely hears ADS-B. The pipeline runs and
@@ -210,6 +211,22 @@ cp acarsdec /opt/homebrew/bin/acarsdec
 > in [backend/app/modes/acars.py](backend/app/modes/acars.py) for your region; all
 > channels must fit inside one ~2.4 MHz capture. The mode passes `-j host:port`
 > (JSON over UDP) to acarsdec — if your build differs, adjust the flags there.
+
+### NOAA APT (weather-satellite images) (¶)
+Select **APT** and pick a satellite (**NOAA 15** 137.620, **NOAA 18** 137.9125,
+**NOAA 19** 137.100 MHz). During a **pass**, the image builds top-down at 2 lines/s
+(~10–15 min for a full pass); **Save PNG** downloads the full-resolution image,
+**Clear** restarts. It's a **hand-written decoder** (no external tool): FM-demod →
+AM-detect the 2400 Hz subcarrier → 4160 px/s → sync each 2080-px line → image.
+
+You also get **both** ways to capture: live (above), or **record then decode** —
+hit **Record IQ** during a pass, then later open **Replay**, tick **"Decode as APT
+image"**, and play the recording back through the decoder.
+
+> 137 MHz needs a **satellite pass overhead** (use a tracker like *gpredict* or
+> n2yo.com for pass times) and a proper antenna — the dipole kit in a horizontal
+> **"V"** (~120°), elements at ~53 cm. The stock whip will barely work. Meteor-M
+> (digital LRPT) is *not* supported — this is analog NOAA APT only.
 
 > FM **de-emphasis** defaults to 50 µs (Europe); switch it to 75 µs
 > (Americas/Korea) in the Radio panel when listening to WFM broadcast.
