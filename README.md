@@ -231,8 +231,16 @@ Same backend + browser. Differences: install the RTL-SDR WinUSB driver with
 **Zadig**, and use Windows builds of `dump1090` / `AIS-catcher`. No code changes
 expected. (A detailed Windows section will be added alongside M4/M5.)
 
-## Roadmap
+## License
 
-See the milestone plan in
-`~/.claude/plans/i-have-a-rtl-peaceful-moon.md`. Next up: **M2 — FM radio +
-audio** (`RadioMode` + Web Audio playback).
+Cascade SDR is © 2026 Jens Engfors, licensed under **GPL-3.0** (see `LICENSE`).
+It builds on other open-source projects — see [CREDITS.md](CREDITS.md) for the
+full list and their licenses. Provided **as-is, without warranty**.
+
+## Reception disclaimer
+
+Cascade SDR is a **receiver** for lawful use. Radio-reception rules vary by
+country: receiving some transmissions, and especially **decoding or divulging**
+non-broadcast communications, may be restricted where you live. You are
+responsible for complying with your local regulations. Map tiles are
+© OpenStreetMap contributors.
