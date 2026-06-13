@@ -1,5 +1,6 @@
 # Python
 backend/.venv/
+backend/recordings/
 __pycache__/
 *.pyc
 

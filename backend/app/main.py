@@ -17,7 +17,9 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from app.device import DeviceManager
+from fastapi import HTTPException
+
+from app.device import RECORDINGS_DIR, DeviceManager
 from app.hub import Hub
 from app.modes.adsb import AdsbMode
 from app.modes.ais import AisMode
@@ -62,6 +64,27 @@ async def api_modes() -> dict:
     return {"modes": list(MODE_REGISTRY.keys())}
 
 
+@app.get("/api/recordings")
+async def api_recordings() -> dict:
+    RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
+    items = []
+    for p in sorted(RECORDINGS_DIR.glob("*.cu8"), key=lambda x: x.stat().st_mtime,
+                    reverse=True):
+        st = p.stat()
+        items.append({"name": p.name, "size": st.st_size, "mtime": st.st_mtime})
+    return {"recordings": items, "recording": manager.recording}
+
+
+@app.delete("/api/recordings/{name}")
+async def delete_recording(name: str) -> dict:
+    # guard against path traversal — only allow plain .cu8 names in the dir
+    target = (RECORDINGS_DIR / name).resolve()
+    if target.parent != RECORDINGS_DIR.resolve() or target.suffix != ".cu8":
+        raise HTTPException(status_code=400, detail="bad name")
+    target.unlink(missing_ok=True)
+    return {"ok": True}
+
+
 @app.websocket("/ws")
 async def ws_endpoint(ws: WebSocket) -> None:
     await ws.accept()
@@ -104,11 +127,26 @@ async def handle_command(ws: WebSocket, msg: dict) -> None:
             )
         elif cmd == "config":
             manager.configure_mode(msg.get("params", {}))
+        elif cmd == "record":
+            if msg.get("action") == "start":
+                res = manager.record_start()
+                await hub.broadcast_json(
+                    {"type": "rec_status", "recording": manager.recording, **res}
+                )
+            else:
+                name = manager.record_stop()
+                await hub.broadcast_json(
+                    {"type": "rec_status", "recording": False, "stopped": name}
+                )
         else:
             await ws.send_json({"type": "error", "message": f"unknown cmd: {cmd}"})
     except Exception as exc:
         await ws.send_json({"type": "error", "message": str(exc)})
 
+
+# --- IQ recordings download (mounted before the catch-all frontend) ---------
+RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/recordings", StaticFiles(directory=str(RECORDINGS_DIR)), name="recordings")
 
 # --- static frontend (optional; present after `npm run build`) --------------
 _DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"

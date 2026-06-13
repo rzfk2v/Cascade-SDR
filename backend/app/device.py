@@ -21,12 +21,18 @@ from __future__ import annotations
 import asyncio
 import logging
 import threading
+import time
+from pathlib import Path
 from typing import Any, Optional
+
+import numpy as np
 
 from app.hub import FrameTag, Hub
 from app.modes.base import Mode
 
 log = logging.getLogger("sdr.device")
+
+RECORDINGS_DIR = Path(__file__).resolve().parents[1] / "recordings"
 
 try:
     from rtlsdr import RtlSdr  # type: ignore
@@ -66,6 +72,11 @@ class DeviceManager:
         self._sdr = None
         # subprocess-mode task
         self._task: Optional[asyncio.Task] = None
+        # IQ recording (written from the reader thread)
+        self._recording = False
+        self._rec_file = None
+        self._rec_path: Optional[Path] = None
+        self._rec_lock = threading.Lock()
 
     # --- introspection ------------------------------------------------------
     @property
@@ -176,6 +187,52 @@ class DeviceManager:
         """Config messages a freshly-connected client needs to sync its UI."""
         return self.mode.snapshot() if self.mode is not None else []
 
+    # --- IQ recording -------------------------------------------------------
+    @property
+    def recording(self) -> bool:
+        return self._recording
+
+    def record_start(self) -> dict:
+        """Start writing raw IQ (.cu8) for the active fixed-tuned IQ mode."""
+        if not (self.mode and self.mode.owns_device
+                and not self.mode.controls_tuning and self.running):
+            return {"ok": False, "message": "Record from Waterfall or Radio mode."}
+        if self._recording:
+            return {"ok": True, "name": self._rec_path.name if self._rec_path else ""}
+        RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
+        name = (f"iq_{time.strftime('%Y%m%d-%H%M%S')}_"
+                f"{int(self.center_freq)}Hz_{int(self.sample_rate)}sps.cu8")
+        with self._rec_lock:
+            self._rec_file = open(RECORDINGS_DIR / name, "wb")
+            self._rec_path = RECORDINGS_DIR / name
+            self._recording = True
+        return {"ok": True, "name": name}
+
+    def record_stop(self) -> Optional[str]:
+        with self._rec_lock:
+            self._recording = False
+            if self._rec_file is not None:
+                try:
+                    self._rec_file.close()
+                except Exception:
+                    pass
+            self._rec_file = None
+            name = self._rec_path.name if self._rec_path else None
+            self._rec_path = None
+        return name
+
+    def _write_iq(self, block: "np.ndarray") -> None:
+        with self._rec_lock:
+            if not self._recording or self._rec_file is None:
+                return
+            iq = np.empty(block.size * 2, dtype=np.uint8)
+            iq[0::2] = np.clip(block.real * 127.5 + 127.5, 0, 255).astype(np.uint8)
+            iq[1::2] = np.clip(block.imag * 127.5 + 127.5, 0, 255).astype(np.uint8)
+            try:
+                self._rec_file.write(iq.tobytes())
+            except Exception:
+                pass
+
     # --- internals (call with lock held) -----------------------------------
     async def _start_locked(self) -> None:
         if self.mode is None or self.running:
@@ -192,6 +249,9 @@ class DeviceManager:
         await self._announce()
 
     async def _stop_locked(self) -> None:
+        # Finalize any recording (its center/rate is about to change).
+        if self._recording:
+            self.record_stop()
         # Stop the IQ worker thread without blocking the event loop.
         if self._thread is not None:
             self._stop_event.set()
@@ -261,6 +321,8 @@ class DeviceManager:
                         self._retune_event.clear()
                         self._apply_settings(sdr)
                     block = sdr.read_samples(mode.block_size)
+                    if self._recording:
+                        self._write_iq(block)
                     try:
                         q.put_nowait(block)
                     except _queue.Full:

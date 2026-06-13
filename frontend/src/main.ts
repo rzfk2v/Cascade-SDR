@@ -15,6 +15,7 @@ import {
   type Bookmark,
 } from "./storage";
 import { bandAt, bandsInSpan } from "./bands";
+import { WavRecorder, downloadBlob } from "./recorder";
 
 const sock = new SdrSocket();
 const waterfall = new Waterfall(
@@ -28,6 +29,7 @@ const tuner = new Tuner(
   document.getElementById("axis") as HTMLCanvasElement,
 );
 const audio = new AudioPlayer(48000);
+const wavRec = new WavRecorder(48000);
 const adsbMap = new AdsbMap();
 
 const fftView = document.getElementById("fft-view")!;
@@ -214,6 +216,15 @@ sock.onJson((msg) => {
     case "dab_ensemble":
       renderDab(msg);
       break;
+    case "rec_status":
+      iqRecording = msg.recording;
+      recIqBtn.textContent = iqRecording ? "■ Stop IQ recording" : "● Record IQ";
+      if (msg.message) recIqStatus.textContent = msg.message;
+      else if (iqRecording) recIqStatus.textContent = "● recording IQ…";
+      else if (msg.stopped) recIqStatus.textContent = `saved ${msg.stopped}`;
+      else recIqStatus.textContent = "";
+      refreshRecordings();
+      break;
     case "error":
       statusLine.textContent = `⚠ ${msg.message}`;
       statusLine.classList.add("err");
@@ -228,6 +239,9 @@ sock.onBinary((tag, body) => {
     scope.pushRow(row);
   } else if (tag === FrameTag.AUDIO) {
     audio.pushInt16(body);
+    if (wavRec.recording) {
+      wavRec.addPcm(new Int16Array(body.buffer, body.byteOffset, body.byteLength >> 1));
+    }
   }
 });
 
@@ -445,6 +459,33 @@ sqlInput.addEventListener("input", () =>
   sock.send({ cmd: "config", params: { squelch: parseFloat(sqlInput.value) } }),
 );
 
+// --- audio recording -----------------------------------------------------
+const recAudioBtn = document.getElementById("rec-audio") as HTMLButtonElement;
+const recAudioStatus = document.getElementById("rec-audio-status")!;
+let recTimer = 0;
+
+recAudioBtn.addEventListener("click", () => {
+  if (!wavRec.recording) {
+    wavRec.start();
+    recAudioBtn.textContent = "■ Stop recording";
+    recTimer = window.setInterval(() => {
+      recAudioStatus.textContent = `● recording ${wavRec.elapsedSec().toFixed(0)} s`;
+    }, 500);
+  } else {
+    clearInterval(recTimer);
+    const blob = wavRec.stop();
+    recAudioBtn.textContent = "● Record audio";
+    if (blob) {
+      const mhz = (viewTuned / 1e6).toFixed(3);
+      const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+      downloadBlob(blob, `sdr_${mhz}MHz_${ts}.wav`);
+      recAudioStatus.textContent = `saved (${(blob.size / 1024).toFixed(0)} kB)`;
+    } else {
+      recAudioStatus.textContent = "nothing recorded";
+    }
+  }
+});
+
 // --- scan controls -------------------------------------------------------
 function applyScanRange(): void {
   sock.send({
@@ -626,6 +667,43 @@ async function recallBookmark(b: Bookmark): Promise<void> {
 
 restoreSettings();
 renderBookmarks();
+
+// --- IQ recording --------------------------------------------------------
+const recIqBtn = document.getElementById("rec-iq") as HTMLButtonElement;
+const recIqStatus = document.getElementById("rec-iq-status")!;
+const recList = document.getElementById("rec-list")!;
+let iqRecording = false;
+
+recIqBtn.addEventListener("click", () => {
+  sock.send({ cmd: "record", action: iqRecording ? "stop" : "start" });
+});
+
+async function refreshRecordings(): Promise<void> {
+  try {
+    const d = await (await fetch("/api/recordings")).json();
+    const list: any[] = d.recordings || [];
+    recList.innerHTML = list
+      .map(
+        (it) =>
+          `<div class="bm-row"><a class="recall" href="/recordings/${it.name}" download>` +
+          `${it.name.replace("iq_", "").replace(".cu8", "")} ` +
+          `<span class="muted">${(it.size / 1e6).toFixed(1)} MB</span></a>` +
+          `<button class="del" data-name="${it.name}" title="delete">×</button></div>`,
+      )
+      .join("");
+  } catch {
+    /* offline */
+  }
+}
+
+recList.addEventListener("click", async (e) => {
+  const btn = (e.target as HTMLElement).closest("button.del") as HTMLElement | null;
+  if (!btn) return;
+  await fetch(`/api/recordings/${btn.dataset.name}`, { method: "DELETE" });
+  refreshRecordings();
+});
+
+refreshRecordings();
 
 // --- DAB ----------------------------------------------------------------
 let dabPort = 7979;
