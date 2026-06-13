@@ -1,0 +1,4 @@
+# Optional extra: native desktop window (`python -m app.desktop`).
+# Not needed for the normal browser/server run. pywebview uses the OS's built-in
+# web view (Cocoa/WebKit on macOS, WebView2/Edge on Windows, GTK/Qt on Linux).
+pywebview>=5.0

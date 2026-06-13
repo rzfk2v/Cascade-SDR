@@ -61,7 +61,8 @@ Radio supports **WFM** (broadcast), **NFM** (narrow — ham/marine/PMR voice),
 **AM** (carrier-normalised), **USB/LSB** (SSB, with AGC), and **CW** (Morse —
 plays the tone and **decodes it to text** in an overlay; best on clean signals,
 self-calibrates after a character or so). Switching demod sets a sensible default
-bandwidth you can then fine-tune.
+bandwidth you can then fine-tune. For WFM, an **FM de-emphasis** selector picks
+50 µs (Europe) or 75 µs (Americas/Korea).
 
 ### Recording
 - **Audio**: the *Record audio* button (Radio controls) captures what you're
@@ -75,8 +76,9 @@ bandwidth you can then fine-tune.
   frequency range (FM broadcast, Airband, Marine VHF, 2 m/70 cm ham, TETRA, DAB,
   ADS-B, …) so you know what kind of traffic to expect (EU/Sweden band plan).
 - **Display** panel: **Auto contrast** (or manual floor/ceiling dB) for the
-  waterfall, and **Peak hold** on the spectrum scope — peaks linger then fade over
-  ~1–2 s so brief/bursty signals flash and are easy to spot.
+  waterfall, **Peak hold** on the spectrum scope — peaks linger then fade over
+  ~1–2 s so brief/bursty signals flash and are easy to spot — and **Averaging**
+  (2–16×) to smooth the scope's noise floor so weak, steady carriers stand out.
 - **Bookmarks**: save the current frequency (+ demod) with a name; click to recall,
   × to delete.
 - **Settings persist** across reloads (gain, PPM, bias-T, demod, volume, squelch,
@@ -139,9 +141,8 @@ cp AIS-catcher /opt/homebrew/bin/AIS-catcher
 > Privacy: AIS-catcher shares received data to aiscatcher.org **by default**. We
 > launch it with `-X off` so nothing leaves your machine.
 
-> FM **de-emphasis** defaults to 50 µs (Europe). In North America/Korea use 75 µs
-> — change `tau_us` in [backend/app/modes/radio.py](backend/app/modes/radio.py)
-> (`DeEmphasis(...)`). A UI toggle can be added later.
+> FM **de-emphasis** defaults to 50 µs (Europe); switch it to 75 µs
+> (Americas/Korea) in the Radio panel when listening to WFM broadcast.
 
 > A single RTL-SDR has one tuner, so **one mode runs at a time** — you pick what
 > the dongle is doing. Add a second dongle later for concurrent modes.
@@ -225,11 +226,75 @@ cd ../backend && ./.venv/bin/uvicorn app.main:app --port 8000
 > behaves oddly, do a **hard reload** — Vite's HMR can keep a stale module.
 > The single-process build above sidesteps this entirely.
 
+## Run (native desktop app)
+
+Prefer a real app window over a browser tab? After building the frontend, launch
+Cascade SDR in a native OS window via [`pywebview`](https://pywebview.flowrl.com)
+(uses the system web view — Cocoa/WebKit on macOS, WebView2 on Windows):
+
+```bash
+cd frontend && npm run build                       # build the UI once
+cd ../backend && ./.venv/bin/pip install -r requirements-desktop.txt
+./.venv/bin/python -m app.desktop                  # opens the app window
+```
+
+It starts the backend on `127.0.0.1:8000` in the background and points the window
+at it; closing the window shuts everything down. `pywebview` is an **optional**
+extra — the browser/server runs above don't need it.
+
 ## Windows
 
-Same backend + browser. Differences: install the RTL-SDR WinUSB driver with
-**Zadig**, and use Windows builds of `dump1090` / `AIS-catcher`. No code changes
-expected. (A detailed Windows section will be added alongside M4/M5.)
+The backend and frontend are the same on Windows; only the install differs.
+
+1. **Python & Node** — install [Python 3.12](https://www.python.org/downloads/)
+   (tick *Add python.exe to PATH*) and [Node LTS](https://nodejs.org).
+2. **RTL-SDR driver** — Windows has no default libusb driver for the dongle. Run
+   [**Zadig**](https://zadig.akeo.ie), choose *Options → List All Devices*, select
+   **Bulk-In, Interface (Interface 0)** (the RTL2832U), and install the **WinUSB**
+   driver. (If you ever want the dongle back as a TV tuner, uninstall it in Device
+   Manager.)
+3. **librtlsdr** — grab a Windows build (e.g. from the
+   [osmocom/rtl-sdr](https://ftp.osmocom.org/binaries/windows/rtl-sdr/) binaries
+   or via [vcpkg](https://vcpkg.io)) and put its DLLs on your `PATH`. Verify with
+   `rtl_test.exe` (should list your R820T tuner).
+4. **Set up the app** (PowerShell):
+
+   ```powershell
+   # Backend
+   cd backend
+   py -3.12 -m venv .venv
+   .\.venv\Scripts\pip install -r requirements.txt
+
+   # Frontend
+   cd ..\frontend
+   npm install
+   ```
+
+5. **Run** it the same way as above, with Windows paths:
+
+   ```powershell
+   # dev: two terminals
+   cd backend; .\.venv\Scripts\uvicorn app.main:app --reload --port 8000
+   cd frontend; npm run dev            # open http://localhost:5173
+
+   # or single-process
+   cd frontend; npm run build
+   cd ..\backend; .\.venv\Scripts\uvicorn app.main:app --port 8000   # http://localhost:8000
+
+   # or native window
+   .\.venv\Scripts\pip install -r requirements-desktop.txt
+   .\.venv\Scripts\python -m app.desktop
+   ```
+
+**External decoders** (optional): use Windows builds of
+[`dump1090`](https://github.com/flightaware/dump1090) (ADS-B),
+[`AIS-catcher`](https://github.com/jvde-github/AIS-catcher/releases) (AIS, ships a
+Windows binary), and [`welle.io`](https://www.welle.io/downloads) (DAB — `welle-cli`).
+Put them on your `PATH` so Cascade SDR can launch them. No code changes are needed;
+the same `-X off` / JSON handling applies.
+
+> Only one program can own the dongle at a time — close other SDR apps (SDR#,
+> SDRangel, etc.) before running Cascade SDR.
 
 ## License
 

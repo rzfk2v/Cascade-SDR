@@ -72,6 +72,7 @@ class RadioMode(Mode):
         self.bandwidth = float(DEMODS["wfm"]["bw"])
         self.volume = 0.7
         self.squelch_db = -80.0      # channel-power gate; -80 = effectively open
+        self.deemph_us = 50.0        # FM de-emphasis: 50 µs (EU) / 75 µs (Americas)
         self._need_rebuild = True
         self._user_tuned = False     # has the client picked a channel yet?
         self._last_level_emit = 0.0
@@ -109,6 +110,12 @@ class RadioMode(Mode):
             self.volume = float(np.clip(params["volume"], 0.0, 2.0))
         if "squelch" in params and params["squelch"] is not None:
             self.squelch_db = float(params["squelch"])
+        if "deemph" in params and params["deemph"] is not None:
+            # accept 50 / 75 (µs); 0/None means leave unchanged
+            tau = float(params["deemph"])
+            if tau in (50.0, 75.0) and tau != self.deemph_us:
+                self.deemph_us = tau
+                self._need_rebuild = True
         self._announce_radio()
 
     def _radio_config_msg(self) -> dict:
@@ -119,6 +126,7 @@ class RadioMode(Mode):
             "bandwidth": self.bandwidth,
             "volume": self.volume,
             "squelch": self.squelch_db,
+            "deemph": self.deemph_us,
             "audio_rate": AUDIO_RATE,
         }
 
@@ -166,7 +174,7 @@ class RadioMode(Mode):
             self._fm_dev = float(cfg["dev"])
             self._audio_decim = RealDecimator(if_rate, audio_decim, cfg["audio"])
             if cfg.get("deemph"):
-                self._deemph = DeEmphasis(self._audio_decim.out_rate, tau_us=50.0)
+                self._deemph = DeEmphasis(self._audio_decim.out_rate, tau_us=self.deemph_us)
         elif self.demod == "am":
             self._audio_decim = RealDecimator(if_rate, audio_decim, cfg["audio"])
         else:  # usb / lsb / cw  (SSB-style audio)

@@ -9,6 +9,9 @@ export class SpectrumScope {
   private floor = -90;
   private ceil = -10;
   private last: Float32Array | null = null;
+  private disp: Float32Array | null = null; // what we draw (raw, or averaged)
+  private avg: Float32Array | null = null;
+  private avgN = 1; // 1 = averaging off; N = exponential mean over ~N rows
   private peak: Float32Array | null = null;
   private peakHold = false;
   private peakDecayDbPerSec = 24; // peaks linger then fade over ~1-2 s
@@ -30,6 +33,8 @@ export class SpectrumScope {
 
   clear(): void {
     this.last = null;
+    this.disp = null;
+    this.avg = null;
     this.peak = null;
     this.ctx.clearRect(0, 0, this.w, this.h);
   }
@@ -38,6 +43,11 @@ export class SpectrumScope {
     this.peakHold = on;
     this.peak = null; // reset accumulation
     this.lastPeakTime = 0;
+  }
+
+  setAveraging(n: number): void {
+    this.avgN = n >= 1 ? n : 1;
+    this.avg = null; // restart the running mean
   }
 
   pushRow(row: Float32Array): void {
@@ -57,7 +67,20 @@ export class SpectrumScope {
         }
       }
     }
-    this.autoRange(row);
+    // spectrum averaging: exponential running mean over ~avgN rows, smooths
+    // the noise floor so weak/steady carriers stand out (peaks still tracked raw)
+    if (this.avgN > 1) {
+      const a = 1 / this.avgN;
+      if (!this.avg || this.avg.length !== row.length) {
+        this.avg = row.slice();
+      } else {
+        for (let i = 0; i < row.length; i++) this.avg[i] += a * (row[i] - this.avg[i]);
+      }
+      this.disp = this.avg;
+    } else {
+      this.disp = row;
+    }
+    this.autoRange(this.disp);
     this.draw();
   }
 
@@ -116,14 +139,15 @@ export class SpectrumScope {
       ctx.stroke();
     }
 
-    if (!this.last) return;
+    const trace = this.disp ?? this.last;
+    if (!trace) return;
 
     // trace
-    const n = this.last.length;
+    const n = trace.length;
     ctx.beginPath();
     for (let x = 0; x < this.w; x++) {
       const bin = Math.min(n - 1, ((x * n) / this.w) | 0);
-      const y = this.yOf(this.last[bin]);
+      const y = this.yOf(trace[bin]);
       if (x === 0) ctx.moveTo(x, y);
       else ctx.lineTo(x, y);
     }

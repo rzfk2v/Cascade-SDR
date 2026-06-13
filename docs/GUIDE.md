@@ -48,11 +48,13 @@ The core view: a live FFT. The **scope** shows the instantaneous spectrum; the
 - **Drag** across a chunk → zooms the captured band into that span; **Zoom out**
   (top-right) widens ×2.
 - **Display panel**: **Auto contrast** (or set the floor/ceiling dB by hand to pull
-  weak signals out of the noise) and **Peak hold** (peaks linger ~1–2 s then fade —
-  great for catching brief bursts).
+  weak signals out of the noise), **Peak hold** (peaks linger ~1–2 s then fade —
+  great for catching brief bursts), and **Averaging** (2–16×) which smooths the
+  scope trace so a weak, steady carrier stops dancing in the noise and stands out.
 
 **Try:** tune Center to **100 MHz** and watch FM stations as bright wide blobs.
-Turn on Peak hold and watch bursts flash.
+Turn on Peak hold and watch bursts flash. For a faint constant tone, switch
+Averaging to 8× and watch it firm up out of the grass.
 
 ---
 
@@ -85,6 +87,8 @@ Click a signal (in Waterfall/Scan) or tune the dongle, then pick a **Demod**:
 | **CW** | Morse — plays the tone **and decodes it to text** (see below). |
 
 - Switching demod sets a sensible **bandwidth** you can fine-tune.
+- **FM de-emphasis** (WFM): leave at **50 µs** in Europe; switch to **75 µs** for
+  North America/Korea. Wrong setting makes broadcast FM sound dull or harsh.
 - **Volume**, and **Squelch** — raise it until the hiss on an empty channel cuts
   out; the **level meter** shows the channel strength and ▶ (open) / 🔇 (muted).
 - **Record audio** → saves what you hear to a **WAV**.
@@ -163,8 +167,8 @@ static messages arrive (every few minutes).
 
 - **Bookmarks** — save the current frequency (+demod) with a name; click to recall,
   × to delete.
-- Your settings (gain, PPM, demod, volume, squelch, contrast, peak-hold, scan
-  range, location, bookmarks) **persist across reloads**.
+- Your settings (gain, PPM, demod, de-emphasis, volume, squelch, contrast,
+  peak-hold, averaging, scan range, location, bookmarks) **persist across reloads**.
 
 ---
 

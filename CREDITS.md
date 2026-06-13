@@ -15,6 +15,7 @@ It builds on the following open-source projects — thanks to their authors.
 | [Starlette](https://www.starlette.io) | BSD-3-Clause | ASGI framework |
 | [Uvicorn](https://www.uvicorn.org) | BSD-3-Clause | ASGI server |
 | [pyais](https://github.com/M0r13n/pyais) | MIT | AIS NMEA decoding |
+| [pywebview](https://pywebview.flowrl.com) | BSD-3-Clause | optional native desktop window (`app.desktop`) |
 
 ## Web frontend
 

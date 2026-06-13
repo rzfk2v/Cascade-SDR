@@ -55,6 +55,15 @@
           <label>Floor (dB)<input id="wf-floor" type="range" min="-120" max="-20" step="1" value="-90" disabled /></label>
           <label>Ceiling (dB)<input id="wf-ceil" type="range" min="-90" max="10" step="1" value="-20" disabled /></label>
           <label class="check"><input id="peak-hold" type="checkbox" /> Peak hold</label>
+          <label>Averaging
+            <select id="averaging">
+              <option value="1">Off</option>
+              <option value="2">2×</option>
+              <option value="4">4×</option>
+              <option value="8">8×</option>
+              <option value="16">16×</option>
+            </select>
+          </label>
         </section>
 
         <section class="group" id="scan-controls" hidden>
@@ -113,6 +122,12 @@
             </select>
           </label>
           <label>Bandwidth (kHz)<input id="bw" type="number" step="5" value="200" /></label>
+          <label>FM de-emphasis
+            <select id="deemph">
+              <option value="50">50 µs (Europe)</option>
+              <option value="75">75 µs (Americas/Korea)</option>
+            </select>
+          </label>
           <label>Volume<input id="vol" type="range" min="0" max="1.5" step="0.05" value="0.7" /></label>
           <label>Squelch (dB)<input id="sql" type="range" min="-80" max="5" step="1" value="-80" /></label>
           <p id="level-meter" class="level-meter"></p>

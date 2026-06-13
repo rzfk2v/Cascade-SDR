@@ -90,6 +90,7 @@ let gainSteps: number[] = [];
 let desiredGainDb = 0; // last manual gain (dB), used before the step list arrives
 const radioControls = document.getElementById("radio-controls")!;
 const demodSel = document.getElementById("demod") as HTMLSelectElement;
+const deemphSel = document.getElementById("deemph") as HTMLSelectElement;
 const bwInput = document.getElementById("bw") as HTMLInputElement;
 const volInput = document.getElementById("vol") as HTMLInputElement;
 const sqlInput = document.getElementById("sql") as HTMLInputElement;
@@ -106,6 +107,7 @@ const wfAuto = document.getElementById("wf-auto") as HTMLInputElement;
 const wfFloor = document.getElementById("wf-floor") as HTMLInputElement;
 const wfCeil = document.getElementById("wf-ceil") as HTMLInputElement;
 const peakHold = document.getElementById("peak-hold") as HTMLInputElement;
+const averaging = document.getElementById("averaging") as HTMLSelectElement;
 const bmName = document.getElementById("bm-name") as HTMLInputElement;
 const bmList = document.getElementById("bm-list")!;
 const bandInfo = document.getElementById("band-info")!;
@@ -186,6 +188,7 @@ sock.onJson((msg) => {
       tuner.setTuned(msg.tuned_freq);
       tuner.setBandwidth(msg.bandwidth);
       demodSel.value = msg.demod;
+      if (msg.deemph) deemphSel.value = String(Math.round(msg.deemph));
       bwInput.value = Math.round(msg.bandwidth / 1000).toString();
       cwText.hidden = msg.demod !== "cw";
       if (msg.demod !== "cw") cwOut.textContent = "";
@@ -410,6 +413,7 @@ function sendRadioPrefs(): void {
       demod: demodSel.value,
       volume: parseFloat(volInput.value),
       squelch: parseFloat(sqlInput.value),
+      deemph: parseFloat(deemphSel.value),
     },
   });
 }
@@ -457,6 +461,9 @@ tuner.onSelect = (loHz, hiHz) => {
 // --- radio controls ------------------------------------------------------
 demodSel.addEventListener("change", () =>
   sock.send({ cmd: "config", params: { demod: demodSel.value } }),
+);
+deemphSel.addEventListener("change", () =>
+  sock.send({ cmd: "config", params: { deemph: parseFloat(deemphSel.value) } }),
 );
 bwInput.addEventListener("change", () =>
   sock.send({ cmd: "config", params: { bandwidth: parseFloat(bwInput.value) * 1000 } }),
@@ -525,6 +532,9 @@ wfAuto.addEventListener("change", applyContrast);
 wfFloor.addEventListener("input", applyContrast);
 wfCeil.addEventListener("input", applyContrast);
 peakHold.addEventListener("change", () => scope.setPeakHold(peakHold.checked));
+averaging.addEventListener("change", () =>
+  scope.setAveraging(parseInt(averaging.value, 10) || 1),
+);
 
 // zoom out (×2) — widens the scan range or the captured band
 zoomOutBtn.addEventListener("click", () => {
@@ -582,7 +592,7 @@ biasTee.addEventListener("change", () =>
 // --- settings persistence (localStorage) ---------------------------------
 const persistValues: Record<string, HTMLInputElement | HTMLSelectElement> = {
   ppm: ppmInput, demod: demodSel, vol: volInput, sql: sqlInput,
-  scanStart, scanStop, wfFloor, wfCeil, rxLoc,
+  scanStart, scanStop, wfFloor, wfCeil, rxLoc, deemph: deemphSel, averaging,
 };
 const persistChecks: Record<string, HTMLInputElement> = {
   gainAuto, biasTee, wfAuto, peakHold,
@@ -604,6 +614,7 @@ function restoreSettings(): void {
   if (typeof s.gainDb === "number") desiredGainDb = s.gainDb;
   applyContrast();
   scope.setPeakHold(peakHold.checked);
+  scope.setAveraging(parseInt(averaging.value, 10) || 1);
   gainSlider.disabled = gainAuto.checked;
   gainVal.textContent = gainAuto.checked ? "auto" : `${desiredGainDb} dB`;
 }
