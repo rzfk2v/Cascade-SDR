@@ -1,7 +1,26 @@
 // Lightweight localStorage persistence for UI settings and frequency bookmarks.
 
-const SETTINGS_KEY = "sdr-ultra-settings";
-const BOOKMARKS_KEY = "sdr-ultra-bookmarks";
+const SETTINGS_KEY = "cascade-sdr-settings";
+const BOOKMARKS_KEY = "cascade-sdr-bookmarks";
+
+// One-time migration from the old "SDR-Ultra" keys so saved settings/bookmarks
+// survive the rename.
+(function migrate() {
+  try {
+    for (const [oldKey, newKey] of [
+      ["sdr-ultra-settings", SETTINGS_KEY],
+      ["sdr-ultra-bookmarks", BOOKMARKS_KEY],
+    ]) {
+      const old = localStorage.getItem(oldKey);
+      if (old !== null && localStorage.getItem(newKey) === null) {
+        localStorage.setItem(newKey, old);
+        localStorage.removeItem(oldKey);
+      }
+    }
+  } catch {
+    /* storage disabled — ignore */
+  }
+})();
 
 export type Settings = Record<string, string | number | boolean>;
 

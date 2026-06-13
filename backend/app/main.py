@@ -1,4 +1,4 @@
-"""SDR-Ultra backend entry point.
+"""Cascade SDR backend entry point.
 
 Serves:
   * ``/ws``        — WebSocket: JSON commands in, JSON status + binary streams out.
@@ -42,7 +42,7 @@ MODE_REGISTRY: dict[str, type[Mode]] = {
     DabMode.name: DabMode,
 }
 
-app = FastAPI(title="SDR-Ultra")
+app = FastAPI(title="Cascade SDR")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # local dev: Vite dev server on a different port

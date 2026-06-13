@@ -60,7 +60,7 @@ class AdsbMode(Mode):
             })
             return
 
-        self._jsondir = tempfile.mkdtemp(prefix="sdrultra-adsb-")
+        self._jsondir = tempfile.mkdtemp(prefix="cascade-adsb-")
         self._proc = await asyncio.create_subprocess_exec(
             *self._cmd(),
             stdout=asyncio.subprocess.DEVNULL,

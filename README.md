@@ -1,10 +1,11 @@
-# SDR-Ultra
+# Cascade SDR
 
-Your own cross-platform RTL-SDR application. A small **Python backend** owns the
-dongle and does the signal processing; a **web frontend** (opened in a browser)
-shows the UI, waterfall, audio and maps. The two talk over a WebSocket.
+A cross-platform RTL-SDR application. A small **Python backend** owns the dongle
+and does the signal processing; a **web frontend** (opened in a browser) shows the
+UI, waterfall, audio and maps. The two talk over a WebSocket.
 
-Built to grow feature-by-feature. Status:
+📖 **New here? See the [User Guide](docs/GUIDE.md)** — how to use every mode, plus
+things to try. Status:
 
 | Mode | What it does | Status |
 |------|--------------|--------|
