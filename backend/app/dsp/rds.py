@@ -193,6 +193,8 @@ class RdsDemod:
         self._prev_enc = 0
         self._sym_buf_i = np.zeros(0)
         self._sym_buf_q = np.zeros(0)
+        self._locked = False       # symbol timing + I/Q branch locked once
+        self._branch = 0           # 0 = I, 1 = Q (resolves the 90° ambiguity)
 
     def process(self, mpx: np.ndarray) -> None:
         if mpx.size == 0:
@@ -217,38 +219,68 @@ class RdsDemod:
         return up // g, down // g
 
     def _symbolize(self, si: np.ndarray, sq: np.ndarray) -> None:
+        """Recover symbols continuously across blocks.
+
+        The earlier version re-searched the best sample phase on *every* block and
+        threw away the leading samples each time — that dropped a partial symbol at
+        every block boundary, slipping bits and wrecking sync on a live stream. Now
+        the phase + I/Q branch are locked *once*; thereafter we keep one symbol of
+        guard history and only nudge the phase by ±1 sample per block to track the
+        dongle's clock drift, preserving continuity.
+        """
         bi = np.concatenate([self._sym_buf_i, si])
         bq = np.concatenate([self._sym_buf_q, sq])
         sps, half = self._sps, self._sps // 2
-        if bi.size < sps * 4:
+
+        if not self._locked:
+            if bi.size < sps * 8:            # gather enough for a solid estimate
+                self._sym_buf_i, self._sym_buf_q = bi, bq
+                return
+            start, self._branch = self._search(bi, bq, sps, half)
+            self._locked = True
+        else:
+            if bi.size < sps * 3:
+                self._sym_buf_i, self._sym_buf_q = bi, bq
+                return
+            # nominal start is past the 1-symbol guard; track drift by ±1 sample
+            d = bi if self._branch == 0 else bq
+            start = max((sps - 1, sps, sps + 1), key=lambda s: self._energy(d, s, sps, half))
+
+        d = bi if self._branch == 0 else bq
+        n = (d.size - start) // sps
+        if n <= 0:
             self._sym_buf_i, self._sym_buf_q = bi, bq
             return
-        # Symbol-timing recovery: try every sample phase (0..sps-1) and keep the
-        # one with the strongest biphase response; also resolve the I/Q (90°)
-        # ambiguity by picking whichever branch carries the energy.
-        best_score, best_off, best_diff = -1.0, 0, None
-        for off in range(sps):
-            n = (bi.size - off) // sps
-            if n < 2:
-                continue
-            di = _biphase(bi[off:off + n * sps], sps, half)
-            dq = _biphase(bq[off:off + n * sps], sps, half)
-            ei, eq = float(np.abs(di).mean()), float(np.abs(dq).mean())
-            score = max(ei, eq)
-            if score > best_score:
-                best_score, best_off = score, off
-                best_diff = di if ei >= eq else dq
-        if best_diff is None:
-            return
-        enc = (best_diff > 0).astype(np.int8)
+        diff = _biphase(d[start:start + n * sps], sps, half)
+        enc = (diff > 0).astype(np.int8)
         # differential decode: data = enc XOR previous enc
         prev = np.empty_like(enc)
         prev[0] = self._prev_enc
         prev[1:] = enc[:-1]
         self._prev_enc = int(enc[-1])
         self._decoder.feed_bits(enc ^ prev)
-        consumed = best_off + best_diff.size * sps
-        self._sym_buf_i, self._sym_buf_q = bi[consumed:], bq[consumed:]
+        # retain one symbol of history as the guard for the next block's tracking
+        keep = max(0, start + n * sps - sps)
+        self._sym_buf_i, self._sym_buf_q = bi[keep:], bq[keep:]
+
+    @staticmethod
+    def _energy(d: np.ndarray, start: int, sps: int, half: int) -> float:
+        n = (d.size - start) // sps
+        if n < 2:
+            return -1.0
+        return float(np.abs(_biphase(d[start:start + n * sps], sps, half)).mean())
+
+    def _search(self, bi, bq, sps, half) -> tuple[int, int]:
+        """One-time lock: best sample phase (0..sps-1) and I/Q branch."""
+        best = (-1.0, 0, 0)
+        for off in range(sps):
+            ei = self._energy(bi, off, sps, half)
+            eq = self._energy(bq, off, sps, half)
+            if ei > best[0]:
+                best = (ei, off, 0)
+            if eq > best[0]:
+                best = (eq, off, 1)
+        return best[1], best[2]
 
 
 def _biphase(sig: np.ndarray, sps: int, half: int) -> np.ndarray:

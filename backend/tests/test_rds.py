@@ -55,45 +55,72 @@ def test_group_decoder():
     print("✓ group decoder: PI=2345 PS=TESTROCK PTY=10")
 
 
-def test_full_dsp():
-    pi, ps = 0x1A2B, "RADIO 99"
+def _synth_mpx(pi, ps, repeats=8):
     groups = _ps_groups(pi, ps)
     flat = [blk for g in groups for blk in g]
-    data = _blocks_to_bits(flat * 8)        # ~2 s of RDS
-
-    # differential encode the whole stream (enc[i] = data[i] ^ enc[i-1])
-    enc = np.empty_like(data)
+    data = _blocks_to_bits(flat * repeats)
+    enc = np.empty_like(data)                  # differential encode
     prev = 0
     for i, d in enumerate(data):
         prev = d ^ prev
         enc[i] = prev
-
-    # biphase symbols at 19 kHz: 1 -> [+ -], 0 -> [- +]
-    half = SPS // 2
+    half = SPS // 2                            # biphase: 1->[+ -], 0->[- +]
     sym = np.where(enc[:, None] == 1,
                    np.r_[np.ones(half), -np.ones(half)],
                    np.r_[-np.ones(half), np.ones(half)]).reshape(-1)
-
-    # upsample 19 kHz -> 240 kHz
     from scipy.signal import resample_poly
-    base = resample_poly(sym, 240, 19)
-
+    base = resample_poly(sym, 240, 19)         # 19 kHz -> 240 kHz
     t = np.arange(base.size) / FS
-    pilot = np.cos(2 * np.pi * 19_000 * t)              # 19 kHz pilot (cosine)
-    carrier = np.cos(2 * np.pi * 57_000 * t)            # 57 kHz = 3× pilot
+    pilot = np.cos(2 * np.pi * 19_000 * t)
+    carrier = np.cos(2 * np.pi * 57_000 * t)
     mpx = 0.1 * pilot + 0.5 * base * carrier
-    mpx += 0.02 * np.random.randn(mpx.size)             # a little noise
-    mpx = np.r_[np.random.randn(7) * 0.02, mpx]          # arbitrary timing offset
+    mpx += 0.02 * np.random.randn(mpx.size)
+    return np.r_[np.random.randn(7) * 0.02, mpx]   # + arbitrary timing offset
 
+
+def test_full_dsp():
+    mpx = _synth_mpx(0x1A2B, "RADIO 99")
     demod = RdsDemod(FS)
-    demod.process(mpx)
+    demod.process(mpx)                              # single call
     snap = demod._decoder.snapshot()
     assert snap["pi"] == "1A2B", snap
     assert snap["ps"] == "RADIO 99", snap
-    print(f"✓ full DSP: recovered PI={snap['pi']} PS='{snap['ps']}' from synthetic MPX")
+    print(f"✓ full DSP (1 call): PI={snap['pi']} PS='{snap['ps']}'")
+
+
+def test_full_dsp_multiblock():
+    """Feed the SAME signal in many small blocks — the live-stream path that the
+    single-call test missed (per-block re-search used to slip bits here)."""
+    mpx = _synth_mpx(0x5C3D, "STREAMOK", repeats=14)
+    demod = RdsDemod(FS)
+    block = 2048
+    for i in range(0, mpx.size, block):
+        demod.process(mpx[i:i + block])
+    snap = demod._decoder.snapshot()
+    assert snap["pi"] == "5C3D", snap
+    assert snap["ps"] == "STREAMOK", snap
+    print(f"✓ full DSP ({mpx.size // block} blocks of {block}): PI={snap['pi']} PS='{snap['ps']}'")
+
+
+def test_full_dsp_drift():
+    """Multi-block with a ~60 ppm sample-clock error (like a real dongle) — the
+    ±1 symbol-timing tracking must follow the drift without losing sync."""
+    from scipy.signal import resample_poly
+    mpx = _synth_mpx(0x77E1, "DRIFTACQ", repeats=22)
+    mpx = resample_poly(mpx, 1_000_000, 1_000_060)   # stretch time base ~60 ppm
+    demod = RdsDemod(FS)
+    block = 4096
+    for i in range(0, mpx.size, block):
+        demod.process(mpx[i:i + block])
+    snap = demod._decoder.snapshot()
+    assert snap["pi"] == "77E1", snap
+    assert snap["ps"] == "DRIFTACQ", snap
+    print(f"✓ full DSP (~60 ppm drift, multi-block): PI={snap['pi']} PS='{snap['ps']}'")
 
 
 if __name__ == "__main__":
     test_group_decoder()
     test_full_dsp()
+    test_full_dsp_multiblock()
+    test_full_dsp_drift()
     print("all RDS tests passed")
