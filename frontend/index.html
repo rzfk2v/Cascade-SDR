@@ -29,6 +29,7 @@
           <button data-mode="adsb">ADS&#8209;B</button>
           <button data-mode="ais">AIS</button>
           <button data-mode="aprs">APRS</button>
+          <button data-mode="acars">ACARS</button>
         </nav>
 
         <section class="group">
@@ -120,6 +121,15 @@
             digipeaters; beacons are infrequent, so give it time.</p>
         </section>
 
+        <section class="group" id="acars-controls" hidden>
+          <h2>ACARS</h2>
+          <p id="acars-status" class="status-line">starting…</p>
+          <p id="acars-count" class="level-meter"></p>
+          <p class="hint">~131 MHz aircraft data (EU: 131.725/131.525/131.825).
+            Needs <b>acarsdec</b> built from source (see README). Messages are
+            short and infrequent — leave it running near an airport.</p>
+        </section>
+
         <section class="group" id="replay-controls" hidden>
           <h2>Replay</h2>
           <p id="replay-status" class="status-line">pick a recording…</p>
@@ -199,6 +209,10 @@
           </div>
           <div id="dab-stations" class="dab-stations"></div>
           <audio id="dab-audio" hidden></audio>
+        </div>
+        <div id="acars-view" class="acars-view" hidden>
+          <div class="acars-head"><span>ACARS</span> <span id="acars-feedcount" class="muted"></span></div>
+          <div id="acars-log" class="acars-log"></div>
         </div>
         <div id="aircraft-panel" class="aircraft-panel" hidden>
           <div class="ap-head"><span id="ap-title">Aircraft</span> <span id="ap-count" class="muted"></span></div>

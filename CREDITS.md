@@ -34,6 +34,7 @@ It builds on the following open-source projects — thanks to their authors.
 | [dump1090-fa](https://github.com/flightaware/dump1090) | GPL-2.0 | ADS-B |
 | [AIS-catcher](https://github.com/jvde-github/AIS-catcher) | GPL-3.0 | AIS |
 | [direwolf](https://github.com/wb2osz/direwolf) | GPL-2.0+ | APRS (AX.25 soundcard TNC) |
+| [acarsdec](https://github.com/TLeconte/acarsdec) | GPL-2.0 | ACARS (VHF aircraft data) |
 | [rtl_fm](https://github.com/osmocom/rtl-sdr) (rtl-sdr) | GPL-2.0 | FM audio feed for APRS |
 | [welle.io](https://github.com/AlbrechtL/welle.io) (`welle-cli`) | GPL-2.0 | DAB |
 

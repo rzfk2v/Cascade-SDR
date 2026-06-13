@@ -20,7 +20,7 @@ and install, see the [README](../README.md).
   (below) with a **frequency axis**; in ADS-B/AIS it becomes a **map**, in DAB a
   **station list**.
 - **Top of sidebar** — connection dot (green = backend connected) and the mode
-  tabs: **Idle · Spectrum · Scan · Replay · DAB · ADS-B · AIS · APRS**.
+  tabs: **Idle · Spectrum · Scan · Replay · DAB · ADS-B · AIS · APRS · ACARS**.
 - **Band label** — under the device status, names the service on the current
   frequency (e.g. “FM broadcast”, “Marine VHF”) so you know what you're looking at.
 
@@ -211,6 +211,22 @@ Plots amateur **APRS** stations heard on **144.800 MHz** (EU). Needs
 
 **Try:** leave it on for a while near any town; mobile stations (cars/handhelds)
 and weather stations should trickle in.
+
+---
+
+## ACARS (aircraft data feed)
+
+Shows **ACARS** messages — short text/data from aircraft on ~131 MHz AM. Needs
+[`acarsdec`](https://github.com/TLeconte/acarsdec) built from source (see README).
+
+- Switch to **ACARS**; decoded messages stream into a **log** (newest on top),
+  each with time, **flight / registration**, label, frequency, and the message text.
+- No map — ACARS doesn't carry position; it's a live feed.
+- Watches **131.725 / 131.525 / 131.825 MHz** (EU) at once. North America centres
+  on **131.550** — see the README to change channels.
+
+**Try:** near an airport, leave it running; you'll catch weather requests, position
+reports, and ops messages as aircraft pass.
 
 ---
 

@@ -18,6 +18,7 @@ things to try. Status:
 | **ADS-B** | Aircraft on a Leaflet map (via `dump1090`) | ✅ working* |
 | **AIS** | Ships on a Leaflet map (via `AIS-catcher`) | ✅ working** |
 | **APRS** | Packet-radio stations on the map (via `rtl_fm` → `direwolf`) | ✅ working‡ |
+| **ACARS** | Aircraft VHF data messages as a live feed (via `acarsdec`) | ✅ working§ |
 
 \* Needs `dump1090` installed (`brew install dump1090-mutability`) **and a decent
 1090 MHz antenna** — the stock whip barely hears ADS-B. The pipeline runs and
@@ -183,6 +184,32 @@ brew install direwolf      # rtl_fm comes with the rtl-sdr package
 > APRS in North America is **144.390 MHz** — change the Center frequency (the mode
 > defaults to the EU 144.800). One RTL-SDR can't do APRS and listen to FM at the
 > same time; APRS is its own mode.
+
+### ACARS (aircraft data feed) (§)
+Select **ACARS**: the backend spawns [`acarsdec`](https://github.com/TLeconte/acarsdec)
+(watching the common EU channels 131.725 / 131.525 / 131.825 MHz at once), which
+emits one JSON message per decode over UDP; we parse them, de-duplicate, and show
+a live **message log** (time · flight/registration · label · text). ACARS carries
+no position, so it's a feed rather than a map. Messages are short and infrequent —
+best near an airport with a decent airband antenna.
+
+`acarsdec` isn't in Homebrew; build it (and its `libacars` dependency) once:
+
+```bash
+brew install cmake libusb librtlsdr
+# libacars (decodes the message contents)
+git clone https://github.com/szpajder/libacars ~/.local/src/libacars
+cd ~/.local/src/libacars && mkdir build && cd build && cmake .. && make -j4 && sudo make install
+# acarsdec
+git clone https://github.com/TLeconte/acarsdec ~/.local/src/acarsdec
+cd ~/.local/src/acarsdec && mkdir build && cd build && cmake .. -Drtl=ON && make -j4
+cp acarsdec /opt/homebrew/bin/acarsdec
+```
+
+> North America centres on **131.550 MHz** (plus 130.025/131.725). Edit `CHANNELS`
+> in [backend/app/modes/acars.py](backend/app/modes/acars.py) for your region; all
+> channels must fit inside one ~2.4 MHz capture. The mode passes `-j host:port`
+> (JSON over UDP) to acarsdec — if your build differs, adjust the flags there.
 
 > FM **de-emphasis** defaults to 50 µs (Europe); switch it to 75 µs
 > (Americas/Korea) in the Radio panel when listening to WFM broadcast.

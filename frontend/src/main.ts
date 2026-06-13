@@ -55,6 +55,12 @@ const aisCount = document.getElementById("ais-count")!;
 const aprsControls = document.getElementById("aprs-controls")!;
 const aprsStatus = document.getElementById("aprs-status")!;
 const aprsCount = document.getElementById("aprs-count")!;
+const acarsControls = document.getElementById("acars-controls")!;
+const acarsStatus = document.getElementById("acars-status")!;
+const acarsCount = document.getElementById("acars-count")!;
+const acarsView = document.getElementById("acars-view")!;
+const acarsLog = document.getElementById("acars-log")!;
+const acarsFeedCount = document.getElementById("acars-feedcount")!;
 const dabControls = document.getElementById("dab-controls")!;
 const dabChannel = document.getElementById("dab-channel") as HTMLSelectElement;
 const dabStatus = document.getElementById("dab-status")!;
@@ -143,6 +149,8 @@ function updateBandInfo(): void {
     label = "Marine AIS · 162 MHz";
   } else if (currentMode === "aprs") {
     label = "APRS · 144.800 MHz (packet)";
+  } else if (currentMode === "acars") {
+    label = "ACARS · ~131 MHz (aircraft data)";
   } else if (currentMode === "radio" || currentMode === "replay") {
     const b = bandAt(viewTuned / 1e6);
     label = b ? `Band: ${b}` : "";
@@ -208,6 +216,7 @@ sock.onJson((msg) => {
       adsbControls.hidden = msg.mode !== "adsb";
       aisControls.hidden = msg.mode !== "ais";
       aprsControls.hidden = msg.mode !== "aprs";
+      acarsControls.hidden = msg.mode !== "acars";
       dabControls.hidden = msg.mode !== "dab";
       zoomOutBtn.hidden = !["scan", "spectrum", "radio", "replay"].includes(msg.mode);
       displayControls.hidden = !["spectrum", "scan", "radio", "replay"].includes(msg.mode);
@@ -286,6 +295,13 @@ sock.onJson((msg) => {
       aprsCount.textContent = `${msg.positioned} shown · ${msg.count} tracked`;
       renderStationList(msg.stations);
       break;
+    case "acars_status":
+      acarsStatus.textContent = msg.message;
+      break;
+    case "acars":
+      renderAcars(msg.messages);
+      acarsCount.textContent = `${msg.count} messages`;
+      break;
     case "dab_status":
       dabStatus.textContent = msg.message;
       break;
@@ -360,11 +376,13 @@ function syncGain(s: any): void {
 function showView(mode: string): void {
   const isMap = mode === "adsb" || mode === "ais" || mode === "aprs";
   const isDab = mode === "dab";
-  const isFft = !isMap && !isDab; // spectrum / scan / radio / idle
+  const isAcars = mode === "acars";
+  const isFft = !isMap && !isDab && !isAcars; // spectrum / scan / radio / idle
   fftView.hidden = !isFft;
   mapDiv.hidden = !isMap;
   aircraftPanel.hidden = !isMap;
   dabView.hidden = !isDab;
+  acarsView.hidden = !isAcars;
   if (isMap) {
     adsbMap.ensure("map");
     apTitle.textContent =
@@ -476,6 +494,31 @@ apBody.addEventListener("click", (e) => {
   else if (tr?.dataset.mmsi) adsbMap.vesselFocus(tr.dataset.mmsi);
   else if (tr?.dataset.call) adsbMap.stationFocus(tr.dataset.call);
 });
+
+function esc(s: string): string {
+  return s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]!));
+}
+
+function renderAcars(messages: any[]): void {
+  acarsFeedCount.textContent = `(${messages.length})`;
+  if (!messages.length) {
+    acarsLog.innerHTML =
+      '<div class="acars-empty">No messages yet. ACARS is sparse — leave it running near an airport.</div>';
+    return;
+  }
+  acarsLog.innerHTML = messages
+    .map((m) => {
+      const time = new Date((m.t || 0) * 1000).toLocaleTimeString();
+      const id = m.flight || m.tail || "—";
+      const tail = m.flight && m.tail ? ` ${m.tail}` : "";
+      const label = m.label ? ` · ${esc(m.label)}` : "";
+      const freq = m.freq != null ? ` · ${m.freq} MHz` : "";
+      const body = m.text ? `<div class="body">${esc(m.text)}</div>` : "";
+      return `<div class="acars-row"><div class="meta"><span class="time">${time}</span> ` +
+        `${esc(id)}${esc(tail)}${label}${freq}</div>${body}</div>`;
+    })
+    .join("");
+}
 
 function highlightMode(mode: string): void {
   document.querySelectorAll("#mode-tabs button").forEach((b) => {

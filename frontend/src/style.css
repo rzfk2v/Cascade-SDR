@@ -239,6 +239,37 @@ body {
 .ac-popup td { padding: 1px 8px 1px 0; font-size: 12px; }
 .ac-popup td:first-child { color: #57606a; }
 
+.acars-view {
+  position: absolute;
+  inset: 0.6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.8rem;
+  overflow: hidden;
+}
+.acars-head { display: flex; align-items: baseline; justify-content: space-between; font-weight: 600; }
+.acars-log {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 0.78rem;
+}
+.acars-row {
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.3rem;
+}
+.acars-row .meta { color: var(--accent); }
+.acars-row .meta .time { color: var(--muted); }
+.acars-row .body { color: var(--text); white-space: pre-wrap; word-break: break-word; margin-top: 0.1rem; }
+.acars-empty { color: var(--muted); font-size: 0.85rem; }
+
 .dab-view {
   position: absolute;
   inset: 0.6rem;
