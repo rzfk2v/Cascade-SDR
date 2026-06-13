@@ -37,6 +37,23 @@ and install, see the [README](../README.md).
 | **Bias-T (5 V)** | Feeds 5 V up the coax to power an inline LNA/antenna. **Only enable if you have a powered device** — don't feed a plain antenna. |
 | **Record IQ** | Records the raw stream to a `.cu8` file (see *Recording*). |
 
+### 📡 Antenna helper (dipole kit)
+Below the band label, a line tells you how to set the **RTL-SDR.com dipole kit**
+for the current frequency — it updates live as you type a Center frequency:
+
+- **Which rods**: *long (large)* set (~70–300 MHz) or *short (small)* set
+  (~450 MHz–1 GHz). This is the "short or long antenna" choice.
+- **Length each**: extend **both** elements equally to the shown cm (≈ a quarter
+  wavelength: `length_cm ≈ 7125 / freq_MHz`, minus the 2 cm hidden in the base).
+- **Orientation**: **vertical** (rods straight up & down) for almost everything —
+  most signals are vertically polarised. For **137 MHz weather satellites** it
+  switches the advice to a horizontal **"V" at ~120°**.
+
+Examples: FM 100 MHz → ~69 cm large; marine/AIS 162 MHz → ~42 cm large;
+ADS-B 1090 MHz → ~5 cm small (collapsed). Equal lengths and a clean vertical
+line matter more than getting the exact cm. The kit can't reach resonance below
+~70 MHz (extend the large rods fully and accept reduced performance).
+
 ---
 
 ## Spectrum (waterfall + listen, in one view)

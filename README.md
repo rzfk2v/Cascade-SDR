@@ -90,6 +90,14 @@ differential → block-syndrome sync → group parsing), no external tool.
   rtl_sdr/gqrx/etc. — listed with download/delete; the filename carries the center
   frequency and sample rate.
 
+### Antenna helper (dipole kit)
+Under the band label, a live hint tells you how to set the **RTL-SDR.com dipole
+antenna kit** for the entered/tuned frequency: whether to use the **long (large)**
+or **short (small)** telescopic elements, the length to extend each to (≈ a
+quarter wave, `length_cm ≈ 7125 / f_MHz` less the 2 cm internal), and the
+**orientation** (vertical for terrestrial signals; a horizontal "V" for 137 MHz
+weather satellites). It updates as you type a Center frequency.
+
 ### Display, bookmarks, persistence
 - **Band label**: under the device status it names the service(s) on the current
   frequency range (FM broadcast, Airband, Marine VHF, 2 m/70 cm ham, TETRA, DAB,

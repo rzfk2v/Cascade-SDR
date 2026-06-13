@@ -15,6 +15,7 @@ import {
   type Bookmark,
 } from "./storage";
 import { bandAt, bandsInSpan } from "./bands";
+import { antennaText } from "./antenna";
 import { WavRecorder, downloadBlob } from "./recorder";
 
 const sock = new SdrSocket();
@@ -129,6 +130,7 @@ const averaging = document.getElementById("averaging") as HTMLSelectElement;
 const bmName = document.getElementById("bm-name") as HTMLInputElement;
 const bmList = document.getElementById("bm-list")!;
 const bandInfo = document.getElementById("band-info")!;
+const antennaInfo = document.getElementById("antenna-info")!;
 let viewCenter = 100e6;
 let viewRate = 2.4e6;
 let viewTuned = 100e6;
@@ -152,6 +154,9 @@ function updateBandInfo(): void {
     label = names.length ? `Band: ${names.slice(0, 4).join(" · ")}` : "";
   }
   bandInfo.textContent = label;
+  const fMHz =
+    (currentMode === "radio" || currentMode === "replay" ? viewTuned : viewCenter) / 1e6;
+  antennaInfo.textContent = antennaText(fMHz);
 }
 
 let currentMode = "idle";
@@ -666,6 +671,11 @@ document.getElementById("apply")!.addEventListener("click", () => {
     center_freq: parseFloat(freqInput.value) * 1e6,
     sample_rate: parseFloat(rateInput.value) * 1e6,
   });
+});
+// live antenna advice as the user types a frequency (before tuning)
+freqInput.addEventListener("input", () => {
+  const f = parseFloat(freqInput.value);
+  if (isFinite(f)) antennaInfo.textContent = antennaText(f);
 });
 
 // --- gain + ppm ----------------------------------------------------------
