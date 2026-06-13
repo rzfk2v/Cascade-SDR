@@ -310,6 +310,68 @@ the same `-X off` / JSON handling applies.
 > Only one program can own the dongle at a time — close other SDR apps (SDR#,
 > SDRangel, etc.) before running Cascade SDR.
 
+## Raspberry Pi / headless Linux (run it as a network appliance)
+
+Because the backend owns the dongle and does the DSP while the frontend is just a
+browser talking over WebSocket, you can run the backend on a **Raspberry Pi** (with
+the dongle plugged into the Pi) and use it from **any browser on your network** —
+laptop, phone, tablet. Audio is decoded on the Pi and **played in your browser**, so
+the Pi needs no sound hardware.
+
+> Use a **Pi 4 or 5 with a 64-bit OS** — the DSP runs at 2.4 MS/s. On a Pi 3, lower
+> the sample rate (e.g. 1.024 MS/s). `numpy`/`scipy` install quickly from piwheels.
+
+```bash
+# 1) dependencies
+sudo apt update
+sudo apt install -y rtl-sdr librtlsdr-dev python3 python3-venv nodejs npm
+rtl_test            # confirm the tuner is seen (Ctrl-C to stop)
+# If rtl_test says the device is "usb_claim_interface error", the kernel DVB-T
+# driver grabbed it. Blacklist it once and reboot:
+#   echo 'blacklist dvb_usb_rtl28xxu' | sudo tee /etc/modprobe.d/blacklist-rtl.conf
+#   sudo reboot
+
+# 2) get the code + set up
+git clone https://github.com/rzfk2v/Cascade-SDR.git ~/Cascade-SDR
+cd ~/Cascade-SDR/backend
+python3 -m venv .venv && ./.venv/bin/pip install -r requirements.txt
+cd ../frontend && npm install && npm run build      # backend serves this
+
+# 3) run, bound to the whole LAN (note --host 0.0.0.0, not just a port)
+cd ../backend && ./.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+
+Then from any device on the same network open **`http://<pi-ip>:8000`** (find the
+Pi's address with `hostname -I`). That's the only change needed for network use —
+`--host 0.0.0.0` makes it reachable; the frontend automatically connects back to
+whatever host served it.
+
+**External decoders** on the Pi (optional): `sudo apt install dump1090-fa` for
+ADS-B; build [`AIS-catcher`](https://github.com/jvde-github/AIS-catcher) and
+[`welle.io`](https://github.com/AlbrechtL/welle.io) from source (both compile on
+the Pi) for AIS / DAB. Put them on `PATH`.
+
+### Auto-start on boot (systemd)
+
+To make it a true appliance — power on the Pi, connect from any browser — install
+the bundled service:
+
+```bash
+# edit the three paths/user marked in the file first, then:
+sudo cp deploy/cascade-sdr.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now cascade-sdr
+systemctl status cascade-sdr        # verify
+journalctl -u cascade-sdr -f        # follow logs
+```
+
+See [deploy/cascade-sdr.service](deploy/cascade-sdr.service). It restarts on crash
+and starts after the network is up.
+
+> **Security:** Cascade SDR has **no authentication**. Keep it on your trusted LAN,
+> or reach it over a VPN / SSH tunnel (`ssh -L 8000:localhost:8000 pi@<pi-ip>`).
+> Do **not** port-forward it to the public internet as-is.
+
 ## License
 
 Cascade SDR is © 2026 Jens Engfors, licensed under **GPL-3.0** (see `LICENSE`).

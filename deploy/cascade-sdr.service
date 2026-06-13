@@ -1,0 +1,36 @@
+# systemd service for running the Cascade SDR backend as an appliance
+# (e.g. on a Raspberry Pi). The backend serves the built frontend, so once this
+# is running you just open http://<host-ip>:8000 from any browser on your LAN.
+#
+# Install:
+#   1. Edit the paths/user below to match your machine (see the three EDIT marks).
+#   2. sudo cp deploy/cascade-sdr.service /etc/systemd/system/
+#   3. sudo systemctl daemon-reload
+#   4. sudo systemctl enable --now cascade-sdr
+#   5. systemctl status cascade-sdr        # check it's running
+#      journalctl -u cascade-sdr -f        # follow its logs
+#
+# Build the frontend once first so the backend has something to serve:
+#   cd frontend && npm run build
+
+[Unit]
+Description=Cascade SDR backend (RTL-SDR receiver)
+After=network-online.target
+Wants=network-online.target
+# Don't hammer the dongle if it keeps failing to start (e.g. unplugged).
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+# EDIT 1: the user that owns the checkout and may access the USB dongle.
+User=pi
+# EDIT 2: absolute path to the backend/ directory of your checkout.
+WorkingDirectory=/home/pi/Cascade-SDR/backend
+# EDIT 3: same path again, in the venv uvicorn below.
+ExecStart=/home/pi/Cascade-SDR/backend/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
