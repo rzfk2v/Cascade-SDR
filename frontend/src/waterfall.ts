@@ -14,6 +14,9 @@ export class Waterfall {
   private floor = -90;
   private ceil = -20;
   private auto = true;
+  // visible fraction of the FFT (display zoom); (0,1) = whole band
+  private viewLo = 0;
+  private viewHi = 1;
 
   constructor(private canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext("2d", { willReadFrequently: true });
@@ -44,9 +47,11 @@ export class Waterfall {
     const span = Math.max(1, this.ceil - this.floor);
     const px = this.rowImage.data;
     const n = row.length;
+    const vspan = this.viewHi - this.viewLo;
     for (let x = 0; x < this.w; x++) {
-      // Map canvas column -> FFT bin.
-      const bin = Math.min(n - 1, (x * n / this.w) | 0);
+      // Map canvas column -> visible band fraction -> FFT bin.
+      const frac = this.viewLo + (x / this.w) * vspan;
+      const bin = Math.min(n - 1, (frac * n) | 0);
       const norm = Math.min(1, Math.max(0, (row[bin] - this.floor) / span));
       const [r, g, b] = colormap(norm);
       const o = x * 4;
@@ -56,6 +61,14 @@ export class Waterfall {
       px[o + 3] = 255;
     }
     this.ctx.putImageData(this.rowImage, 0, 0);
+  }
+
+  // Display zoom: show only [lo,hi] of the FFT. History can't be re-mapped, so
+  // clear and rebuild from the new mapping.
+  setView(lo: number, hi: number): void {
+    this.viewLo = lo;
+    this.viewHi = hi;
+    this.clear();
   }
 
   // Manual contrast: fix the colour-map dB window. Pass auto=true to resume

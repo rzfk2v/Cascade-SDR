@@ -196,6 +196,12 @@ class RadioMode(Mode):
             row = self._spectrum.row(samples)
             self.manager.emit_binary(FrameTag.FFT, row.tobytes())
 
+        # Spectrum-only until the user picks a channel (click-to-tune): show the
+        # waterfall but emit no audio. This is what makes one combined view serve
+        # as both "browse the band" and "listen".
+        if not self._user_tuned:
+            return
+
         # 2) (re)build the channel chain if bandwidth/demod changed
         if self._need_rebuild or self._chan is None:
             self._build_chain()

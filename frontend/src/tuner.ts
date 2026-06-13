@@ -11,13 +11,23 @@ export class Tuner {
   bandwidth = 200e3;
   active = false; // show the cursor (radio mode)
 
+  // Display zoom: the visible window as a fraction [viewLo, viewHi] of the
+  // captured band. (0,1) = whole band; narrower = zoomed in. Pure display — the
+  // dongle still captures the full band.
+  viewLo = 0;
+  viewHi = 1;
+
   onTune?: (freqHz: number) => void;        // click
   onSelect?: (loHz: number, hiHz: number) => void;  // drag a range
+  onViewChange?: (lo: number, hi: number) => void;  // zoom/pan -> sync renderers
 
   private octx: CanvasRenderingContext2D;
   private actx: CanvasRenderingContext2D;
   private dragStart: number | null = null; // fraction [0,1]
   private dragCur = 0;
+  private panning = false;
+  private panStartX = 0;
+  private panStartLo = 0;
 
   constructor(
     private overlay: HTMLCanvasElement,
@@ -28,11 +38,22 @@ export class Tuner {
     overlay.addEventListener("mousedown", (e) => this.onDown(e));
     overlay.addEventListener("mousemove", (e) => this.onMove(e));
     window.addEventListener("mouseup", (e) => this.onUp(e));
+    overlay.addEventListener("wheel", (e) => this.onWheel(e), { passive: false });
   }
 
   setBand(centerFreq: number, sampleRate: number): void {
+    const changed = centerFreq !== this.centerFreq || sampleRate !== this.sampleRate;
     this.centerFreq = centerFreq;
     this.sampleRate = sampleRate;
+    if (changed) this.resetView(); // a new captured band invalidates the zoom window
+    this.drawAxis();
+    this.draw();
+  }
+
+  resetView(): void {
+    this.viewLo = 0;
+    this.viewHi = 1;
+    this.onViewChange?.(0, 1);
     this.drawAxis();
     this.draw();
   }
@@ -50,11 +71,15 @@ export class Tuner {
   }
 
   // --- mapping -----------------------------------------------------------
-  private freqAt(fraction: number): number {
-    return this.centerFreq + (fraction - 0.5) * this.sampleRate;
+  // A canvas-x fraction [0,1] maps through the zoom window to a band fraction,
+  // then to RF Hz. With no zoom (viewLo=0, viewHi=1) these are the identity.
+  private freqAt(canvasFrac: number): number {
+    const bandFrac = this.viewLo + canvasFrac * (this.viewHi - this.viewLo);
+    return this.centerFreq + (bandFrac - 0.5) * this.sampleRate;
   }
   private fracOf(freqHz: number): number {
-    return 0.5 + (freqHz - this.centerFreq) / this.sampleRate;
+    const bandFrac = 0.5 + (freqHz - this.centerFreq) / this.sampleRate;
+    return (bandFrac - this.viewLo) / (this.viewHi - this.viewLo);
   }
   private eventFraction(e: MouseEvent): number {
     const r = this.overlay.getBoundingClientRect();
@@ -62,16 +87,42 @@ export class Tuner {
   }
 
   // --- interaction -------------------------------------------------------
+  private span(): number {
+    return this.viewHi - this.viewLo;
+  }
+
   private onDown(e: MouseEvent): void {
+    // shift-drag pans the zoom window (only meaningful when zoomed in)
+    if (e.shiftKey && this.span() < 0.999) {
+      this.panning = true;
+      this.panStartX = this.eventFraction(e);
+      this.panStartLo = this.viewLo;
+      return;
+    }
     this.dragStart = this.eventFraction(e);
     this.dragCur = this.dragStart;
   }
   private onMove(e: MouseEvent): void {
+    if (this.panning) {
+      const span = this.span();
+      let lo = this.panStartLo - (this.eventFraction(e) - this.panStartX) * span;
+      lo = Math.min(1 - span, Math.max(0, lo));
+      this.viewLo = lo;
+      this.viewHi = lo + span;
+      this.onViewChange?.(this.viewLo, this.viewHi);
+      this.drawAxis();
+      this.draw();
+      return;
+    }
     if (this.dragStart == null) return;
     this.dragCur = this.eventFraction(e);
     this.draw();
   }
   private onUp(e: MouseEvent): void {
+    if (this.panning) {
+      this.panning = false;
+      return;
+    }
     if (this.dragStart == null) return;
     const start = this.dragStart;
     const end = this.eventFraction(e);
@@ -83,6 +134,23 @@ export class Tuner {
     } else {
       this.onSelect?.(Math.min(f1, f2), Math.max(f1, f2));  // drag -> select range
     }
+    this.draw();
+  }
+
+  private onWheel(e: WheelEvent): void {
+    e.preventDefault();
+    const cf = this.eventFraction(e);                       // cursor, canvas frac
+    const anchor = this.viewLo + cf * this.span();          // band frac under cursor
+    const factor = e.deltaY < 0 ? 0.8 : 1.25;               // in : out
+    let span = Math.min(1, Math.max(0.02, this.span() * factor)); // cap at ~50×
+    let lo = anchor - cf * span;                            // keep anchor fixed
+    let hi = lo + span;
+    if (lo < 0) { lo = 0; hi = span; }
+    if (hi > 1) { hi = 1; lo = 1 - span; }
+    this.viewLo = lo;
+    this.viewHi = hi;
+    this.onViewChange?.(lo, hi);
+    this.drawAxis();
     this.draw();
   }
 

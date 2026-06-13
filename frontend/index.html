@@ -22,9 +22,9 @@
 
         <nav class="modes" id="mode-tabs">
           <button data-mode="idle" class="active">Idle</button>
-          <button data-mode="spectrum">Waterfall</button>
+          <button data-mode="radio">Spectrum</button>
           <button data-mode="scan">Scan</button>
-          <button data-mode="radio">Radio</button>
+          <button data-mode="replay">Replay</button>
           <button data-mode="dab">DAB</button>
           <button data-mode="adsb">ADS&#8209;B</button>
           <button data-mode="ais">AIS</button>
@@ -109,6 +109,14 @@
           <p class="hint">162 MHz marine band. Data is NOT shared online. Needs a VHF/marine antenna.</p>
         </section>
 
+        <section class="group" id="replay-controls" hidden>
+          <h2>Replay</h2>
+          <p id="replay-status" class="status-line">pick a recording…</p>
+          <div id="replay-list" class="bm-list"></div>
+          <p class="hint">Plays a saved <b>.cu8</b> capture through the spectrum +
+            demodulators — click a signal to listen. Loops automatically.</p>
+        </section>
+
         <section class="group" id="radio-controls" hidden>
           <h2>Radio</h2>
           <label>Demod
@@ -145,7 +153,7 @@
           <div id="bm-list" class="bm-list"></div>
         </section>
 
-        <p class="hint">Click a signal to tune it · drag across it to set bandwidth</p>
+        <p class="hint">Click a signal to tune · drag across it to set bandwidth · scroll to zoom · shift-drag to pan</p>
         <footer class="appfoot">
           © 2026 Jens Engfors · GPL&#8209;3.0 · for lawful reception<br />
           Map data © OpenStreetMap contributors

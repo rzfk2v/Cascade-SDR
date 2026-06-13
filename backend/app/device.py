@@ -195,8 +195,9 @@ class DeviceManager:
     def record_start(self) -> dict:
         """Start writing raw IQ (.cu8) for the active fixed-tuned IQ mode."""
         if not (self.mode and self.mode.owns_device
-                and not self.mode.controls_tuning and self.running):
-            return {"ok": False, "message": "Record from Waterfall or Radio mode."}
+                and not self.mode.controls_tuning and self.running
+                and not getattr(self.mode, "reads_file", False)):
+            return {"ok": False, "message": "Record from the Spectrum view."}
         if self._recording:
             return {"ok": True, "name": self._rec_path.name if self._rec_path else ""}
         RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
@@ -240,8 +241,11 @@ class DeviceManager:
         if self.mode.owns_device:
             self._stop_event.clear()
             self._retune_event.clear()
+            target = (self._replay_worker
+                      if getattr(self.mode, "reads_file", False)
+                      else self._iq_worker)
             self._thread = threading.Thread(
-                target=self._iq_worker, args=(self.mode,), daemon=True
+                target=target, args=(self.mode,), daemon=True
             )
             self._thread.start()
         else:
@@ -379,6 +383,59 @@ class DeviceManager:
                 except Exception:
                     pass
             self._sdr = None
+
+    def _replay_worker(self, mode: Mode) -> None:
+        """Stream a recorded .cu8 file through ``mode.process`` at ~real time.
+
+        Mirrors the IQ worker but the sample source is a file on disk instead of
+        the dongle, so no device is opened. Runs off the event loop (DSP is
+        blocking); loops the file at EOF. The active file / play-pause state are
+        plain attributes the client updates live via ``configure``.
+        """
+        f = None
+        cur_path: Optional[Path] = None
+        try:
+            mode.on_start()
+            while not self._stop_event.is_set():
+                path = getattr(mode, "file_path", None)
+                if path is None or not getattr(mode, "playing", False):
+                    time.sleep(0.1)
+                    continue
+                if path != cur_path:
+                    if f is not None:
+                        f.close()
+                    f = open(path, "rb")
+                    cur_path = path
+                raw = f.read(mode.block_size * 2)  # 2 uint8 bytes per IQ sample
+                if not raw:
+                    f.seek(0)  # loop
+                    continue
+                if len(raw) < mode.block_size * 2:
+                    f.seek(0)  # play this tail, then loop on the next read
+                buf = np.frombuffer(raw, dtype=np.uint8).astype(np.float32)
+                n = (buf.size // 2) * 2
+                iq = (buf[0:n:2] - 127.5) / 127.5 + 1j * (buf[1:n:2] - 127.5) / 127.5
+                block = iq.astype(np.complex64)
+                t0 = time.monotonic()
+                mode.process(block)
+                # pace to the capture's real-time duration
+                dur = block.size / max(1.0, self.sample_rate)
+                rest = dur - (time.monotonic() - t0)
+                if rest > 0:
+                    time.sleep(rest)
+        except Exception as exc:
+            log.exception("replay worker error")
+            self.emit_json({"type": "error", "message": f"Replay error: {exc}"})
+        finally:
+            if f is not None:
+                try:
+                    f.close()
+                except Exception:
+                    pass
+            try:
+                mode.on_stop()
+            except Exception:
+                pass
 
     async def _subprocess_loop(self, mode: Mode) -> None:
         try:

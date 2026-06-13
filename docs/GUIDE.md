@@ -20,7 +20,7 @@ and install, see the [README](../README.md).
   (below) with a **frequency axis**; in ADS-B/AIS it becomes a **map**, in DAB a
   **station list**.
 - **Top of sidebar** — connection dot (green = backend connected) and the mode
-  tabs: **Idle · Waterfall · Scan · Radio · DAB · ADS-B · AIS**.
+  tabs: **Idle · Spectrum · Scan · Replay · DAB · ADS-B · AIS**.
 - **Band label** — under the device status, names the service on the current
   frequency (e.g. “FM broadcast”, “Marine VHF”) so you know what you're looking at.
 
@@ -39,22 +39,27 @@ and install, see the [README](../README.md).
 
 ---
 
-## Waterfall (spectrum)
+## Spectrum (waterfall + listen, in one view)
 
-The core view: a live FFT. The **scope** shows the instantaneous spectrum; the
-**waterfall** scrolls it over time (bright = strong).
+The core view: a live FFT plus audio. The **scope** shows the instantaneous
+spectrum; the **waterfall** scrolls it over time (bright = strong). It opens
+**silent** — so it works as a plain band browser — and starts playing the moment
+you click a signal. (This is the old Waterfall and Radio modes merged into one.)
 
-- **Click** a signal → jumps into **Radio** tuned to it.
-- **Drag** across a chunk → zooms the captured band into that span; **Zoom out**
-  (top-right) widens ×2.
+- **Click** a signal → tunes + listens to it (no hardware retune; you're picking a
+  channel inside the captured band).
+- **Drag** across a signal → sets the demod **bandwidth** to match it.
+- **Scroll** (wheel) → **zoom** the display into part of the band; **shift-drag** to
+  pan; **Zoom out** (top-right) resets. This magnifies what's captured — it doesn't
+  retune — so two close signals become easy to separate.
 - **Display panel**: **Auto contrast** (or set the floor/ceiling dB by hand to pull
   weak signals out of the noise), **Peak hold** (peaks linger ~1–2 s then fade —
   great for catching brief bursts), and **Averaging** (2–16×) which smooths the
   scope trace so a weak, steady carrier stops dancing in the noise and stands out.
 
-**Try:** tune Center to **100 MHz** and watch FM stations as bright wide blobs.
-Turn on Peak hold and watch bursts flash. For a faint constant tone, switch
-Averaging to 8× and watch it firm up out of the grass.
+**Try:** tune Center to **100 MHz**, watch FM stations as bright wide blobs, and
+click one to listen. Scroll to zoom into a crowded patch. For a faint constant
+tone, switch Averaging to 8× and watch it firm up out of the grass.
 
 ---
 
@@ -64,7 +69,7 @@ The dongle can't see more than ~2.4 MHz at once, so Scan **sweeps** across a ran
 and stitches it into one wide waterfall — for surveying a whole band.
 
 - Set **From/To (MHz)** or pick a **Preset** (FM, Airband, 2 m, 70 cm).
-- **Click** a peak → re-centers the dongle there and drops into Radio.
+- **Click** a peak → re-centers the dongle there and drops into the Spectrum view.
 - **Drag** to zoom into a sub-range; **Zoom out** to widen.
 - Wider ranges refresh slower (each 2.4 MHz slice needs its own retune).
 
@@ -74,9 +79,27 @@ click the strongest to listen. Or scan **1080–1100** for ADS-B activity (needs
 
 ---
 
-## Radio (listen)
+## Replay (play back a recording)
 
-Click a signal (in Waterfall/Scan) or tune the dongle, then pick a **Demod**:
+Open **Replay** and click any saved `.cu8` capture: it streams the file back
+through the same Spectrum view and demodulators, looping at the end — **no dongle
+required**. Everything works as if live: click a signal to listen, drag to set
+bandwidth, scroll to zoom, switch demods. Because IQ captures the *whole* 2.4 MHz
+band (not just the channel you were on), you can pull out signals you didn't even
+notice during the live session.
+
+- The capture's **center frequency and sample rate** are read from its filename, so
+  the axis is labelled correctly.
+- Record captures with **Record IQ** in the Spectrum view (Device panel).
+
+**Try:** record a minute of the FM band, then in Replay click around different
+stations — same recording, any station, any time.
+
+---
+
+## Demodulators (the Radio controls)
+
+After you click a signal in the Spectrum (or Replay) view, pick a **Demod**:
 
 | Demod | Use for |
 |---|---|
@@ -152,12 +175,12 @@ static messages arrive (every few minutes).
 
 ## Recording
 
-- **Audio (WAV)** — *Record audio* in Radio; captures what you hear, downloads a
-  48 kHz WAV. Good for saving a catch or a CW/SSB exchange.
-- **IQ (.cu8)** — *Record IQ* in Waterfall/Radio; saves the **raw radio** so you
-  can replay/analyse it later in Cascade-compatible tools (gqrx, `rtl_sdr`,
-  `welle-cli -f`, etc.). Files list with download/delete; the name carries the
-  frequency + sample rate. **They're big (~290 MB/min)** — delete when done.
+- **Audio (WAV)** — *Record audio* in the Spectrum view; captures what you hear,
+  downloads a 48 kHz WAV. Good for saving a catch or a CW/SSB exchange.
+- **IQ (.cu8)** — *Record IQ* in the Spectrum view; saves the **raw radio** so you
+  can replay/analyse it later — in Cascade's own **Replay** mode, or in gqrx /
+  `rtl_sdr` / etc. Files list with download/delete; the name carries the frequency +
+  sample rate. **They're big (~290 MB/min)** — delete when done.
 
 **Try:** record 10 s of IQ on a busy band; later you can replay it offline.
 

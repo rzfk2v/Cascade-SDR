@@ -26,6 +26,7 @@ from app.modes.ais import AisMode
 from app.modes.base import Mode
 from app.modes.dab import DabMode
 from app.modes.radio import RadioMode
+from app.modes.replay import ReplayMode
 from app.modes.scan import ScanMode
 from app.modes.spectrum import SpectrumMode
 
@@ -36,6 +37,7 @@ log = logging.getLogger("sdr.main")
 MODE_REGISTRY: dict[str, type[Mode]] = {
     SpectrumMode.name: SpectrumMode,
     RadioMode.name: RadioMode,
+    ReplayMode.name: ReplayMode,
     ScanMode.name: ScanMode,
     AdsbMode.name: AdsbMode,
     AisMode.name: AisMode,

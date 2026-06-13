@@ -29,6 +29,11 @@ const tuner = new Tuner(
   document.getElementById("axis") as HTMLCanvasElement,
 );
 const audio = new AudioPlayer(48000);
+// keep waterfall + scope display-zoom in sync with the tuner's zoom window
+tuner.onViewChange = (lo, hi) => {
+  waterfall.setView(lo, hi);
+  scope.setView(lo, hi);
+};
 const wavRec = new WavRecorder(48000);
 const adsbMap = new AdsbMap();
 
@@ -89,6 +94,10 @@ const biasTee = document.getElementById("bias-tee") as HTMLInputElement;
 let gainSteps: number[] = [];
 let desiredGainDb = 0; // last manual gain (dB), used before the step list arrives
 const radioControls = document.getElementById("radio-controls")!;
+const replayControls = document.getElementById("replay-controls")!;
+const replayStatus = document.getElementById("replay-status")!;
+const replayList = document.getElementById("replay-list")!;
+let replayFile: string | null = null;
 const demodSel = document.getElementById("demod") as HTMLSelectElement;
 const deemphSel = document.getElementById("deemph") as HTMLSelectElement;
 const bwInput = document.getElementById("bw") as HTMLInputElement;
@@ -121,7 +130,7 @@ function updateBandInfo(): void {
     label = "ADS-B · 1090 MHz (Mode S)";
   } else if (currentMode === "ais") {
     label = "Marine AIS · 162 MHz";
-  } else if (currentMode === "radio") {
+  } else if (currentMode === "radio" || currentMode === "replay") {
     const b = bandAt(viewTuned / 1e6);
     label = b ? `Band: ${b}` : "";
   } else if (currentMode === "spectrum" || currentMode === "scan") {
@@ -166,14 +175,15 @@ sock.onJson((msg) => {
       if (typeof msg.bias_tee === "boolean") biasTee.checked = msg.bias_tee;
       highlightMode(msg.mode);
       tuner.setBand(msg.center_freq, msg.sample_rate);
-      tuner.setActive(msg.mode === "radio");
-      radioControls.hidden = msg.mode !== "radio";
+      tuner.setActive(msg.mode === "radio" || msg.mode === "replay");
+      radioControls.hidden = !(msg.mode === "radio" || msg.mode === "replay");
+      replayControls.hidden = msg.mode !== "replay";
       scanControls.hidden = msg.mode !== "scan";
       adsbControls.hidden = msg.mode !== "adsb";
       aisControls.hidden = msg.mode !== "ais";
       dabControls.hidden = msg.mode !== "dab";
-      zoomOutBtn.hidden = !(msg.mode === "scan" || msg.mode === "spectrum");
-      displayControls.hidden = !["spectrum", "scan", "radio"].includes(msg.mode);
+      zoomOutBtn.hidden = !["scan", "spectrum", "radio", "replay"].includes(msg.mode);
+      displayControls.hidden = !["spectrum", "scan", "radio", "replay"].includes(msg.mode);
       showView(msg.mode);
       break;
     case "spectrum_config":
@@ -196,6 +206,13 @@ sock.onJson((msg) => {
       tunedLine.textContent =
         `tuned ${(msg.tuned_freq / 1e6).toFixed(3)} MHz · ` +
         `${msg.demod.toUpperCase()} · BW ${(msg.bandwidth / 1e3).toFixed(0)} kHz`;
+      break;
+    case "replay_status":
+      replayFile = msg.file;
+      replayStatus.textContent = msg.file
+        ? `${msg.playing ? "▶" : "⏸"} ${msg.file.replace("iq_", "").replace(".cu8", "")}`
+        : "pick a recording…";
+      renderReplayList();
       break;
     case "radio_level":
       levelMeter.textContent = `${msg.db.toFixed(0)} dB ${msg.open ? "▶" : "🔇"}`;
@@ -395,13 +412,17 @@ document.getElementById("mode-tabs")!.addEventListener("click", async (e) => {
   const btn = (e.target as HTMLElement).closest("button");
   if (!btn || (btn as HTMLButtonElement).disabled) return;
   const mode = btn.dataset.mode!;
-  if (mode === "radio") await audio.init(); // user gesture: unlock audio
+  if (mode === "radio" || mode === "replay") await audio.init(); // user gesture: unlock audio
   if (mode !== "idle") {
     waterfall.clear();
     scope.clear();
   }
   sock.send({ cmd: "set_mode", mode });
-  if (mode === "radio") sendRadioPrefs();
+  if (mode === "radio" || mode === "replay") sendRadioPrefs();
+  if (mode === "replay") {
+    renderReplayList();
+    if (replayFile) sock.send({ cmd: "config", params: { file: replayFile, playing: true } });
+  }
   if (mode === "dab") sock.send({ cmd: "config", params: { channel: dabChannel.value } });
 });
 
@@ -420,7 +441,7 @@ function sendRadioPrefs(): void {
 
 // --- click / drag to tune ------------------------------------------------
 tuner.onTune = async (freqHz) => {
-  if (currentMode === "radio") {
+  if (currentMode === "radio" || currentMode === "replay") {
     // tune within the currently captured band, no hardware retune
     sock.send({ cmd: "config", params: { tuned_freq: freqHz } });
     tuner.setTuned(freqHz);
@@ -435,7 +456,7 @@ tuner.onTune = async (freqHz) => {
   }
 };
 tuner.onSelect = (loHz, hiHz) => {
-  if (currentMode === "radio") {
+  if (currentMode === "radio" || currentMode === "replay") {
     // drag sets the demod bandwidth + re-centers the channel
     sock.send({
       cmd: "config",
@@ -538,6 +559,11 @@ averaging.addEventListener("change", () =>
 
 // zoom out (×2) — widens the scan range or the captured band
 zoomOutBtn.addEventListener("click", () => {
+  // In the spectrum/replay views, this resets the display zoom (no retune).
+  if (currentMode === "radio" || currentMode === "replay") {
+    tuner.resetView();
+    return;
+  }
   const center = tuner.centerFreq;
   const span = tuner.sampleRate * 2;
   waterfall.clear();
@@ -724,6 +750,37 @@ recList.addEventListener("click", async (e) => {
 });
 
 refreshRecordings();
+
+// --- Replay (play a saved .cu8 back through the spectrum view) ------------
+async function renderReplayList(): Promise<void> {
+  try {
+    const d = await (await fetch("/api/recordings")).json();
+    const list: any[] = d.recordings || [];
+    if (!list.length) {
+      replayList.innerHTML =
+        '<div class="bm-empty">No recordings yet — record some IQ first.</div>';
+      return;
+    }
+    replayList.innerHTML = list
+      .map((it) => {
+        const label = it.name.replace("iq_", "").replace(".cu8", "");
+        const playing = it.name === replayFile ? " playing" : "";
+        return (
+          `<div class="bm-row"><button class="recall${playing}" data-name="${it.name}">` +
+          `${label} <span class="muted">${(it.size / 1e6).toFixed(1)} MB</span></button></div>`
+        );
+      })
+      .join("");
+  } catch {
+    /* offline */
+  }
+}
+
+replayList.addEventListener("click", (e) => {
+  const btn = (e.target as HTMLElement).closest("button.recall") as HTMLElement | null;
+  if (!btn?.dataset.name) return;
+  sock.send({ cmd: "config", params: { file: btn.dataset.name, playing: true } });
+});
 
 // --- DAB ----------------------------------------------------------------
 let dabPort = 7979;

@@ -16,6 +16,8 @@ export class SpectrumScope {
   private peakHold = false;
   private peakDecayDbPerSec = 24; // peaks linger then fade over ~1-2 s
   private lastPeakTime = 0;
+  private viewLo = 0; // visible fraction of the FFT (display zoom)
+  private viewHi = 1;
 
   constructor(private canvas: HTMLCanvasElement) {
     this.ctx = canvas.getContext("2d")!;
@@ -48,6 +50,12 @@ export class SpectrumScope {
   setAveraging(n: number): void {
     this.avgN = n >= 1 ? n : 1;
     this.avg = null; // restart the running mean
+  }
+
+  setView(lo: number, hi: number): void {
+    this.viewLo = lo;
+    this.viewHi = hi;
+    this.draw();
   }
 
   pushRow(row: Float32Array): void {
@@ -124,12 +132,15 @@ export class SpectrumScope {
       ctx.fillText(`${db}`, 2, y - 2);
     }
 
+    const vspan = this.viewHi - this.viewLo;
+
     // peak-hold trace (behind the live trace)
     if (this.peak) {
       const pn = this.peak.length;
       ctx.beginPath();
       for (let x = 0; x < this.w; x++) {
-        const bin = Math.min(pn - 1, ((x * pn) / this.w) | 0);
+        const frac = this.viewLo + (x / this.w) * vspan;
+        const bin = Math.min(pn - 1, (frac * pn) | 0);
         const y = this.yOf(this.peak[bin]);
         if (x === 0) ctx.moveTo(x, y);
         else ctx.lineTo(x, y);
@@ -146,7 +157,8 @@ export class SpectrumScope {
     const n = trace.length;
     ctx.beginPath();
     for (let x = 0; x < this.w; x++) {
-      const bin = Math.min(n - 1, ((x * n) / this.w) | 0);
+      const frac = this.viewLo + (x / this.w) * vspan;
+      const bin = Math.min(n - 1, (frac * n) | 0);
       const y = this.yOf(trace[bin]);
       if (x === 0) ctx.moveTo(x, y);
       else ctx.lineTo(x, y);
