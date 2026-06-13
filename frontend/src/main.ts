@@ -100,6 +100,7 @@ const replayList = document.getElementById("replay-list")!;
 let replayFile: string | null = null;
 const demodSel = document.getElementById("demod") as HTMLSelectElement;
 const deemphSel = document.getElementById("deemph") as HTMLSelectElement;
+const stereoOn = document.getElementById("stereo-on") as HTMLInputElement;
 const rdsOn = document.getElementById("rds-on") as HTMLInputElement;
 const rdsBox = document.getElementById("rds-box")!;
 const rdsPs = document.getElementById("rds-ps")!;
@@ -215,6 +216,7 @@ sock.onJson((msg) => {
       demodSel.value = msg.demod;
       if (msg.deemph) deemphSel.value = String(Math.round(msg.deemph));
       if (typeof msg.rds === "boolean") rdsOn.checked = msg.rds;
+      if (typeof msg.stereo === "boolean") stereoOn.checked = msg.stereo;
       rdsBox.hidden = !(msg.demod === "wfm" && rdsOn.checked);
       if (msg.demod !== "wfm") { rdsPs.textContent = "—"; rdsRt.textContent = ""; rdsMeta.textContent = ""; }
       bwInput.value = Math.round(msg.bandwidth / 1000).toString();
@@ -233,7 +235,8 @@ sock.onJson((msg) => {
       renderReplayList();
       break;
     case "radio_level":
-      levelMeter.textContent = `${msg.db.toFixed(0)} dB ${msg.open ? "▶" : "🔇"}`;
+      levelMeter.textContent =
+        `${msg.db.toFixed(0)} dB ${msg.open ? "▶" : "🔇"}${msg.stereo ? " ◖◗ stereo" : ""}`;
       levelMeter.classList.toggle("open", msg.open);
       break;
     case "adsb_status":
@@ -292,9 +295,13 @@ sock.onBinary((tag, body) => {
     waterfall.pushRow(row);
     scope.pushRow(row);
   } else if (tag === FrameTag.AUDIO) {
-    audio.pushInt16(body);
+    audio.pushInt16(body);                       // interleaved L,R stereo
     if (wavRec.recording) {
-      wavRec.addPcm(new Int16Array(body.buffer, body.byteOffset, body.byteLength >> 1));
+      // downmix to mono for the WAV recording
+      const st = new Int16Array(body.buffer, body.byteOffset, body.byteLength >> 1);
+      const mono = new Int16Array(st.length >> 1);
+      for (let i = 0; i < mono.length; i++) mono[i] = (st[2 * i] + st[2 * i + 1]) >> 1;
+      wavRec.addPcm(mono);
     }
   }
 });
@@ -462,6 +469,7 @@ function sendRadioPrefs(): void {
       squelch: parseFloat(sqlInput.value),
       deemph: parseFloat(deemphSel.value),
       rds: rdsOn.checked,
+      stereo: stereoOn.checked,
     },
   });
 }
@@ -517,6 +525,9 @@ rdsOn.addEventListener("change", () => {
   rdsBox.hidden = !(demodSel.value === "wfm" && rdsOn.checked);
   sock.send({ cmd: "config", params: { rds: rdsOn.checked } });
 });
+stereoOn.addEventListener("change", () =>
+  sock.send({ cmd: "config", params: { stereo: stereoOn.checked } }),
+);
 bwInput.addEventListener("change", () =>
   sock.send({ cmd: "config", params: { bandwidth: parseFloat(bwInput.value) * 1000 } }),
 );
@@ -652,7 +663,7 @@ const persistValues: Record<string, HTMLInputElement | HTMLSelectElement> = {
   scanStart, scanStop, wfFloor, wfCeil, rxLoc, deemph: deemphSel, averaging,
 };
 const persistChecks: Record<string, HTMLInputElement> = {
-  gainAuto, biasTee, wfAuto, peakHold, rdsOn,
+  gainAuto, biasTee, wfAuto, peakHold, rdsOn, stereoOn,
 };
 
 function persist(): void {

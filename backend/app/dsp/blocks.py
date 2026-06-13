@@ -6,8 +6,53 @@ boundaries. That continuity is what keeps the audio click-free.
 """
 from __future__ import annotations
 
+import math
+
 import numpy as np
 from scipy.signal import bilinear, firwin, lfilter, lfilter_zi
+
+
+class PilotPll:
+    """Second-order PLL that locks an NCO to the 19 kHz FM stereo pilot.
+
+    Returns the NCO phase per sample (radians), which is delay-free and
+    phase-accurate — unlike a band-pass'd reference, which carries filter group
+    delay that wrecks synchronous detection of the 38 kHz (stereo) and 57 kHz
+    (RDS) subcarriers. Also exposes ``pilot_rms`` so callers can detect whether a
+    pilot is present (stereo / RDS only exist on a locked pilot).
+    """
+
+    def __init__(self, fs: float, f0: float = 19_000.0, bw: float = 12.0) -> None:
+        self.phase = 0.0
+        self.freq = 2.0 * math.pi * f0 / fs
+        zeta = 0.707
+        wn = 2.0 * math.pi * bw / fs
+        self.alpha = 2.0 * zeta * wn
+        self.beta = wn * wn
+        self.pilot_rms = 0.0
+        self._b = firwin(129, [(f0 - 800) / (fs / 2), (f0 + 800) / (fs / 2)],
+                         pass_zero=False)
+        self._zi = np.zeros(128)
+
+    def run(self, mpx: np.ndarray) -> np.ndarray:
+        pilot, self._zi = lfilter(self._b, 1.0, mpx, zi=self._zi)
+        self.pilot_rms = float(np.sqrt(np.mean(pilot * pilot))) if pilot.size else 0.0
+        out = np.empty(mpx.size)
+        ph, fr = self.phase, self.freq
+        a, b = self.alpha, self.beta
+        sin, tau = math.sin, 2.0 * math.pi
+        pil = pilot.tolist()
+        for i in range(len(pil)):
+            err = pil[i] * sin(ph)
+            fr += b * err
+            ph += fr + a * err
+            if ph > math.pi:
+                ph -= tau
+            elif ph < -math.pi:
+                ph += tau
+            out[i] = ph
+        self.phase, self.freq = ph, fr
+        return out
 
 
 class ComplexChannelizer:
@@ -135,6 +180,35 @@ class SsbDemod:
     def process(self, x: np.ndarray) -> np.ndarray:
         y, self._zi = lfilter(self._b, 1.0, x, zi=self._zi)
         return np.real(y) * 2.0  # ×2 compensates the discarded sideband's energy
+
+
+class StereoDecoder:
+    """Recover the L−R (difference) signal from an FM multiplex for stereo.
+
+    The MPX (discriminator output) carries L+R at baseband, a 19 kHz pilot, and
+    L−R as a DSB-SC subcarrier around 38 kHz (= 2× pilot). We derive a 38 kHz
+    reference by squaring the band-passed pilot (cos²θ → ½(1+cos2θ)), isolate the
+    cos2θ term, normalise it to unit amplitude, and synchronously detect L−R.
+    Returns the decimated L−R at the audio rate plus the pilot level so the caller
+    can fall back to mono when no pilot is present (mono station / weak signal).
+    """
+
+    def __init__(self, in_rate: float, decim: int, audio_lp_hz: float = 15_000.0):
+        # wider loop bandwidth than RDS: stereo needs a tight phase lock for the
+        # synchronous L−R detection (a slow-converging PLL rotates the reference).
+        self._pll = PilotPll(in_rate, 19_000.0, bw=100.0)
+        self._sdec = RealDecimator(in_rate, decim, audio_lp_hz)
+
+    def process(self, mpx: np.ndarray) -> tuple[np.ndarray, float]:
+        phase = self._pll.run(mpx)                  # locked, delay-free
+        mpx_rms = float(np.sqrt(np.mean(mpx * mpx))) + 1e-12
+        frac = self._pll.pilot_rms / mpx_rms
+        # pilot is ~9% of the MPX on a stereo station; near zero on mono
+        if frac < 0.03:
+            return np.zeros(mpx.size // self._sdec.decim), frac
+        ref = np.cos(2.0 * phase)                   # 38 kHz = 2× pilot, phase-correct
+        diff = mpx * ref * 2.0                       # synchronous DSB-SC detect of L−R
+        return self._sdec.process(diff), frac
 
 
 class DeEmphasis:

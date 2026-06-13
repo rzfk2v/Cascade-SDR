@@ -19,11 +19,12 @@ RDS spec: EN 50067 / IEC 62106. The block is 16 info bits + a 10-bit checkword
 """
 from __future__ import annotations
 
-import math
 from typing import Callable, Optional
 
 import numpy as np
 from scipy.signal import firwin, lfilter, resample_poly
+
+from app.dsp.blocks import PilotPll
 
 # --- cyclic code (26,16) used for block sync / error detection --------------
 _POLY = 0x5B9   # x^10 + x^8 + x^7 + x^5 + x^4 + x^3 + 1  (includes x^10)
@@ -175,49 +176,12 @@ SUBCARRIER = 57_000.0
 PILOT = 19_000.0
 
 
-class _Pll:
-    """Second-order PLL that locks an NCO to the 19 kHz pilot in the MPX."""
-
-    def __init__(self, fs: float, f0: float, bw: float = 12.0) -> None:
-        self.fs = fs
-        self.phase = 0.0
-        self.freq = 2.0 * np.pi * f0 / fs
-        zeta = 0.707
-        wn = 2.0 * np.pi * bw / fs
-        self.alpha = 2.0 * zeta * wn
-        self.beta = wn * wn
-        # narrow band-pass to isolate the pilot before phase detection
-        self._b = firwin(129, [(f0 - 800) / (fs / 2), (f0 + 800) / (fs / 2)],
-                         pass_zero=False)
-        self._zi = np.zeros(128)
-
-    def run(self, mpx: np.ndarray) -> np.ndarray:
-        """Return the NCO phase (radians) sample-by-sample, locked to the pilot."""
-        pilot, self._zi = lfilter(self._b, 1.0, mpx, zi=self._zi)
-        out = np.empty(mpx.size)
-        ph, fr = self.phase, self.freq
-        a, b = self.alpha, self.beta
-        sin, tau = math.sin, 2.0 * math.pi
-        pil = pilot.tolist()                # local list iteration is faster
-        for i in range(len(pil)):
-            err = pil[i] * sin(ph)          # phase detector
-            fr += b * err
-            ph += fr + a * err
-            if ph > math.pi:
-                ph -= tau
-            elif ph < -math.pi:
-                ph += tau
-            out[i] = ph
-        self.phase, self.freq = ph, fr
-        return out
-
-
 class RdsDemod:
     """FM multiplex (discriminator output) -> RDS groups, streaming."""
 
     def __init__(self, fs: float, on_update: Optional[Callable[[dict], None]] = None):
         self.fs = fs
-        self._pll = _Pll(fs, PILOT)
+        self._pll = PilotPll(fs, PILOT)
         # low-pass for the 57 kHz baseband after mixing (~2.4 kHz one-sided)
         self._lp = firwin(129, 2_400.0 / (fs / 2))
         self._zi_i = np.zeros(128)

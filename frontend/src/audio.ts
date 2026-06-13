@@ -1,8 +1,9 @@
-// Web Audio playback for streamed PCM. The backend sends int16 mono frames; we
-// convert to Float32 and feed an AudioWorklet (see public/pcm-worklet.js).
+// Web Audio playback for streamed PCM. The backend sends interleaved stereo
+// int16 frames (mono demods send L = R); we convert to Float32 and feed an
+// AudioWorklet (see public/pcm-worklet.js) that de-interleaves to 2 channels.
 //
 // AudioContext must be created/resumed from a user gesture, so init() is called
-// when the user enters Radio mode.
+// when the user enters the Spectrum/Replay view.
 
 export class AudioPlayer {
   private ctx: AudioContext | null = null;
@@ -21,15 +22,15 @@ export class AudioPlayer {
     this.ctx = new AudioContext({ sampleRate: this.rate });
     await this.ctx.audioWorklet.addModule("/pcm-worklet.js");
     this.node = new AudioWorkletNode(this.ctx, "pcm-player", {
-      outputChannelCount: [1],
+      outputChannelCount: [2],
     });
     this.node.connect(this.ctx.destination);
   }
 
-  // body is a DataView starting at the aligned payload (int16 LE samples).
+  // body is a DataView at the aligned payload (interleaved L,R int16 LE).
   pushInt16(body: DataView): void {
     if (!this.node) return;
-    const n = body.byteLength >> 1;
+    const n = body.byteLength >> 1;             // total samples (L,R interleaved)
     const i16 = new Int16Array(body.buffer, body.byteOffset, n);
     const f32 = new Float32Array(n);
     for (let i = 0; i < n; i++) f32[i] = i16[i] / 32768;

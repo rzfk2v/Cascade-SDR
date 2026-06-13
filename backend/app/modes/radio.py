@@ -28,6 +28,7 @@ from app.dsp.blocks import (
     FmDiscriminator,
     RealDecimator,
     SsbDemod,
+    StereoDecoder,
 )
 from app.dsp.cw import CwDecoder
 from app.dsp.fft import Spectrum
@@ -77,6 +78,10 @@ class RadioMode(Mode):
         self.rds_enabled = True      # decode RDS (station name/radiotext) on WFM
         self._rds: RdsDemod | None = None
         self._rds_dirty = False      # tuned to a new station -> reset RDS
+        self.stereo_enabled = True   # decode FM stereo (L−R from 38 kHz) on WFM
+        self._stereo: StereoDecoder | None = None
+        self._deemph_l: DeEmphasis | None = None
+        self._deemph_r: DeEmphasis | None = None
         self._need_rebuild = True
         self._user_tuned = False     # has the client picked a channel yet?
         self._last_level_emit = 0.0
@@ -124,6 +129,9 @@ class RadioMode(Mode):
         if "rds" in params and params["rds"] is not None:
             self.rds_enabled = bool(params["rds"])
             self._need_rebuild = True
+        if "stereo" in params and params["stereo"] is not None:
+            self.stereo_enabled = bool(params["stereo"])
+            self._need_rebuild = True
         self._announce_radio()
 
     def _radio_config_msg(self) -> dict:
@@ -136,6 +144,7 @@ class RadioMode(Mode):
             "squelch": self.squelch_db,
             "deemph": self.deemph_us,
             "rds": self.rds_enabled,
+            "stereo": self.stereo_enabled,
             "audio_rate": AUDIO_RATE,
         }
 
@@ -182,12 +191,20 @@ class RadioMode(Mode):
         self._env_decim = None
         self._cw = None
         self._rds = None
+        self._stereo = None
+        self._deemph_l = self._deemph_r = None
         if self.demod in ("wfm", "nfm"):
             self._disc = FmDiscriminator()
             self._fm_dev = float(cfg["dev"])
             self._audio_decim = RealDecimator(if_rate, audio_decim, cfg["audio"])
             if cfg.get("deemph"):
                 self._deemph = DeEmphasis(self._audio_decim.out_rate, tau_us=self.deemph_us)
+            if self.demod == "wfm" and self.stereo_enabled:
+                self._stereo = StereoDecoder(if_rate, audio_decim, cfg["audio"])
+                if cfg.get("deemph"):
+                    rate = self._audio_decim.out_rate
+                    self._deemph_l = DeEmphasis(rate, tau_us=self.deemph_us)
+                    self._deemph_r = DeEmphasis(rate, tau_us=self.deemph_us)
             if self.demod == "wfm" and self.rds_enabled:
                 # RDS lives at 57 kHz in the MPX (the discriminator output), so it
                 # needs the full IF-rate signal, before audio decimation.
@@ -235,12 +252,8 @@ class RadioMode(Mode):
         power = float(np.mean(np.abs(baseband) ** 2)) if baseband.size else 0.0
         level_db = 10.0 * np.log10(power + 1e-12)
         squelched = level_db < self.squelch_db
-        if now - self._last_level_emit >= 0.1:  # ~10 Hz meter updates
-            self._last_level_emit = now
-            self.manager.emit_json(
-                {"type": "radio_level", "db": round(level_db, 1), "open": not squelched}
-            )
 
+        audio_lr: tuple[np.ndarray, np.ndarray] | None = None  # set for true stereo
         if self.demod in ("wfm", "nfm"):
             disc = self._disc.process(baseband)           # radians/sample = MPX
             disc *= if_rate / (2.0 * np.pi * self._fm_dev)
@@ -252,9 +265,20 @@ class RadioMode(Mode):
                     self.manager.emit_json({"type": "rds", "pi": None, "pty": None,
                                             "ps": "", "rt": ""})
                 self._rds.process(disc)
-            audio = self._audio_decim.process(disc)
-            if self._deemph is not None:
-                audio = self._deemph.process(audio)
+            mono = self._audio_decim.process(disc)
+            # Stereo: recover L−R from the 38 kHz subcarrier (only when a pilot is
+            # present), otherwise fall back to mono (L = R).
+            if (self.demod == "wfm" and self.stereo_enabled
+                    and self._stereo is not None):
+                diff, frac = self._stereo.process(disc)
+                if frac >= 0.03:
+                    left, right = mono + diff, mono - diff
+                    if self._deemph_l is not None:
+                        left = self._deemph_l.process(left)
+                        right = self._deemph_r.process(right)
+                    audio_lr = (left, right)
+            if audio_lr is None:
+                audio = self._deemph.process(mono) if self._deemph is not None else mono
         elif self.demod == "am":
             env = self._audio_decim.process(np.abs(baseband))
             carrier = float(np.mean(env))                  # carrier-normalised:
@@ -269,9 +293,22 @@ class RadioMode(Mode):
                 if text:
                     self.manager.emit_json({"type": "cw_text", "text": text})
 
-        # 4) scale to int16 PCM and emit (silence when squelched, to keep the
-        #    audio stream continuous and the player's buffer fed)
+        if now - self._last_level_emit >= 0.1:  # ~10 Hz meter updates
+            self._last_level_emit = now
+            self.manager.emit_json({
+                "type": "radio_level", "db": round(level_db, 1),
+                "open": not squelched, "stereo": audio_lr is not None,
+            })
+
+        # 4) scale to int16 and emit as interleaved stereo (mono -> L = R), so the
+        #    player has one consistent format. Silence when squelched.
+        left, right = audio_lr if audio_lr is not None else (audio, audio)
         if squelched:
-            audio = np.zeros_like(audio)
-        pcm = np.clip(audio * self.volume, -1.0, 1.0)
-        self.manager.emit_binary(FrameTag.AUDIO, (pcm * 32767).astype("<i2").tobytes())
+            left = np.zeros_like(left)
+            right = np.zeros_like(right)
+        l = np.clip(left * self.volume, -1.0, 1.0)
+        r = np.clip(right * self.volume, -1.0, 1.0)
+        inter = np.empty(l.size * 2, dtype="<i2")
+        inter[0::2] = (l * 32767).astype("<i2")
+        inter[1::2] = (r * 32767).astype("<i2")
+        self.manager.emit_binary(FrameTag.AUDIO, inter.tobytes())

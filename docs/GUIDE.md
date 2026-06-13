@@ -110,6 +110,9 @@ After you click a signal in the Spectrum (or Replay) view, pick a **Demod**:
 | **CW** | Morse — plays the tone **and decodes it to text** (see below). |
 
 - Switching demod sets a sensible **bandwidth** you can fine-tune.
+- **FM stereo** (WFM): on by default. Broadcast FM plays in stereo when the
+  station sends a pilot; a **◖◗ stereo** mark appears on the level meter when
+  locked. Weak/noisy signals are noisier in stereo — turn it off for mono if so.
 - **FM de-emphasis** (WFM): leave at **50 µs** in Europe; switch to **75 µs** for
   North America/Korea. Wrong setting makes broadcast FM sound dull or harsh.
 - **RDS** (WFM): on by default — within a few seconds of tuning a broadcast FM

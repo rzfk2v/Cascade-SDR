@@ -1,4 +1,5 @@
-// AudioWorklet that plays streamed mono Float32 PCM with a jitter buffer.
+// AudioWorklet that plays streamed interleaved-stereo Float32 PCM with a jitter
+// buffer, de-interleaving to the two output channels (L,R,L,R,...).
 //
 // SDR audio arrives in bursts over a WebSocket while the main thread is also busy
 // drawing the waterfall, so chunk timing is uneven. Playing "just in time" causes
@@ -13,12 +14,13 @@ const MAXBUFFER_S = 0.5;  // drop oldest beyond this to bound latency
 class PcmPlayer extends AudioWorkletProcessor {
   constructor() {
     super();
-    this.buffers = [];        // queued Float32Array chunks
-    this.readIndex = 0;       // read offset into buffers[0]
-    this.available = 0;       // total unread samples queued
+    this.buffers = [];        // queued interleaved Float32Array chunks (L,R,...)
+    this.readIndex = 0;       // read offset into buffers[0] (in samples)
+    this.available = 0;       // total unread samples queued (interleaved)
     this.playing = false;     // false => buffering
-    this.prebuffer = Math.floor(sampleRate * PREBUFFER_S);
-    this.maxbuffer = Math.floor(sampleRate * MAXBUFFER_S);
+    // counts are in interleaved samples, so ×2 for the two channels
+    this.prebuffer = Math.floor(sampleRate * PREBUFFER_S) * 2;
+    this.maxbuffer = Math.floor(sampleRate * MAXBUFFER_S) * 2;
     this.port.onmessage = (e) => {
       const chunk = e.data;
       this.buffers.push(chunk);
@@ -32,31 +34,33 @@ class PcmPlayer extends AudioWorkletProcessor {
   }
 
   process(_inputs, outputs) {
-    const out = outputs[0][0];
-    if (!out) return true;
+    const outL = outputs[0][0];
+    if (!outL) return true;
+    const outR = outputs[0][1] || outL; // fall back to mono if only 1 channel
 
     if (!this.playing) {
       if (this.available >= this.prebuffer) this.playing = true;
       else {
-        out.fill(0);
+        outL.fill(0);
+        if (outR !== outL) outR.fill(0);
         return true;
       }
     }
 
-    for (let i = 0; i < out.length; i++) {
-      if (this.available <= 0) {
+    for (let i = 0; i < outL.length; i++) {
+      if (this.available < 2) {
         // Underrun: finish this render quantum with silence and re-buffer.
-        out.fill(0, i);
+        outL.fill(0, i);
+        if (outR !== outL) outR.fill(0, i);
         this.playing = false;
         break;
       }
-      const cur = this.buffers[0];
-      out[i] = cur[this.readIndex++];
-      this.available--;
-      if (this.readIndex >= cur.length) {
-        this.buffers.shift();
-        this.readIndex = 0;
-      }
+      let cur = this.buffers[0];
+      outL[i] = cur[this.readIndex++];
+      if (this.readIndex >= cur.length) { this.buffers.shift(); this.readIndex = 0; cur = this.buffers[0]; }
+      outR[i] = cur[this.readIndex++];
+      if (this.readIndex >= cur.length) { this.buffers.shift(); this.readIndex = 0; }
+      this.available -= 2;
     }
     return true;
   }
