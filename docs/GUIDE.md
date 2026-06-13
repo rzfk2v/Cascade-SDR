@@ -3,6 +3,10 @@
 Everything Cascade SDR can do, how to use it, and things worth trying. For setup
 and install, see the [README](../README.md).
 
+> **Hardware: RTL-SDR only.** Cascade SDR is built specifically for **RTL-SDR
+> dongles** (RTL2832U with an R820T/R820T2 tuner, ~24–1766 MHz). Other SDRs
+> (Airspy, HackRF, SDRplay, etc.) are **not** supported.
+
 > **One tuner, one job.** An RTL-SDR has a single tuner that sees ~2.4 MHz at a
 > time, so only one mode runs at once — picking a mode (or a decoder like ADS-B)
 > takes over the dongle. Switching modes hands it cleanly to the next.

@@ -42,7 +42,9 @@ body {
 }
 
 .brand { display: flex; align-items: center; justify-content: space-between; }
+.brand-name { display: flex; flex-direction: column; }
 .brand h1 { font-size: 1rem; margin: 0; letter-spacing: 0.02em; }
+.brand .tag { font-size: 0.62rem; color: var(--muted); letter-spacing: 0.03em; }
 .conn { display: flex; align-items: center; gap: 0.35rem; color: var(--muted); font-size: 0.75rem; }
 .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--err); transition: background 0.2s; }
 .dot.ok { background: var(--ok); }

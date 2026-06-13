@@ -1,8 +1,10 @@
 # Cascade SDR
 
-A cross-platform RTL-SDR application. A small **Python backend** owns the dongle
-and does the signal processing; a **web frontend** (opened in a browser) shows the
-UI, waterfall, audio and maps. The two talk over a WebSocket.
+A cross-platform receiver app **for RTL-SDR dongles** (RTL2832U + R820T/R820T2,
+~24–1766 MHz). It is **RTL-SDR specific** — other SDRs (Airspy, HackRF, SDRplay,
+…) are not supported. A small **Python backend** owns the dongle and does the
+signal processing; a **web frontend** (opened in a browser) shows the UI,
+waterfall, audio and maps. The two talk over a WebSocket.
 
 📖 **New here? See the [User Guide](docs/GUIDE.md)** — how to use every mode, plus
 things to try. Status:
