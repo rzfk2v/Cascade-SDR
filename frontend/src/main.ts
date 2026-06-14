@@ -1022,13 +1022,18 @@ function currentFreqHz(): number {
   return currentMode === "radio" ? tuner.tuned : tuner.centerFreq;
 }
 
+// In-memory source of truth: loaded once at startup, then persisted to
+// localStorage on every change. Re-reading storage on each save lost bookmarks
+// whenever the web-storage backend was flaky (e.g. the desktop web view), which
+// looked like "saving a second one overwrites the first".
+let bookmarks: Bookmark[] = loadBookmarks();
+
 function renderBookmarks(): void {
-  const list = loadBookmarks();
-  if (!list.length) {
+  if (!bookmarks.length) {
     bmList.innerHTML = '<div class="bm-empty">No bookmarks yet.</div>';
     return;
   }
-  bmList.innerHTML = list
+  bmList.innerHTML = bookmarks
     .map((b, i) => {
       const label = b.name || `${b.mhz.toFixed(3)} MHz`;
       const sub = `${b.demod ? b.demod.toUpperCase() + " · " : ""}${b.mhz.toFixed(3)}`;
@@ -1038,13 +1043,12 @@ function renderBookmarks(): void {
 }
 
 document.getElementById("bm-save")!.addEventListener("click", () => {
-  const list = loadBookmarks();
-  list.push({
+  bookmarks.push({
     name: bmName.value.trim(),
     mhz: currentFreqHz() / 1e6,
     demod: currentMode === "radio" ? demodSel.value : undefined,
   });
-  saveBookmarks(list);
+  saveBookmarks(bookmarks);
   bmName.value = "";
   renderBookmarks();
 });
@@ -1053,12 +1057,11 @@ bmList.addEventListener("click", async (e) => {
   const btn = (e.target as HTMLElement).closest("button");
   if (!btn) return;
   const i = parseInt((btn as HTMLElement).dataset.i!, 10);
-  const list = loadBookmarks();
-  const b = list[i];
+  const b = bookmarks[i];
   if (!b) return;
   if (btn.classList.contains("del")) {
-    list.splice(i, 1);
-    saveBookmarks(list);
+    bookmarks.splice(i, 1);
+    saveBookmarks(bookmarks);
     renderBookmarks();
     return;
   }
