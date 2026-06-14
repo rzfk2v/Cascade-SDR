@@ -10,17 +10,20 @@ not a map).
 Subprocess mode (``owns_device = False``): the DeviceManager cancels :meth:`run`
 on a mode switch; the ``finally`` kills acarsdec so the dongle is freed.
 
-acarsdec isn't in Homebrew — build it from source (see the README). Default
-channels are the common EU ACARS frequencies; tweak ``CHANNELS`` for your region
-(North America centres on 131.550).
+acarsdec isn't in Homebrew — build it from source (see the README). We find it
+on ``PATH`` or in the README's build dir; set ``ACARSDEC_BIN`` to override.
+Default channels are the common EU ACARS frequencies; tweak ``CHANNELS`` for your
+region (North America centres on 131.550).
 """
 from __future__ import annotations
 
 import asyncio
 import json
+import os
 import shutil
 import time
 from collections import deque
+from pathlib import Path
 
 from app.modes.base import Mode
 
@@ -59,7 +62,23 @@ class AcarsMode(Mode):
 
     @staticmethod
     def _exe() -> str | None:
-        return shutil.which("acarsdec")
+        """Locate the acarsdec binary, returning an absolute path or None.
+
+        Tried in order: the ``ACARSDEC_BIN`` override, then ``PATH``, then the
+        build dir from the README's "build from source" steps. The fallback
+        matters because a GUI-launched backend gets a stripped-down PATH that
+        omits Homebrew, so ``shutil.which`` alone can miss a working binary.
+        """
+        override = os.environ.get("ACARSDEC_BIN")
+        if override and os.access(override, os.X_OK):
+            return override
+        found = shutil.which("acarsdec")
+        if found:
+            return found
+        fallback = Path.home() / ".local/src/acarsdec/build/acarsdec"
+        if os.access(fallback, os.X_OK):
+            return str(fallback)
+        return None
 
     def _cmd(self) -> list[str]:
         cmd = [self._exe(), "-j", f"{UDP_HOST}:{UDP_PORT}"]

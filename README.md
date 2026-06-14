@@ -203,9 +203,19 @@ git clone https://github.com/szpajder/libacars ~/.local/src/libacars
 cd ~/.local/src/libacars && mkdir build && cd build && cmake .. && make -j4 && sudo make install
 # acarsdec
 git clone https://github.com/TLeconte/acarsdec ~/.local/src/acarsdec
-cd ~/.local/src/acarsdec && mkdir build && cd build && cmake .. -Drtl=ON && make -j4
-cp acarsdec /opt/homebrew/bin/acarsdec
+cd ~/.local/src/acarsdec && mkdir build && cd build
+cmake .. -Drtl=ON -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DCMAKE_C_FLAGS="-I/opt/homebrew/include"
+make -j4
+ln -sf "$PWD/acarsdec" /opt/homebrew/bin/acarsdec   # or set ACARSDEC_BIN to the path
 ```
+
+> **macOS build notes (Apple Silicon, CMake 4):** the extra `cmake` flags above
+> are required — `CMAKE_POLICY_VERSION_MINIMUM=3.5` (CMake 4 dropped acarsdec's old
+> `cmake_minimum_required`) and `-I/opt/homebrew/include` (so `rtl-sdr.h` is found).
+> Two source edits are also needed on macOS: define `HOST_NAME_MAX` (255) in
+> `acarsdec.c`, and replace the Linux-only `pthread_tryjoin_np` in `rtl.c` (e.g. poll
+> a done-flag, then `pthread_join`). The backend finds the binary on `PATH` or in
+> `~/.local/src/acarsdec/build`; set **`ACARSDEC_BIN`** to point anywhere else.
 
 > North America centres on **131.550 MHz** (plus 130.025/131.725). Edit `CHANNELS`
 > in [backend/app/modes/acars.py](backend/app/modes/acars.py) for your region; all
