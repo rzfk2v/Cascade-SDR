@@ -18,6 +18,8 @@ import re
 import shutil
 import signal
 import time
+from pathlib import Path
+from shlex import quote
 
 import aprslib
 
@@ -25,6 +27,9 @@ from app.modes.base import Mode
 
 STALE_SECONDS = 1800.0   # beacons are infrequent (minutes); keep stations a while
 AUDIO_RATE = 22_050
+# direwolf 1.8+ won't start without a config file; this minimal one sets up a
+# single receive-only 1200-baud channel and disables the AGW/KISS ports.
+DIREWOLF_CONF = Path(__file__).with_name("direwolf.conf")
 
 # A TNC2 packet: SRCCALL[-ssid]>DEST[,path,...]:payload  (direwolf may prefix it
 # with a "[chan.level]" tag and an audio-level line, which we ignore).
@@ -59,9 +64,10 @@ class AprsMode(Mode):
                if self.manager.freq_correction else "")
         freq = int(self.manager.center_freq)
         # rtl_fm: NBFM audio at 22050; squelch off (-l 0). direwolf: 1200-baud
-        # AFSK from stdin, -t 0 disables colour codes for clean parsing.
+        # AFSK from stdin, -t 0 disables colour codes for clean parsing, -c loads
+        # the minimal config (required since direwolf 1.8).
         return (f"rtl_fm -f {freq} -M fm -s {AUDIO_RATE} -l 0 {gain} {ppm} - "
-                f"| direwolf -t 0 -r {AUDIO_RATE} -B 1200 -")
+                f"| direwolf -c {quote(str(DIREWOLF_CONF))} -t 0 -r {AUDIO_RATE} -B 1200 -")
 
     async def run(self) -> None:
         rtl, dw = self._have_tools()

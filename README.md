@@ -182,6 +182,10 @@ apart) so give it time. Install direwolf once:
 brew install direwolf      # rtl_fm comes with the rtl-sdr package
 ```
 
+direwolf 1.8+ won't start without a config file, so the mode ships a minimal
+receive-only one at [backend/app/modes/direwolf.conf](backend/app/modes/direwolf.conf)
+(loaded via `-c`); no setup needed.
+
 > APRS in North America is **144.390 MHz** — change the Center frequency (the mode
 > defaults to the EU 144.800). One RTL-SDR can't do APRS and listen to FM at the
 > same time; APRS is its own mode.
