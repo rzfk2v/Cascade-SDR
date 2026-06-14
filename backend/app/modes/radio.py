@@ -89,6 +89,7 @@ class RadioMode(Mode):
         self._apt_dirty = False
         self._need_rebuild = True
         self._user_tuned = False     # has the client picked a channel yet?
+        self._last_band = (0.0, 0.0)  # detect Center/rate changes to follow the band
         self._last_level_emit = 0.0
         # DSP chain (built in on_start / on rebuild)
         self._chan: ComplexChannelizer | None = None
@@ -247,6 +248,20 @@ class RadioMode(Mode):
             self._last_emit = now
             row = self._spectrum.row(samples)
             self.manager.emit_binary(FrameTag.FFT, row.tobytes())
+
+        # If the captured band moved (Center retuned / zoomed) and the tuned channel
+        # fell outside it, follow the band — otherwise the "tuned" readout (and any
+        # bookmark made from it) goes stale, still pointing at the old channel. Done
+        # before the spectrum-only return so it also tracks while just browsing.
+        band = (self.manager.center_freq, self.manager.sample_rate)
+        if band != self._last_band:
+            self._last_band = band
+            half = self.manager.sample_rate / 2.0
+            if not (self.manager.center_freq - half < self.tuned_freq
+                    < self.manager.center_freq + half):
+                self.tuned_freq = self.manager.center_freq
+                self._user_tuned = False
+                self._announce_radio()
 
         # Spectrum-only until the user picks a channel (click-to-tune): show the
         # waterfall but emit no audio. This is what makes one combined view serve
