@@ -6,6 +6,8 @@ A cross-platform receiver app **for RTL-SDR dongles** (RTL2832U + R820T/R820T2,
 signal processing; a **web frontend** (opened in a browser) shows the UI,
 waterfall, audio and maps. The two talk over a WebSocket.
 
+![Cascade SDR — the Radio view: live waterfall + scope with click-to-listen](docs/radio.png)
+
 📖 **New here? See the [User Guide](docs/GUIDE.md)** — how to use every mode, plus
 things to try. Status:
 
@@ -29,6 +31,8 @@ plots aircraft when it receives them; with the stock antenna you may see none.
 normal VHF/whip antenna near water. **By default we pass `-X off` so your received
 data is NOT uploaded to the aiscatcher.org community feed.**
 
+![AIS — vessels on the map with country flags, and a full per-ship readout (name, MMSI, flag, dimensions, status, ETA…)](docs/ais.png)
+
 ### Using the Radio view (waterfall + listen in one)
 Open the app and click **Radio**: you see the live waterfall + scope of the
 captured band, silent. **Click any signal to listen** — audio starts and the demod
@@ -37,8 +41,8 @@ scope** sits above the waterfall (dBFS vs frequency) and a **squelch** slider mu
 the audio when the channel level falls below the threshold (the level meter shows
 the current channel level and ▶/🔇). Adjust demod (FM/AM), bandwidth and volume in
 the Radio controls. The dongle stays on one center frequency and captures ~2.4 MHz;
-you're selecting channels *within* that band digitally — use **Tune dongle** to move
-the captured window.
+you're selecting channels *within* that band digitally — type a frequency in
+**Center** (Enter) to move the captured window.
 
 > Radio is one combined view: it's both "browse the band" and "listen." It
 > stays silent until you click a signal, so it doubles as a plain waterfall.
