@@ -912,7 +912,16 @@ zoomOutBtn.addEventListener("click", () => {
 // blur) — no separate "apply" button.
 freqInput.addEventListener("change", () => {
   const mhz = parseFloat(freqInput.value);
-  if (isFinite(mhz)) sock.send({ cmd: "tune", center_freq: mhz * 1e6 });
+  if (!isFinite(mhz)) return;
+  const hz = mhz * 1e6;
+  sock.send({ cmd: "tune", center_freq: hz });
+  // In the Spectrum view, typing a frequency should both re-center AND listen to
+  // it (the channel follows the centre), so the tuned cursor doesn't get left
+  // behind on the old station.
+  if (currentMode === "radio" || currentMode === "spectrum") {
+    sock.send({ cmd: "config", params: { tuned_freq: hz } });
+    tuner.setTuned(hz);
+  }
 });
 rateInput.addEventListener("change", () => {
   const ms = parseFloat(rateInput.value);

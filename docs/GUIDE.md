@@ -20,7 +20,7 @@ and install, see the [README](../README.md).
   (below) with a **frequency axis**; in ADS-B/AIS/APRS it becomes a **map**, in DAB
   a **station list**, in ACARS a message log, in APT the satellite image.
 - **Top of sidebar** — connection dot (green = backend connected) and the mode
-  tabs, grouped **Explore** (Idle · Spectrum · Scan · Replay) and **Decode**
+  tabs, grouped **Explore** (Idle · Radio · Scan · Replay) and **Decode**
   (DAB · ADS-B · AIS · APRS · ACARS · APT).
 - **Band label** — under the device status, names the service on the current
   frequency (e.g. “FM broadcast”, “Marine VHF”) so you know what you're looking at.
@@ -31,14 +31,14 @@ and install, see the [README](../README.md).
 
 The sidebar shows only the panels that apply to the current mode.
 
-### Tuning (Spectrum view)
+### Tuning (Radio view)
 | Control | What it does |
 |---|---|
-| **Center (MHz)** | Hardware center frequency (24–1766 MHz — the R820T tuner's range). Type a value and press **Enter** to tune; there's no separate button. |
+| **Center (MHz)** | Type a frequency and press **Enter** to go there: it re-centers the band **and** tunes/listens to that frequency (the channel cursor follows). Range 24–1766 MHz (R820T). Click elsewhere in the waterfall afterwards to listen off-centre. |
 | **Sample rate (MS/s)** | Capture bandwidth, up to 2.4. Lower = less CPU/USB, narrower view. |
 
 Switching modes **keeps the current band** — listen to a ship on AIS (162 MHz), hit
-**Spectrum**, and you're looking at 162 MHz instead of jumping back to a default.
+**Radio**, and you're looking at 162 MHz instead of jumping back to a default.
 Decoder modes (ADS-B/AIS/APRS/ACARS/DAB) tune themselves, so they hide Center.
 
 ### Reception (all live modes)
@@ -50,7 +50,7 @@ Decoder modes (ADS-B/AIS/APRS/ACARS/DAB) tune themselves, so they hide Center.
 
 PPM and Bias-T sit under a collapsible **Advanced** disclosure — they're usually set once.
 
-### Recording (Spectrum / APT)
+### Recording (Radio / APT)
 **Record IQ** captures the raw stream to a `.cu8` file (see *Recording* below).
 
 ### 📡 Antenna helper (dipole kit)
@@ -72,7 +72,7 @@ line matter more than getting the exact cm. The kit can't reach resonance below
 
 ---
 
-## Spectrum (waterfall + listen, in one view)
+## Radio (waterfall + listen, in one view)
 
 The core view: a live FFT plus audio. The **scope** shows the instantaneous
 spectrum; the **waterfall** scrolls it over time (bright = strong). It opens
@@ -102,7 +102,7 @@ The dongle can't see more than ~2.4 MHz at once, so Scan **sweeps** across a ran
 and stitches it into one wide waterfall — for surveying a whole band.
 
 - Set **From/To (MHz)** or pick a **Preset** (FM, Airband, 2 m, 70 cm).
-- **Click** a peak → re-centers the dongle there and drops into the Spectrum view.
+- **Click** a peak → re-centers the dongle there and drops into the Radio view.
 - **Drag** to zoom into a sub-range; **Zoom out** to widen.
 - Wider ranges refresh slower (each 2.4 MHz slice needs its own retune).
 
@@ -115,7 +115,7 @@ click the strongest to listen. Or scan **1080–1100** for ADS-B activity (needs
 ## Replay (play back a recording)
 
 Open **Replay** and click any saved `.cu8` capture: it streams the file back
-through the same Spectrum view and demodulators, looping at the end — **no dongle
+through the same Radio view and demodulators, looping at the end — **no dongle
 required**. Everything works as if live: click a signal to listen, drag to set
 bandwidth, scroll to zoom, switch demods. Because IQ captures the *whole* 2.4 MHz
 band (not just the channel you were on), you can pull out signals you didn't even
@@ -123,7 +123,7 @@ notice during the live session.
 
 - The capture's **center frequency and sample rate** are read from its filename, so
   the axis is labelled correctly.
-- Record captures with **Record IQ** in the Spectrum view (Recording panel).
+- Record captures with **Record IQ** in the Radio view (Recording panel).
 
 **Try:** record a minute of the FM band, then in Replay click around different
 stations — same recording, any station, any time.
@@ -132,7 +132,7 @@ stations — same recording, any station, any time.
 
 ## Demodulators (the Radio controls)
 
-After you click a signal in the Spectrum (or Replay) view, pick a **Demod**:
+After you click a signal in the Radio (or Replay) view, pick a **Demod**:
 
 | Demod | Use for |
 |---|---|
@@ -296,9 +296,9 @@ and watch the coastline scroll in. (Meteor-M LRPT is digital and not supported.)
 
 ## Recording
 
-- **Audio (WAV)** — *Record audio* in the Spectrum view; captures what you hear,
+- **Audio (WAV)** — *Record audio* in the Radio view; captures what you hear,
   downloads a 48 kHz WAV. Good for saving a catch or a CW/SSB exchange.
-- **IQ (.cu8)** — *Record IQ* in the Spectrum view; saves the **raw radio** so you
+- **IQ (.cu8)** — *Record IQ* in the Radio view; saves the **raw radio** so you
   can replay/analyse it later — in Cascade's own **Replay** mode, or in gqrx /
   `rtl_sdr` / etc. Files list with download/delete; the name carries the frequency +
   sample rate. **They're big (~290 MB/min)** — delete when done.

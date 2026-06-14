@@ -11,7 +11,7 @@ things to try. Status:
 
 | Mode | What it does | Status |
 |------|--------------|--------|
-| **Spectrum** | Live scrolling waterfall + scope; **click a signal to listen** (WFM/NFM/AM/USB/LSB/CW), squelch, browser audio. Scroll to zoom. | ✅ working |
+| **Radio** | Live scrolling waterfall + scope; **click a signal to listen** (WFM/NFM/AM/USB/LSB/CW), squelch, browser audio. Scroll to zoom. | ✅ working |
 | **Scan** | Swept wideband panorama (e.g. whole 88–108 band) to find signals | ✅ working |
 | **Replay** | Play a saved `.cu8` capture back through the spectrum + demodulators — no dongle needed | ✅ working |
 | **DAB** | DAB/DAB+ digital radio — ensemble station list + playback (via `welle-cli`) | ✅ working† |
@@ -29,8 +29,8 @@ plots aircraft when it receives them; with the stock antenna you may see none.
 normal VHF/whip antenna near water. **By default we pass `-X off` so your received
 data is NOT uploaded to the aiscatcher.org community feed.**
 
-### Using the Spectrum view (waterfall + radio in one)
-Open the app and click **Spectrum**: you see the live waterfall + scope of the
+### Using the Radio view (waterfall + listen in one)
+Open the app and click **Radio**: you see the live waterfall + scope of the
 captured band, silent. **Click any signal to listen** — audio starts and the demod
 controls appear. **Drag across a signal** to set its bandwidth. A live **spectrum
 scope** sits above the waterfall (dBFS vs frequency) and a **squelch** slider mutes
@@ -40,7 +40,7 @@ the Radio controls. The dongle stays on one center frequency and captures ~2.4 M
 you're selecting channels *within* that band digitally — use **Tune dongle** to move
 the captured window.
 
-> Spectrum is one combined view: it's both "browse the band" and "listen." It
+> Radio is one combined view: it's both "browse the band" and "listen." It
 > stays silent until you click a signal, so it doubles as a plain waterfall.
 
 Audio uses a ~120 ms jitter buffer to stay click-free. The device is read on a
@@ -50,12 +50,12 @@ dedicated thread (kept drained at real time) so DSP never starves the USB stream
 The dongle only sees ~2.4 MHz at once, so **Scan** sweeps it across a wider range
 (set *Scan from/to* in MHz, or pick a **preset** like FM 88–108 or Airband) and
 stitches the slices into one wide spectrum + waterfall. **Click any peak** to
-re-center the dongle there and drop straight into the Spectrum view to listen. Wider
+re-center the dongle there and drop straight into the Radio view to listen. Wider
 ranges sweep more slowly (each ~2.4 MHz slice needs its own retune + capture).
 
 ### Replay a recording
 Select **Replay** and click a saved `.cu8` capture: it streams the file back
-through the same spectrum view and demodulators (looping at the end), so you can
+through the same Radio view and demodulators (looping at the end), so you can
 re-open a capture and pull out *any* signal in the recorded band — **no dongle
 needed**. Click a signal to listen, drag to set bandwidth, scroll to zoom, just
 like live. The capture's center frequency and sample rate come from its filename.
@@ -64,7 +64,7 @@ like live. The capture's center frequency and sample rate come from its filename
 - **Scroll** (mouse wheel) over the scope/waterfall to **zoom** the display into
   part of the captured band; **shift-drag** to pan; **Zoom out** (top-right) resets.
   This is a *display* zoom — it magnifies what's captured without retuning. (In
-  **Scan**, drag still narrows the swept range; plain **drag** in the Spectrum view
+  **Scan**, drag still narrows the swept range; plain **drag** in the Radio view
   sets demod bandwidth.)
 - **Gain** — uncheck *Auto gain* for a manual slider over the device's gain steps.
   High manual gain helps weak signals (e.g. ADS-B); too much overloads.
@@ -87,7 +87,7 @@ differential → block-syndrome sync → group parsing), no external tool.
 ### Recording
 - **Audio**: the *Record audio* button (Radio controls) captures what you're
   hearing to a **WAV** download.
-- **IQ**: *Record IQ* (Device panel, Spectrum view) writes the raw stream to a
+- **IQ**: *Record IQ* (Recording panel, Radio view) writes the raw stream to a
   standard **.cu8** file — replayable in Cascade's own **Replay** mode, or in
   rtl_sdr/gqrx/etc. — listed with download/delete; the filename carries the center
   frequency and sample rate.
@@ -120,7 +120,7 @@ the window and resize with it.
 ### ADS-B (aircraft map)
 Select **ADS-B**: the backend spawns `dump1090`, reads its BaseStation feed
 (TCP 30003), and plots aircraft on an OpenStreetMap map. Switching to another mode
-kills `dump1090` and hands the dongle back. **Bias-T** (Device panel) can power a
+kills `dump1090` and hands the dongle back. **Bias-T** (Reception ▸ Advanced) can power a
 1090 MHz LNA — strongly recommended for real range. Gain/PPM are passed to dump1090.
 Click a plane or a row in the **Aircraft** list for full detail (callsign, ICAO,
 **type/category** — light/small/large/heavy/rotorcraft, squawk, altitude, climb,
@@ -310,7 +310,7 @@ cd backend && ./.venv/bin/uvicorn app.main:app --reload --port 8000
 cd frontend && npm run dev
 ```
 
-Open **http://localhost:5173**, click **Spectrum**, and you should see the
+Open **http://localhost:5173**, click **Radio**, and you should see the
 waterfall. Set the **Center (MHz)** to a strong local FM station, click **Tune
 dongle**, then click the signal to listen.
 
