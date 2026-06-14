@@ -17,25 +17,41 @@ and install, see the [README](../README.md).
 
 - **Left sidebar** — all controls. The panels shown change with the mode.
 - **Right display** — the spectrum **scope** (top) + scrolling **waterfall**
-  (below) with a **frequency axis**; in ADS-B/AIS it becomes a **map**, in DAB a
-  **station list**.
+  (below) with a **frequency axis**; in ADS-B/AIS/APRS it becomes a **map**, in DAB
+  a **station list**, in ACARS a message log, in APT the satellite image.
 - **Top of sidebar** — connection dot (green = backend connected) and the mode
-  tabs: **Idle · Spectrum · Scan · Replay · DAB · ADS-B · AIS · APRS · ACARS · APT**.
+  tabs, grouped **Explore** (Idle · Spectrum · Scan · Replay) and **Decode**
+  (DAB · ADS-B · AIS · APRS · ACARS · APT).
 - **Band label** — under the device status, names the service on the current
   frequency (e.g. “FM broadcast”, “Marine VHF”) so you know what you're looking at.
 
 ---
 
-## Device panel (always visible)
+## Controls (sidebar panels)
 
+The sidebar shows only the panels that apply to the current mode.
+
+### Tuning (Spectrum view)
 | Control | What it does |
 |---|---|
-| **Center (MHz)** + **Tune dongle** | Sets the hardware center frequency (24–1766 MHz — the R820T tuner's range). |
+| **Center (MHz)** | Hardware center frequency (24–1766 MHz — the R820T tuner's range). Type a value and press **Enter** to tune; there's no separate button. |
 | **Sample rate (MS/s)** | Capture bandwidth, up to 2.4. Lower = less CPU/USB, narrower view. |
-| **Auto gain** / **Gain** | Auto lets the tuner ride gain; uncheck for a manual gain slider. More gain digs out weak signals but can overload near strong ones. |
-| **PPM correction** | Corrects the dongle's crystal error so the displayed frequency is accurate. See *Calibration* below. |
-| **Bias-T (5 V)** | Feeds 5 V up the coax to power an inline LNA/antenna. **Only enable if you have a powered device** — don't feed a plain antenna. |
-| **Record IQ** | Records the raw stream to a `.cu8` file (see *Recording*). |
+
+Switching modes **keeps the current band** — listen to a ship on AIS (162 MHz), hit
+**Spectrum**, and you're looking at 162 MHz instead of jumping back to a default.
+Decoder modes (ADS-B/AIS/APRS/ACARS/DAB) tune themselves, so they hide Center.
+
+### Reception (all live modes)
+| Control | What it does |
+|---|---|
+| **Auto gain** / **Gain** | Auto lets the tuner ride gain; uncheck for a manual slider. More gain digs out weak signals but can overload near strong ones. For broadcast FM, a manual *high* gain often gives the cleanest audio and best RDS lock. |
+| **Advanced ▸ PPM correction** | Corrects the dongle's crystal error so the displayed frequency is accurate. See *Calibration* below. |
+| **Advanced ▸ Bias-T (5 V)** | Feeds 5 V up the coax to power an inline LNA/antenna. **Only enable if you have a powered device** — don't feed a plain antenna. |
+
+PPM and Bias-T sit under a collapsible **Advanced** disclosure — they're usually set once.
+
+### Recording (Spectrum / APT)
+**Record IQ** captures the raw stream to a `.cu8` file (see *Recording* below).
 
 ### 📡 Antenna helper (dipole kit)
 Below the band label, a line tells you how to set the **RTL-SDR.com dipole kit**
@@ -107,7 +123,7 @@ notice during the live session.
 
 - The capture's **center frequency and sample rate** are read from its filename, so
   the axis is labelled correctly.
-- Record captures with **Record IQ** in the Spectrum view (Device panel).
+- Record captures with **Record IQ** in the Spectrum view (Recording panel).
 
 **Try:** record a minute of the FM band, then in Replay click around different
 stations — same recording, any station, any time.
@@ -173,8 +189,8 @@ Plots aircraft from their 1090 MHz transponders on a map.
   **trails**. The **Aircraft list** (top-right) is sorted by distance.
 - **Click** a plane or a row → popup with callsign, ICAO, **type** (light/large/
   heavy/rotorcraft…), squawk, altitude, climb, speed, track.
-- Set **My location** (lat, lon) in the ADS-B panel for accurate distances.
 - Needs a **1090 MHz antenna** for real range; a 1090 LNA on Bias-T helps a lot.
+- See **Map options** below to set your location (for distances) and toggle trails.
 
 **Try:** if near an airport/flight path, watch trails build as planes move. Click
 the nearest one for details.
@@ -185,15 +201,25 @@ the nearest one for details.
 
 Plots vessels from their 162 MHz AIS transmissions.
 
-- Switch to **AIS**; ships appear as markers with **trails**; the **Vessels list**
-  is sorted by distance.
-- **Click** a ship → name, MMSI, **type** (cargo/tanker/passenger/fishing/sailing…),
-  speed, course, destination.
-- Works with an ordinary VHF antenna near water. **Data stays local** (not
-  uploaded anywhere).
+- Switch to **AIS**; ships appear as markers **sized by the vessel's length** (a
+  dinghy is a dot, a tanker is large) and tagged with a **country flag** from the
+  MMSI. Trails show recent movement.
+- The **Vessels list** has **sortable columns** — click **Vessel / Spd / Crs / Dist**
+  to sort by that column (click again to reverse).
+- **Click** a ship → a full readout: name, MMSI, **flag/country**, IMO, callsign,
+  **type** (cargo/tanker/passenger/fishing/sailing…), **navigation status**,
+  **size (length × width)**, draught, speed, course, heading, rate of turn,
+  destination and ETA — whatever that vessel has broadcast.
+- **Notes**: click a vessel, type a note in the AIS panel, **Save** — it's stored
+  against that MMSI and flagged with a 📝 in the list.
+- **Name cache**: names and your notes are remembered between sessions, so a known
+  ship shows up named the instant it's heard again, instead of waiting minutes for
+  its next static (name) message.
+- Works with an ordinary VHF antenna near water. **Data stays local** (not uploaded).
+- See **Map options** below to set your location (for distances) and toggle trails.
 
-**Try:** near a coast/harbour, watch vessels and read their names/types as their
-static messages arrive (every few minutes).
+**Try:** near a coast/harbour, sort by **Spd** to spot what's moving, and click a
+big marker to read its dimensions and destination.
 
 ---
 
@@ -208,9 +234,25 @@ Plots amateur **APRS** stations heard on **144.800 MHz** (EU). Needs
 - Reception is direct or via **digipeaters**, so you can hear stations from
   surprisingly far. Beacons are infrequent (minutes apart) — leave it running.
 - North America uses **144.390 MHz** — set the Center frequency accordingly.
+- See **Map options** below to set your location (for distances) and toggle trails.
 
 **Try:** leave it on for a while near any town; mobile stations (cars/handhelds)
 and weather stations should trickle in.
+
+---
+
+## Map options (ADS-B · AIS · APRS)
+
+Shared controls for all three map modes:
+
+- **My location** (lat, lon) — the reference point for **distance/bearing** in the
+  lists, also shown as a small **blue dot** on the map so you can confirm it's
+  right. Click **📍 Use my location** to fill it from the browser's geolocation
+  (works in a browser; in the desktop app, type it in — either way it's saved).
+  Defaults to central Stockholm; set it to where your antenna is.
+- **Show tracks** — toggle the movement trails on/off (useful when the map is busy).
+
+Both persist across sessions.
 
 ---
 
@@ -269,8 +311,11 @@ and watch the coastline scroll in. (Meteor-M LRPT is digital and not supported.)
 
 - **Bookmarks** — save the current frequency (+demod) with a name; click to recall,
   × to delete.
-- Your settings (gain, PPM, demod, de-emphasis, volume, squelch, contrast,
-  peak-hold, averaging, scan range, location, bookmarks) **persist across reloads**.
+- Your settings (gain, PPM, demod, FM stereo, de-emphasis, volume, squelch,
+  contrast, peak-hold, averaging, scan range, location, show-tracks, bookmarks)
+  **persist across reloads**.
+- AIS **vessel names and your notes** are cached on the backend, so they survive
+  restarts and reappear the moment a known ship is heard again.
 
 ---
 
