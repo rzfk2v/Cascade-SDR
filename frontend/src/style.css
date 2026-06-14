@@ -49,7 +49,14 @@ body {
 .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--err); transition: background 0.2s; }
 .dot.ok { background: var(--ok); }
 
-.modes { display: grid; grid-template-columns: 1fr 1fr; gap: 0.3rem; }
+.modes { display: flex; flex-direction: column; gap: 0.55rem; }
+.mode-group { display: flex; flex-direction: column; gap: 0.3rem; }
+.mode-label {
+  font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.07em;
+  color: var(--muted);
+}
+.mode-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.3rem; }
+.mode-row-3 { grid-template-columns: repeat(3, 1fr); }
 .modes button {
   background: transparent;
   color: var(--muted);
@@ -108,6 +115,20 @@ body {
   font-size: 0.85rem;
 }
 .muted { color: var(--muted); font-size: 0.78rem; }
+
+/* collapsible "Advanced" block inside a group (PPM / Bias-T) */
+details.advanced { display: flex; flex-direction: column; gap: 0.5rem; }
+details.advanced > summary {
+  cursor: pointer; user-select: none; list-style: none;
+  font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em;
+  color: var(--muted);
+}
+details.advanced > summary::-webkit-details-marker { display: none; }
+details.advanced > summary::before { content: "▸ "; }
+details.advanced[open] > summary::before { content: "▾ "; }
+
+/* status + band + antenna context block (no card chrome) */
+.context { display: flex; flex-direction: column; gap: 0.1rem; padding: 0 0.25rem; }
 .bm-add { display: flex; gap: 0.35rem; }
 .bm-add input { flex: 1; min-width: 0; }
 .bm-add button { flex: 0 0 auto; }
@@ -198,7 +219,7 @@ body {
   top: 1rem;
   right: 1rem;
   z-index: 5;
-  width: 270px;
+  width: 320px;
   max-height: calc(100% - 2rem);
   display: flex;
   flex-direction: column;
@@ -227,9 +248,22 @@ body {
   color: var(--muted);
   font-weight: 500;
   text-align: left;
-  padding: 0.3rem 0.6rem;
+  padding: 0.3rem 0.5rem;
 }
-.ap-table td { padding: 0.3rem 0.6rem; border-top: 1px solid var(--border); }
+.note-tag { cursor: help; opacity: 0.85; }
+.ais-note { display: flex; flex-direction: column; gap: 0.4rem; }
+/* keep a long unbreakable name from pushing the Dist column out of the panel */
+.ap-name {
+  display: inline-block;
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+.ap-table thead th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
+.ap-table thead th.sortable:hover { color: var(--text); }
+.ap-table td { padding: 0.3rem 0.5rem; border-top: 1px solid var(--border); }
 .ap-table tbody tr { cursor: pointer; }
 .ap-table tbody tr:hover { background: rgba(47, 129, 247, 0.18); }
 .ap-table tr.no-pos td { color: var(--muted); }

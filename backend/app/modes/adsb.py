@@ -33,6 +33,7 @@ AC_CATEGORY = {
 class AdsbMode(Mode):
     name = "adsb"
     owns_device = False
+    default_center_freq = 1_090_000_000.0   # Mode S / ADS-B; display only
 
     def __init__(self, manager) -> None:
         super().__init__(manager)
@@ -64,8 +65,9 @@ class AdsbMode(Mode):
         self._proc = await asyncio.create_subprocess_exec(
             *self._cmd(),
             stdout=asyncio.subprocess.DEVNULL,
-            stderr=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.PIPE,
         )
+        err = self._watch_stderr(self._proc)
         self.manager.emit_json({"type": "adsb_status", "message": "starting dump1090…"})
         path = os.path.join(self._jsondir, "aircraft.json")
 
@@ -73,9 +75,7 @@ class AdsbMode(Mode):
             announced = False
             while True:
                 if self._proc.returncode is not None:
-                    raise RuntimeError(
-                        "dump1090 exited — is the dongle free and connected?"
-                    )
+                    raise RuntimeError(self._exit_error("dump1090", err))
                 await asyncio.sleep(1.0)
                 msg = self._read(path)
                 if msg is not None:
@@ -91,6 +91,7 @@ class AdsbMode(Mode):
                 shutil.rmtree(self._jsondir, ignore_errors=True)
 
     async def _kill_proc(self) -> None:
+        self._cancel_stderr_watch()
         if self._proc is None or self._proc.returncode is not None:
             return
         try:

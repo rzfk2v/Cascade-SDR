@@ -21,6 +21,7 @@ from app.modes.base import Mode
 class SpectrumMode(Mode):
     name = "spectrum"
     owns_device = True
+    resets_tuning = False     # keep the current band when entering the spectrum view
     default_center_freq = 100_000_000.0
     default_sample_rate = 2_400_000.0
     block_size = 65_536

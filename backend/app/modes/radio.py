@@ -57,6 +57,7 @@ DEMODS = {
 class RadioMode(Mode):
     name = "radio"
     owns_device = True
+    resets_tuning = False     # keep the current band when entering the spectrum view
     default_center_freq = 100_000_000.0
     default_sample_rate = 2_400_000.0
     # 51200 is a multiple of 256 (librtlsdr), 10 (IF decim) and 50 (total decim).

@@ -18,6 +18,7 @@ import re
 import shutil
 import signal
 import time
+from collections import deque
 from pathlib import Path
 from shlex import quote
 
@@ -82,20 +83,29 @@ class AprsMode(Mode):
         self._proc = await asyncio.create_subprocess_shell(
             self._cmd(),
             stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.PIPE,
             start_new_session=True,   # own process group, so we can kill the pipe
         )
+        # stderr catches rtl_fm's and direwolf's error output; direwolf's startup
+        # errors, though, go to *stdout* (which we read below for packets), so we
+        # keep a tail of those lines too and fold both into the exit message.
+        err = self._watch_stderr(self._proc)
+        out_tail: deque[str] = deque(maxlen=8)
         self.manager.emit_json({"type": "aprs_status",
                                 "message": "direwolf running · 144.800 MHz"})
         try:
             last_emit = 0.0
             while True:
                 if self._proc.returncode is not None:
-                    raise RuntimeError("rtl_fm/direwolf exited — dongle free?")
+                    raise RuntimeError(
+                        self._exit_error("rtl_fm/direwolf", out_tail, err))
                 try:
                     raw = await asyncio.wait_for(self._proc.stdout.readline(), 0.5)
                     if raw:
-                        self._on_line(raw.decode(errors="ignore").strip())
+                        line = raw.decode(errors="ignore").strip()
+                        if line:
+                            out_tail.append(line)
+                        self._on_line(line)
                 except asyncio.TimeoutError:
                     pass
                 now = time.monotonic()
@@ -107,6 +117,7 @@ class AprsMode(Mode):
             await self._kill_proc()
 
     async def _kill_proc(self) -> None:
+        self._cancel_stderr_watch()
         if self._proc is None or self._proc.returncode is not None:
             return
         try:

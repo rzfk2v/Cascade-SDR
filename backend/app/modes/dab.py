@@ -24,6 +24,7 @@ WEB_PORT = 7979
 class DabMode(Mode):
     name = "dab"
     owns_device = False
+    default_center_freq = 227_360_000.0   # Band III block 12C (the default); display only
 
     def __init__(self, manager) -> None:
         super().__init__(manager)
@@ -69,8 +70,9 @@ class DabMode(Mode):
         if self.manager.gain != "auto":
             cmd += ["-g", str(self.manager.gain)]
         self._proc = await asyncio.create_subprocess_exec(
-            *cmd, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL,
+            *cmd, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE,
         )
+        err = self._watch_stderr(self._proc)
         self.manager.emit_json({"type": "dab_status",
                                 "message": f"tuning block {self.channel}…"})
         loop = asyncio.get_running_loop()
@@ -79,7 +81,8 @@ class DabMode(Mode):
                 if self._proc.returncode is not None:
                     self.manager.emit_json({
                         "type": "error",
-                        "message": "welle-cli exited — dongle free? block valid?",
+                        "message": self._exit_error(
+                            f"welle-cli (block {self.channel})", err),
                     })
                     return
                 await asyncio.sleep(1.5)
@@ -127,6 +130,7 @@ class DabMode(Mode):
                 "snr": round(float(snr), 1), "services": services, "web_port": WEB_PORT}
 
     async def _kill_proc(self) -> None:
+        self._cancel_stderr_watch()
         if self._proc is None or self._proc.returncode is not None:
             return
         try:

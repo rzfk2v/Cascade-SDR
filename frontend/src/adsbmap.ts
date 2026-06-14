@@ -30,11 +30,40 @@ export interface Vessel {
   speed?: number;
   course?: number;
   heading?: number;
+  turn?: number; // rate of turn, °/min
+  status?: string; // navigation status label
   ship_type?: number;
   type?: string;
   callsign?: string;
+  imo?: number;
+  length?: number; // metres (bow→stern)
+  width?: number; // metres (port→starboard beam)
+  draught?: number; // metres
   dest?: string;
+  eta?: string;
+  country?: string; // ISO-3166 alpha-2, from the MMSI's MID
+  comment?: string; // user note (persisted in the backend AIS cache)
   age?: number;
+}
+
+// ISO-3166 alpha-2 -> flag emoji (regional-indicator letters).
+export function flagEmoji(iso2?: string): string {
+  if (!iso2 || iso2.length !== 2) return "";
+  const base = 0x1f1e6;
+  return String.fromCodePoint(
+    base + iso2.charCodeAt(0) - 65,
+    base + iso2.charCodeAt(1) - 65,
+  );
+}
+
+// ISO-3166 alpha-2 -> localized country name (falls back to the code).
+export function countryName(iso2?: string): string {
+  if (!iso2) return "";
+  try {
+    return new Intl.DisplayNames(["en"], { type: "region" }).of(iso2) || iso2;
+  } catch {
+    return iso2;
+  }
 }
 
 export interface Station {
@@ -67,12 +96,22 @@ function vesselPopupHtml(v: Vessel): string {
   const rows: [string, string][] = [];
   rows.push(["Name", v.name || "—"]);
   rows.push(["MMSI", String(v.mmsi)]);
-  if (v.type) rows.push(["Type", v.type]);
+  if (v.imo) rows.push(["IMO", String(v.imo)]);
+  if (v.country) rows.push(["Flag", `${flagEmoji(v.country)} ${countryName(v.country)}`]);
   if (v.callsign) rows.push(["Callsign", v.callsign]);
+  if (v.type) rows.push(["Type", v.type]);
+  if (v.status) rows.push(["Status", v.status]);
+  if (v.length != null && v.width != null)
+    rows.push(["Size", `${v.length} × ${v.width} m`]);
+  else if (v.length != null) rows.push(["Length", `${v.length} m`]);
+  if (v.draught != null) rows.push(["Draught", `${v.draught} m`]);
   if (v.speed != null) rows.push(["Speed", `${v.speed} kn`]);
   if (v.course != null) rows.push(["Course", `${v.course}°`]);
   if (v.heading != null) rows.push(["Heading", `${v.heading}°`]);
+  if (v.turn != null) rows.push(["Rate of turn", `${v.turn}°/min`]);
   if (v.dest) rows.push(["Destination", v.dest]);
+  if (v.eta) rows.push(["ETA", v.eta]);
+  if (v.comment) rows.push(["Note", v.comment]);
   if (v.age != null) rows.push(["Seen", `${v.age}s ago`]);
   const body = rows.map(([k, val]) => `<tr><td>${k}</td><td>${val}</td></tr>`).join("");
   return `<div class="ac-popup"><b>${v.name || v.mmsi}</b><table>${body}</table></div>`;
@@ -104,6 +143,8 @@ export class AdsbMap {
   private aircraftTracks = new Map<string, { line: L.Polyline; pts: L.LatLngTuple[] }>();
   private vesselTracks = new Map<string, { line: L.Polyline; pts: L.LatLngTuple[] }>();
   private stationTracks = new Map<string, { line: L.Polyline; pts: L.LatLngTuple[] }>();
+  private homeMarker: L.CircleMarker | null = null;
+  private tracksVisible = true;
   private didAutoCenter = false;
 
   private static MAX_TRACK_PTS = 400;
@@ -118,7 +159,9 @@ export class AdsbMap {
   ): void {
     let t = store.get(id);
     if (!t) {
-      t = { line: L.polyline([], { color, weight: 1.5, opacity: 0.55 }).addTo(this.map!), pts: [] };
+      const line = L.polyline([], { color, weight: 1.5, opacity: 0.55 });
+      if (this.tracksVisible) line.addTo(this.map!);
+      t = { line, pts: [] };
       store.set(id, t);
     }
     const last = t.pts[t.pts.length - 1];
@@ -204,6 +247,41 @@ export class AdsbMap {
     }
   }
 
+  // --- receiver ("home") marker ------------------------------------------
+  // A blue dot at the user's configured lat/lon, so they can sanity-check that
+  // the position driving distance/bearing is actually where they are.
+  setHome(lat: number, lon: number): void {
+    if (!this.map) return;
+    if (!this.homeMarker) {
+      this.homeMarker = L.circleMarker([lat, lon], {
+        radius: 4, color: "#fff", weight: 1.5,
+        fillColor: "#2f81f7", fillOpacity: 1,
+      }).addTo(this.map);
+      this.homeMarker.bindPopup("Your location");
+    } else {
+      this.homeMarker.setLatLng([lat, lon]);
+    }
+    this.homeMarker.bringToFront();
+  }
+
+  clearHome(): void {
+    if (this.homeMarker) {
+      this.map?.removeLayer(this.homeMarker);
+      this.homeMarker = null;
+    }
+  }
+
+  // --- track trails on/off ------------------------------------------------
+  setTracksVisible(visible: boolean): void {
+    this.tracksVisible = visible;
+    for (const store of [this.aircraftTracks, this.vesselTracks, this.stationTracks]) {
+      for (const t of store.values()) {
+        if (visible) t.line.addTo(this.map!);
+        else this.map?.removeLayer(t.line);
+      }
+    }
+  }
+
   // Pan to an aircraft (from the list) and open its detail popup.
   focus(icao: string): void {
     const m = this.markers.get(icao);
@@ -223,13 +301,15 @@ export class AdsbMap {
       this.addTrackPoint(this.vesselTracks, id, v.lat, v.lon, "#1f9d55");
       const dir = v.heading ?? v.course ?? 0;
       const label = v.name || String(v.mmsi);
+      // scale the marker by vessel length so a dinghy looks small and a tanker big
+      const size = v.length ? Math.max(13, Math.min(34, 11 + v.length / 6)) : 14;
       const icon = L.divIcon({
         className: "ship-icon",
         html:
-          `<div class="ship-rot" style="transform:rotate(${dir}deg)">▲</div>` +
+          `<div class="ship-rot" style="font-size:${size}px;transform:rotate(${dir}deg)">▲</div>` +
           `<span class="plane-label">${label}</span>`,
-        iconSize: [18, 18],
-        iconAnchor: [9, 9],
+        iconSize: [size, size],
+        iconAnchor: [size / 2, size / 2],
       });
       let m = this.vesselMarkers.get(id);
       if (!m) {

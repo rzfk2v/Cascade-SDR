@@ -12,6 +12,7 @@ from app.modes.radio import RadioMode
 
 class AptMode(RadioMode):
     name = "apt"
+    resets_tuning = True                   # snap to the satellite freq, not the last band
     default_center_freq = 137_620_000.0   # NOAA 15 (NOAA 18: 137.9125, NOAA 19: 137.1)
 
     def __init__(self, manager) -> None:

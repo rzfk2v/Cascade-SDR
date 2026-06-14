@@ -6,7 +6,13 @@ import { Waterfall } from "./waterfall";
 import { SpectrumScope } from "./scope";
 import { Tuner } from "./tuner";
 import { AudioPlayer } from "./audio";
-import { AdsbMap, type Aircraft, type Vessel, type Station } from "./adsbmap";
+import {
+  AdsbMap,
+  flagEmoji,
+  type Aircraft,
+  type Vessel,
+  type Station,
+} from "./adsbmap";
 import {
   loadSettings,
   saveSettings,
@@ -50,9 +56,19 @@ const apCount = document.getElementById("ap-count")!;
 const apTitle = document.getElementById("ap-title")!;
 const apHead = document.getElementById("ap-head")!;
 const rxLoc = document.getElementById("rx-loc") as HTMLInputElement;
+const locationControls = document.getElementById("location-controls")!;
+const rxLocate = document.getElementById("rx-locate") as HTMLButtonElement;
+const rxLocStatus = document.getElementById("rx-loc-status")!;
+const mapOptions = document.getElementById("map-options")!;
+const showTracks = document.getElementById("show-tracks") as HTMLInputElement;
 const aisControls = document.getElementById("ais-controls")!;
 const aisStatus = document.getElementById("ais-status")!;
 const aisCount = document.getElementById("ais-count")!;
+const aisNote = document.getElementById("ais-note")!;
+const aisNoteTarget = document.getElementById("ais-note-target")!;
+const aisNoteInput = document.getElementById("ais-note-input") as HTMLInputElement;
+const aisNoteSave = document.getElementById("ais-note-save") as HTMLButtonElement;
+let noteMmsi: string | null = null;
 const aprsControls = document.getElementById("aprs-controls")!;
 const aprsStatus = document.getElementById("aprs-status")!;
 const aprsCount = document.getElementById("aprs-count")!;
@@ -136,6 +152,9 @@ const scanStop = document.getElementById("scan-stop") as HTMLInputElement;
 const scanPreset = document.getElementById("scan-preset") as HTMLSelectElement;
 const zoomOutBtn = document.getElementById("zoom-out") as HTMLButtonElement;
 const displayControls = document.getElementById("display-controls")!;
+const tuningControls = document.getElementById("tuning-controls")!;
+const receptionControls = document.getElementById("reception-controls")!;
+const recordingControls = document.getElementById("recording-controls")!;
 const wfAuto = document.getElementById("wf-auto") as HTMLInputElement;
 const wfFloor = document.getElementById("wf-floor") as HTMLInputElement;
 const wfCeil = document.getElementById("wf-ceil") as HTMLInputElement;
@@ -226,11 +245,20 @@ sock.onJson((msg) => {
       adsbControls.hidden = msg.mode !== "adsb";
       aisControls.hidden = msg.mode !== "ais";
       aprsControls.hidden = msg.mode !== "aprs";
+      // the location field + track toggle apply to every map mode
+      locationControls.hidden = !["adsb", "ais", "aprs"].includes(msg.mode);
+      mapOptions.hidden = !["adsb", "ais", "aprs"].includes(msg.mode);
       acarsControls.hidden = msg.mode !== "acars";
       aptControls.hidden = msg.mode !== "apt";
       dabControls.hidden = msg.mode !== "dab";
       zoomOutBtn.hidden = !["scan", "spectrum", "radio", "replay"].includes(msg.mode);
       displayControls.hidden = !["spectrum", "scan", "radio", "replay"].includes(msg.mode);
+      // Center/sample-rate only apply to the free-tune spectrum view; decoder
+      // modes self-tune. Gain/PPM/Bias-T affect reception in every running mode.
+      tuningControls.hidden = !["spectrum", "radio"].includes(msg.mode);
+      receptionControls.hidden = msg.mode === "idle";
+      // IQ capture needs a fixed-tuned IQ mode (not scan/replay/decoders).
+      recordingControls.hidden = !["spectrum", "radio", "apt"].includes(msg.mode);
       showView(msg.mode);
       break;
     case "spectrum_config":
@@ -286,6 +314,7 @@ sock.onJson((msg) => {
       ].filter(Boolean).join(" · ");
       break;
     case "aircraft":
+      lastAircraft = msg.aircraft;
       adsbMap.update(msg.aircraft);
       adsbCount.textContent = `${msg.positioned} shown · ${msg.count} tracked`;
       renderAircraftList(msg.aircraft);
@@ -294,6 +323,7 @@ sock.onJson((msg) => {
       aisStatus.textContent = msg.message;
       break;
     case "vessels":
+      lastVessels = msg.vessels;
       adsbMap.updateVessels(msg.vessels);
       aisCount.textContent = `${msg.positioned} shown · ${msg.count} tracked`;
       renderVesselList(msg.vessels);
@@ -302,6 +332,7 @@ sock.onJson((msg) => {
       aprsStatus.textContent = msg.message;
       break;
     case "stations":
+      lastStations = msg.stations;
       adsbMap.updateStations(msg.stations);
       aprsCount.textContent = `${msg.positioned} shown · ${msg.count} tracked`;
       renderStationList(msg.stations);
@@ -363,8 +394,11 @@ function renderStatus(s: any): void {
   statusLine.textContent =
     `${dev} · ${run} · ${(s.center_freq / 1e6).toFixed(3)} MHz · ` +
     `${(s.sample_rate / 1e6).toFixed(2)} MS/s`;
-  freqInput.value = (s.center_freq / 1e6).toString();
-  rateInput.value = (s.sample_rate / 1e6).toString();
+  // don't clobber a value the user is mid-edit (these now tune on change)
+  if (document.activeElement !== freqInput)
+    freqInput.value = (s.center_freq / 1e6).toString();
+  if (document.activeElement !== rateInput)
+    rateInput.value = (s.sample_rate / 1e6).toString();
 }
 
 function syncGain(s: any): void {
@@ -407,6 +441,10 @@ function showView(mode: string): void {
   });
   if (isMap) {
     adsbMap.ensure("map");
+    adsbMap.setTracksVisible(showTracks.checked);
+    const rx = rxLatLon();             // show the blue "you are here" dot
+    if (rx) adsbMap.setHome(rx[0], rx[1]);
+    else adsbMap.clearHome();
     apTitle.textContent =
       mode === "ais" ? "Vessels" : mode === "aprs" ? "Stations" : "Aircraft";
     // clear the two layers that aren't active in this mode
@@ -424,6 +462,7 @@ function showView(mode: string): void {
     dabPlayingSid = null;
   }
   if (mode !== "radio") cwText.hidden = true;
+  if (mode !== "ais") { aisNote.hidden = true; noteMmsi = null; }
 }
 
 function rxLatLon(): [number, number] | null {
@@ -431,6 +470,61 @@ function rxLatLon(): [number, number] | null {
   if (m.length === 2 && isFinite(m[0]) && isFinite(m[1])) return [m[0], m[1]];
   return null;
 }
+
+// When the reference point changes, move the blue "home" dot and recompute
+// distances now (otherwise distances would only refresh on the next ~1 s update).
+function applyLocation(): void {
+  const rx = rxLatLon();
+  if (rx) adsbMap.setHome(rx[0], rx[1]);
+  else adsbMap.clearHome();
+  if (currentMode === "ais") renderVesselList(lastVessels);
+  else if (currentMode === "adsb") renderAircraftList(lastAircraft);
+  else if (currentMode === "aprs") renderStationList(lastStations);
+}
+
+// Fill "My location" from the browser's geolocation (works on localhost / HTTPS).
+rxLocate.addEventListener("click", () => {
+  if (!navigator.geolocation) {
+    rxLocStatus.textContent = "geolocation not available in this browser";
+    return;
+  }
+  rxLocStatus.textContent = "locating…";
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      rxLoc.value =
+        `${pos.coords.latitude.toFixed(5)}, ${pos.coords.longitude.toFixed(5)}`;
+      rxLocStatus.textContent = `📍 using your location · ${rxLoc.value}`;
+      persist();              // value set programmatically -> persist explicitly
+      applyLocation();
+    },
+    // The desktop app's system web view has no GPS, so this fails there — point
+    // the user at manual entry instead of showing a cryptic error.
+    () => {
+      rxLocStatus.textContent =
+        "location unavailable here — type your lat, lon above (it'll be saved).";
+    },
+    { enableHighAccuracy: true, timeout: 8000 },
+  );
+});
+// Manual entry: validate, persist, and confirm. The value sticks (localStorage)
+// until you edit it again or use the button.
+function applyManualLocation(): void {
+  if (rxLatLon()) {
+    persist();
+    rxLocStatus.textContent = `saved · ${rxLoc.value.trim()}`;
+  } else {
+    rxLocStatus.textContent = "use decimal degrees: lat, lon  (e.g. 59.33, 18.06)";
+  }
+  applyLocation();
+}
+rxLoc.addEventListener("change", applyManualLocation);
+// Enter applies immediately (some web views don't fire "change" on Enter alone)
+rxLoc.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") { e.preventDefault(); applyManualLocation(); }
+});
+
+// show/hide the track trails (AIS / ADS-B / APRS); persisted across sessions
+showTracks.addEventListener("change", () => adsbMap.setTracksVisible(showTracks.checked));
 
 function haversineKm(a: [number, number], lat: number, lon: number): number {
   const R = 6371;
@@ -468,24 +562,68 @@ function renderAircraftList(list: Aircraft[]): void {
     .join("");
 }
 
+// AIS vessel-list sorting — click a column header to change it. Nearest-first by
+// default; `lastVessels` lets a header click re-sort without waiting for the next
+// 1 s update.
+type VesselSortKey = "name" | "speed" | "course" | "dist";
+// latest list per map mode, so re-sorting or a location change can re-render now
+let lastVessels: Vessel[] = [];
+let lastAircraft: Aircraft[] = [];
+let lastStations: Station[] = [];
+let vesselSort: { key: VesselSortKey; dir: 1 | -1 } = { key: "dist", dir: 1 };
+// sensible direction the first time you click a column (toggles thereafter)
+const VESSEL_DEFAULT_DIR: Record<VesselSortKey, 1 | -1> = {
+  name: 1, speed: -1, course: 1, dist: 1,
+};
+
+function vesselHead(): string {
+  const cols: [VesselSortKey, string][] = [
+    ["name", "Vessel"], ["speed", "Spd"], ["course", "Crs"], ["dist", "Dist"],
+  ];
+  return "<tr>" + cols
+    .map(([k, label]) => {
+      const arrow = vesselSort.key === k ? (vesselSort.dir === 1 ? " ▲" : " ▼") : "";
+      return `<th data-sort="${k}" class="sortable">${label}${arrow}</th>`;
+    })
+    .join("") + "</tr>";
+}
+
 function renderVesselList(list: Vessel[]): void {
   const rx = rxLatLon();
   const rows = list.map((v) => ({
     v,
     dist: rx && v.lat != null && v.lon != null ? haversineKm(rx, v.lat, v.lon) : null,
   }));
-  rows.sort((a, b) => (a.dist ?? 1e9) - (b.dist ?? 1e9));
+  const { key, dir } = vesselSort;
+  rows.sort((a, b) => {
+    if (key === "name") {
+      const an = (a.v.name || String(a.v.mmsi)).toLowerCase();
+      const bn = (b.v.name || String(b.v.mmsi)).toLowerCase();
+      return an < bn ? -dir : an > bn ? dir : 0;
+    }
+    // missing speed/course sort low; missing distance (no position) sorts last
+    const val = (r: (typeof rows)[number]) =>
+      key === "speed" ? r.v.speed ?? -1
+      : key === "course" ? r.v.course ?? -1
+      : r.dist ?? Infinity;
+    return (val(a) - val(b)) * dir;
+  });
 
-  apHead.innerHTML = "<tr><th>Vessel</th><th>Spd</th><th>Crs</th><th>Dist</th></tr>";
+  apHead.innerHTML = vesselHead();
   apCount.textContent = `(${list.length})`;
   apBody.innerHTML = rows
     .map(({ v, dist }) => {
+      const flag = v.country ? flagEmoji(v.country) + " " : "";
       const name = v.name || String(v.mmsi);
+      const title = esc(name).replace(/"/g, "&quot;");
+      const note = v.comment
+        ? ` <span class="note-tag" title="${esc(v.comment).replace(/"/g, "&quot;")}">📝</span>`
+        : "";
       const spd = v.speed != null ? `${v.speed}` : "—";
       const crs = v.course != null ? `${v.course}°` : "—";
       const d = dist != null ? `${dist.toFixed(0)} km` : "—";
       const cls = v.lat != null ? "" : ' class="no-pos"';
-      return `<tr data-mmsi="${v.mmsi}"${cls}><td>${name}</td><td>${spd}</td><td>${crs}</td><td>${d}</td></tr>`;
+      return `<tr data-mmsi="${v.mmsi}"${cls}><td><span class="ap-name" title="${title}">${flag}${esc(name)}</span>${note}</td><td>${spd}</td><td>${crs}</td><td>${d}</td></tr>`;
     })
     .join("");
 }
@@ -513,8 +651,42 @@ function renderStationList(list: Station[]): void {
 apBody.addEventListener("click", (e) => {
   const tr = (e.target as HTMLElement).closest("tr") as HTMLElement | null;
   if (tr?.dataset.icao) adsbMap.focus(tr.dataset.icao);
-  else if (tr?.dataset.mmsi) adsbMap.vesselFocus(tr.dataset.mmsi);
-  else if (tr?.dataset.call) adsbMap.stationFocus(tr.dataset.call);
+  else if (tr?.dataset.mmsi) {
+    adsbMap.vesselFocus(tr.dataset.mmsi);
+    openNoteEditor(tr.dataset.mmsi);
+  } else if (tr?.dataset.call) adsbMap.stationFocus(tr.dataset.call);
+});
+
+// --- AIS per-vessel note (saved in the backend cache, keyed by MMSI) -----
+function openNoteEditor(mmsi: string): void {
+  noteMmsi = mmsi;
+  const v = lastVessels.find((x) => String(x.mmsi) === mmsi);
+  aisNoteTarget.textContent = v?.name || mmsi;
+  aisNoteInput.value = v?.comment || "";
+  aisNote.hidden = false;
+  aisNoteInput.focus();
+}
+function saveNote(): void {
+  if (noteMmsi == null) return;
+  sock.send({
+    cmd: "config",
+    params: { set_comment: { mmsi: Number(noteMmsi), text: aisNoteInput.value.trim() } },
+  });
+}
+aisNoteSave.addEventListener("click", saveNote);
+aisNoteInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") { e.preventDefault(); saveNote(); }
+});
+
+// Click a vessel-list column header to sort by it (toggles direction on repeat).
+apHead.addEventListener("click", (e) => {
+  if (currentMode !== "ais") return; // only the AIS list has sortable headers
+  const th = (e.target as HTMLElement).closest("th[data-sort]") as HTMLElement | null;
+  if (!th) return;
+  const key = th.dataset.sort as VesselSortKey;
+  if (vesselSort.key === key) vesselSort.dir = vesselSort.dir === 1 ? -1 : 1;
+  else vesselSort = { key, dir: VESSEL_DEFAULT_DIR[key] };
+  renderVesselList(lastVessels);
 });
 
 function esc(s: string): string {
@@ -736,12 +908,15 @@ zoomOutBtn.addEventListener("click", () => {
 });
 
 // --- dongle tuning -------------------------------------------------------
-document.getElementById("apply")!.addEventListener("click", () => {
-  sock.send({
-    cmd: "tune",
-    center_freq: parseFloat(freqInput.value) * 1e6,
-    sample_rate: parseFloat(rateInput.value) * 1e6,
-  });
+// The Center / Sample-rate fields tune the dongle directly on change (Enter or
+// blur) — no separate "apply" button.
+freqInput.addEventListener("change", () => {
+  const mhz = parseFloat(freqInput.value);
+  if (isFinite(mhz)) sock.send({ cmd: "tune", center_freq: mhz * 1e6 });
+});
+rateInput.addEventListener("change", () => {
+  const ms = parseFloat(rateInput.value);
+  if (isFinite(ms)) sock.send({ cmd: "tune", sample_rate: ms * 1e6 });
 });
 // --- APT (weather satellite) controls ------------------------------------
 aptSat.addEventListener("change", () => {
@@ -807,7 +982,7 @@ const persistValues: Record<string, HTMLInputElement | HTMLSelectElement> = {
   scanStart, scanStop, wfFloor, wfCeil, rxLoc, deemph: deemphSel, averaging,
 };
 const persistChecks: Record<string, HTMLInputElement> = {
-  gainAuto, biasTee, wfAuto, peakHold, rdsOn, stereoOn,
+  gainAuto, biasTee, wfAuto, peakHold, rdsOn, stereoOn, showTracks,
 };
 
 function persist(): void {
@@ -823,6 +998,8 @@ function restoreSettings(): void {
     if (s[k] !== undefined) persistValues[k].value = String(s[k]);
   for (const k in persistChecks)
     if (s[k] !== undefined) persistChecks[k].checked = Boolean(s[k]);
+  // recover from a corrupt saved position (would otherwise blank all distances)
+  if (rxLatLon() === null) rxLoc.value = "59.33, 18.06";
   if (typeof s.gainDb === "number") desiredGainDb = s.gainDb;
   applyContrast();
   scope.setPeakHold(peakHold.checked);
@@ -831,12 +1008,14 @@ function restoreSettings(): void {
   gainVal.textContent = gainAuto.checked ? "auto" : `${desiredGainDb} dB`;
 }
 
-[...Object.values(persistValues), ...Object.values(persistChecks), gainSlider].forEach(
-  (el) => {
+[...Object.values(persistValues), ...Object.values(persistChecks), gainSlider]
+  // rxLoc persists explicitly (only on a complete, validated edit) so a
+  // half-typed "lat," can't get saved on a keystroke and blank out distances.
+  .filter((el) => el !== rxLoc)
+  .forEach((el) => {
     el.addEventListener("change", persist);
     el.addEventListener("input", persist);
-  },
-);
+  });
 
 // --- bookmarks -----------------------------------------------------------
 function currentFreqHz(): number {

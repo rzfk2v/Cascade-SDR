@@ -66,7 +66,13 @@ def main() -> None:
     webview.create_window(
         "Cascade SDR", URL, width=1280, height=820, min_size=(960, 640)
     )
-    webview.start()
+    # pywebview defaults to private mode, which wipes the web view's localStorage
+    # on every launch — losing the user's bookmarks, receiver position, and other
+    # saved settings. Disable it and point at a persistent directory so they stick
+    # across sessions (same idea as a browser profile).
+    storage = Path.home() / ".cascade-sdr" / "webview"
+    storage.mkdir(parents=True, exist_ok=True)
+    webview.start(private_mode=False, storage_path=str(storage))
 
 
 if __name__ == "__main__":

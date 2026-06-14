@@ -18,6 +18,9 @@ Two families of mode exist:
 """
 from __future__ import annotations
 
+import asyncio
+import logging
+from collections import deque
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -30,6 +33,10 @@ class Mode:
     name: str = "base"
     owns_device: bool = True  # True -> worker-thread IQ reader; False -> async subprocess
     controls_tuning: bool = False  # True -> mode drives retuning itself (sweep), see scan
+    #: When entering this mode, snap the dongle to ``default_center_freq`` /
+    #: ``default_sample_rate``. Free-tuning views (spectrum, radio) set this False
+    #: so they keep whatever band you were already on across a mode switch.
+    resets_tuning: bool = True
 
     #: Default radio settings the DeviceManager applies when this mode starts.
     default_center_freq: float = 100_000_000.0
@@ -70,3 +77,53 @@ class Mode:
         Loops until cancelled, reading the decoder's output and pushing results
         through ``self.manager.hub``.
         """
+
+    # --- Subprocess modes: diagnosable child failures -----------------------
+    # Children are spawned with ``stderr=PIPE`` (never DEVNULL) so that when one
+    # exits unexpectedly we can report *why* instead of a generic "exited". The
+    # helpers below drain that stderr to the log and keep a rolling tail to fold
+    # into the error surfaced to the UI.
+    def _watch_stderr(self, proc: "asyncio.subprocess.Process",
+                      lines: int = 8) -> "deque[str]":
+        """Drain ``proc.stderr`` to the log and return a deque of its last lines.
+
+        Starts a background task (cancelled via :meth:`_cancel_stderr_watch`)
+        that reads stderr line by line, logs each at WARNING, and keeps the most
+        recent ``lines`` in the returned deque for :meth:`_exit_error`.
+        """
+        tail: deque[str] = deque(maxlen=lines)
+        log = logging.getLogger(f"sdr.{self.name}")
+
+        async def drain() -> None:
+            assert proc.stderr is not None
+            while True:
+                raw = await proc.stderr.readline()
+                if not raw:
+                    break
+                line = raw.decode(errors="ignore").rstrip()
+                if line:
+                    tail.append(line)
+                    log.warning("%s: %s", self.name, line)
+
+        self._stderr_task = asyncio.ensure_future(drain())
+        return tail
+
+    def _cancel_stderr_watch(self) -> None:
+        """Stop the stderr-drain task started by :meth:`_watch_stderr`, if any."""
+        task = getattr(self, "_stderr_task", None)
+        if task is not None and not task.done():
+            task.cancel()
+        self._stderr_task = None
+
+    @staticmethod
+    def _exit_error(what: str, *tails: "deque[str]") -> str:
+        """Build a diagnosable 'child exited' message from its captured output.
+
+        Pass one or more tails (e.g. stderr, and for piped tools their stdout);
+        their last lines are folded in so the real cause shows up in the log and
+        the UI error instead of a generic hint.
+        """
+        detail = " / ".join(line for tail in tails for line in tail)
+        if detail:
+            return f"{what} exited — {detail}"
+        return f"{what} exited — no output captured; is the dongle free and connected?"

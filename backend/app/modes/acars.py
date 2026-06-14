@@ -102,15 +102,16 @@ class AcarsMode(Mode):
         self._proc = await asyncio.create_subprocess_exec(
             *self._cmd(),
             stdout=asyncio.subprocess.DEVNULL,
-            stderr=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.PIPE,
         )
+        err = self._watch_stderr(self._proc)
         self.manager.emit_json({"type": "acars_status",
                                 "message": f"acarsdec running · {', '.join(CHANNELS)} MHz"})
         try:
             last_emit = 0.0
             while True:
                 if self._proc.returncode is not None:
-                    raise RuntimeError("acarsdec exited — dongle free and connected?")
+                    raise RuntimeError(self._exit_error("acarsdec", err))
                 await asyncio.sleep(0.25)
                 now = time.monotonic()
                 if self._dirty and now - last_emit >= 0.5:
@@ -122,6 +123,7 @@ class AcarsMode(Mode):
             await self._kill_proc()
 
     async def _kill_proc(self) -> None:
+        self._cancel_stderr_watch()
         if self._proc is None or self._proc.returncode is not None:
             return
         try:

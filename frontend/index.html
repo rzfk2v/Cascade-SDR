@@ -21,36 +21,34 @@
         </div>
 
         <nav class="modes" id="mode-tabs">
-          <button data-mode="idle" class="active">Idle</button>
-          <button data-mode="radio">Spectrum</button>
-          <button data-mode="scan">Scan</button>
-          <button data-mode="replay">Replay</button>
-          <button data-mode="dab">DAB</button>
-          <button data-mode="adsb">ADS&#8209;B</button>
-          <button data-mode="ais">AIS</button>
-          <button data-mode="aprs">APRS</button>
-          <button data-mode="acars">ACARS</button>
-          <button data-mode="apt">APT</button>
+          <div class="mode-group">
+            <span class="mode-label">Explore</span>
+            <div class="mode-row">
+              <button data-mode="idle" class="active">Idle</button>
+              <button data-mode="radio">Spectrum</button>
+              <button data-mode="scan">Scan</button>
+              <button data-mode="replay">Replay</button>
+            </div>
+          </div>
+          <div class="mode-group">
+            <span class="mode-label">Decode</span>
+            <div class="mode-row mode-row-3">
+              <button data-mode="dab">DAB</button>
+              <button data-mode="adsb">ADS&#8209;B</button>
+              <button data-mode="ais">AIS</button>
+              <button data-mode="aprs">APRS</button>
+              <button data-mode="acars">ACARS</button>
+              <button data-mode="apt">APT</button>
+            </div>
+          </div>
         </nav>
 
-        <section class="group">
-          <h2>Device</h2>
+        <!-- Tuning: only meaningful in the free-tune spectrum view -->
+        <section class="group" id="tuning-controls" hidden>
+          <h2>Tuning</h2>
           <label>Center (MHz)<input id="freq" type="number" step="0.1" min="24" max="1766" value="100.0" /></label>
-          <p class="hint">Tuner range ≈ 24–1766 MHz (R820T)</p>
+          <p class="hint">Press Enter to tune · range ≈ 24–1766 MHz (R820T)</p>
           <label>Sample rate (MS/s)<input id="rate" type="number" step="0.1" min="0.96" max="2.4" value="2.4" /></label>
-          <button id="apply">Tune dongle</button>
-          <label class="check"><input id="gain-auto" type="checkbox" checked /> Auto gain</label>
-          <label>Gain<input id="gain" type="range" min="0" max="0" step="1" value="0" disabled />
-            <span id="gain-val" class="muted">auto</span>
-          </label>
-          <label>PPM correction<input id="ppm" type="number" step="1" value="0" /></label>
-          <label class="check"><input id="bias-tee" type="checkbox" /> Bias-T (5 V to antenna)</label>
-          <p id="status-line" class="status-line"></p>
-          <p id="band-info" class="band-info"></p>
-          <p id="antenna-info" class="antenna-info"></p>
-          <button id="rec-iq">● Record IQ</button>
-          <p id="rec-iq-status" class="status-line"></p>
-          <div id="rec-list" class="bm-list"></div>
         </section>
 
         <section class="group" id="display-controls" hidden>
@@ -86,14 +84,27 @@
           </label>
         </section>
 
+        <!-- My location: shared by all map modes (AIS / ADS-B / APRS) for distance -->
+        <section class="group" id="location-controls" hidden>
+          <h2>My location</h2>
+          <label>Latitude, longitude
+            <input id="rx-loc" type="text" value="59.33, 18.06" />
+          </label>
+          <button id="rx-locate">📍 Use my location</button>
+          <p id="rx-loc-status" class="status-line"></p>
+          <p class="hint">Sets the reference point for distance/bearing. Defaults to central Stockholm — change it to where your antenna is.</p>
+        </section>
+
+        <!-- Map options: shared by all map modes (AIS / ADS-B / APRS) -->
+        <section class="group" id="map-options" hidden>
+          <label class="check"><input id="show-tracks" type="checkbox" checked /> Show tracks (trails)</label>
+        </section>
+
         <section class="group" id="adsb-controls" hidden>
           <h2>ADS-B</h2>
           <p id="adsb-status" class="status-line">starting…</p>
           <p id="adsb-count" class="level-meter"></p>
-          <label>My location (lat, lon)
-            <input id="rx-loc" type="text" value="59.33, 18.06" />
-          </label>
-          <p class="hint">Used for distance/bearing. 1090 MHz needs a good antenna (ideally a 1090 LNA via Bias-T).</p>
+          <p class="hint">1090 MHz needs a good antenna (ideally a 1090 LNA via Bias-T).</p>
         </section>
 
         <section class="group" id="dab-controls" hidden>
@@ -110,7 +121,15 @@
           <h2>AIS</h2>
           <p id="ais-status" class="status-line">starting…</p>
           <p id="ais-count" class="level-meter"></p>
-          <p class="hint">162 MHz marine band. Data is NOT shared online. Needs a VHF/marine antenna.</p>
+          <div id="ais-note" class="ais-note" hidden>
+            <label>Note · <span id="ais-note-target" class="muted"></span>
+              <input id="ais-note-input" type="text" maxlength="120" placeholder="add a note for this vessel…" />
+            </label>
+            <button id="ais-note-save">Save note</button>
+          </div>
+          <p class="hint">Click a vessel to add a note. Names &amp; notes are cached, so
+            known ships show up named next time. 162 MHz marine band — data is NOT
+            shared online; needs a VHF/marine antenna.</p>
         </section>
 
         <section class="group" id="aprs-controls" hidden>
@@ -191,6 +210,36 @@
           <button id="rec-audio">● Record audio</button>
           <p id="rec-audio-status" class="status-line"></p>
           <p id="tuned-line" class="status-line"></p>
+        </section>
+
+        <!-- Reception: gain affects every mode; crystal/Bias-T tucked away -->
+        <section class="group" id="reception-controls" hidden>
+          <h2>Reception</h2>
+          <label class="check"><input id="gain-auto" type="checkbox" checked /> Auto gain</label>
+          <label>Gain<input id="gain" type="range" min="0" max="0" step="1" value="0" disabled />
+            <span id="gain-val" class="muted">auto</span>
+          </label>
+          <details class="advanced">
+            <summary>Advanced</summary>
+            <label>PPM correction<input id="ppm" type="number" step="1" value="0" />
+              <span class="hint">corrects the dongle's crystal drift; set once for your stick</span>
+            </label>
+            <label class="check"><input id="bias-tee" type="checkbox" /> Bias-T (5 V to antenna)</label>
+          </details>
+        </section>
+
+        <div class="context">
+          <p id="status-line" class="status-line"></p>
+          <p id="band-info" class="band-info"></p>
+          <p id="antenna-info" class="antenna-info"></p>
+        </div>
+
+        <!-- Recording: raw IQ capture (fixed-tune IQ modes) -->
+        <section class="group" id="recording-controls" hidden>
+          <h2>Recording</h2>
+          <button id="rec-iq">● Record IQ</button>
+          <p id="rec-iq-status" class="status-line"></p>
+          <div id="rec-list" class="bm-list"></div>
         </section>
 
         <section class="group" id="bookmarks">

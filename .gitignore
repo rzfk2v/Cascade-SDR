@@ -13,3 +13,6 @@ frontend/dist/
 
 # Local Claude Code settings (personal permission state)
 .claude/settings.local.json
+
+# AIS name/note cache (user data)
+backend/data/

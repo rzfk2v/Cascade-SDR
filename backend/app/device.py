@@ -134,8 +134,11 @@ class DeviceManager:
                 await self._announce()
                 return
             mode = registry[name](self)
-            self.center_freq = mode.default_center_freq
-            self.sample_rate = mode.default_sample_rate
+            # Free-tuning views (spectrum/radio) keep the current band so e.g.
+            # AIS (162 MHz) -> Spectrum stays at 162 instead of snapping to 100.
+            if mode.resets_tuning:
+                self.center_freq = mode.default_center_freq
+                self.sample_rate = mode.default_sample_rate
             self.mode = mode
             await self._start_locked()
 
