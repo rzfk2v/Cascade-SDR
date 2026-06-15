@@ -23,6 +23,7 @@ things to try. Status:
 | **APRS** | Packet-radio stations on the map (via `rtl_fm` → `direwolf`) | ✅ working‡ |
 | **ACARS** | Aircraft VHF data messages as a live feed (via `acarsdec`) | ✅ working§ |
 | **APT** | NOAA weather-satellite images at 137 MHz (hand-written decoder) | ✅ working¶ |
+| **433 MHz** | 433.92 MHz ISM devices — weather stations, TPMS, sensors, remotes (via `rtl_433`) | ✅ working‖ |
 
 \* Needs `dump1090` installed (`brew install dump1090-mutability`) **and a decent
 1090 MHz antenna** — the stock whip barely hears ADS-B. The pipeline runs and
@@ -255,6 +256,29 @@ image"**, and play the recording back through the decoder.
 > n2yo.com for pass times) and a proper antenna — the dipole kit in a horizontal
 > **"V"** (~120°), elements at ~53 cm. The stock whip will barely work. Meteor-M
 > (digital LRPT) is *not* supported — this is analog NOAA APT only.
+
+### 433 MHz ISM devices (‖)
+Select **433 MHz**: the backend spawns [`rtl_433`](https://github.com/merbanan/rtl_433)
+on 433.92 MHz and forwards each decode to the browser. The view is grouped **by
+device** — one card per transmitter (model · id · channel) showing its latest
+reading as chips (temperature, humidity, wind, rain, pressure, battery, TPMS
+pressure…), a hit count, last-seen time, and signal level. Switching modes kills
+`rtl_433` and frees the dongle. Gain/PPM are passed through to `rtl_433`.
+
+The 433.92 MHz band is full of cheap one-way transmitters: weather stations,
+soil/pool/fridge sensors, **TPMS** tyre-pressure monitors, door/window contacts,
+remotes and energy meters — `rtl_433` knows hundreds of protocols. Devices beacon
+periodically, so leave it running a minute; the band is busiest in the evening.
+
+`rtl_433` **is** in Homebrew:
+
+```bash
+brew install rtl_433
+```
+
+> A short whip works fine at 433 MHz (λ/4 ≈ 17 cm). Set **`RTL_433_BIN`** to point
+> at the binary if it isn't on `PATH`. Some regions also use 868/915 MHz — only
+> 433.92 MHz is wired up here for now.
 
 > FM **de-emphasis** defaults to 50 µs (Europe); switch it to 75 µs
 > (Americas/Korea) in the Radio panel when listening to WFM broadcast.

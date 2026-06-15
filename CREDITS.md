@@ -37,6 +37,7 @@ It builds on the following open-source projects — thanks to their authors.
 | [acarsdec](https://github.com/TLeconte/acarsdec) | GPL-2.0 | ACARS (VHF aircraft data) |
 | [rtl_fm](https://github.com/osmocom/rtl-sdr) (rtl-sdr) | GPL-2.0 | FM audio feed for APRS |
 | [welle.io](https://github.com/AlbrechtL/welle.io) (`welle-cli`) | GPL-2.0 | DAB |
+| [rtl_433](https://github.com/merbanan/rtl_433) | GPL-2.0+ | 433 MHz ISM devices |
 
 These tools are **not bundled** — Cascade SDR launches them if you install them
 yourself (see the README). They keep their own licenses.

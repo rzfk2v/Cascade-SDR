@@ -28,6 +28,7 @@ from app.modes.aprs import AprsMode
 from app.modes.apt import AptMode
 from app.modes.base import Mode
 from app.modes.dab import DabMode
+from app.modes.ism import IsmMode
 from app.modes.radio import RadioMode
 from app.modes.replay import ReplayMode
 from app.modes.scan import ScanMode
@@ -50,6 +51,7 @@ MODE_REGISTRY: dict[str, type[Mode]] = {
     AcarsMode.name: AcarsMode,
     AptMode.name: AptMode,
     DabMode.name: DabMode,
+    IsmMode.name: IsmMode,
 }
 
 app = FastAPI(title="Cascade SDR")

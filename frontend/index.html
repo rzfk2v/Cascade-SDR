@@ -40,6 +40,7 @@
               <button data-mode="aprs">APRS</button>
               <button data-mode="acars">ACARS</button>
               <button data-mode="apt">APT</button>
+              <button data-mode="ism">433&#8239;MHz</button>
             </div>
           </div>
         </nav>
@@ -186,6 +187,16 @@
             short and infrequent — leave it running near an airport.</p>
         </section>
 
+        <section class="group" id="ism-controls" hidden>
+          <h2>433 MHz</h2>
+          <p id="ism-status" class="status-line">starting…</p>
+          <p id="ism-count" class="level-meter"></p>
+          <p class="hint">433.92 MHz ISM band — weather stations, soil/pool sensors,
+            <b>TPMS</b> tyre pressure, remotes, meters. Needs <b>rtl_433</b>
+            (<code>brew install rtl_433</code>). Devices transmit periodically, so
+            give it a minute; busiest in the evening.</p>
+        </section>
+
         <section class="group" id="replay-controls" hidden>
           <h2>Replay</h2>
           <p id="replay-status" class="status-line">pick a recording…</p>
@@ -303,6 +314,10 @@
         <div id="acars-view" class="acars-view" hidden>
           <div class="acars-head"><span>ACARS</span> <span id="acars-feedcount" class="muted"></span></div>
           <div id="acars-log" class="acars-log"></div>
+        </div>
+        <div id="ism-view" class="acars-view" hidden>
+          <div class="acars-head"><span>433 MHz devices</span> <span id="ism-feedcount" class="muted"></span></div>
+          <div id="ism-log" class="ism-log"></div>
         </div>
         <div id="scanner-view" class="scanner-view" hidden>
           <div class="scanner-head"><span id="scanner-now">Scanning…</span></div>

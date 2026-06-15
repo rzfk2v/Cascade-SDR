@@ -78,6 +78,12 @@ const acarsCount = document.getElementById("acars-count")!;
 const acarsView = document.getElementById("acars-view")!;
 const acarsLog = document.getElementById("acars-log")!;
 const acarsFeedCount = document.getElementById("acars-feedcount")!;
+const ismControls = document.getElementById("ism-controls")!;
+const ismStatus = document.getElementById("ism-status")!;
+const ismCount = document.getElementById("ism-count")!;
+const ismView = document.getElementById("ism-view")!;
+const ismLog = document.getElementById("ism-log")!;
+const ismFeedCount = document.getElementById("ism-feedcount")!;
 const aptControls = document.getElementById("apt-controls")!;
 const aptStatus = document.getElementById("apt-status")!;
 const aptSat = document.getElementById("apt-sat") as HTMLSelectElement;
@@ -189,6 +195,8 @@ function updateBandInfo(): void {
     label = "ACARS · ~131 MHz (aircraft data)";
   } else if (currentMode === "apt") {
     label = "NOAA APT · 137 MHz (weather sat)";
+  } else if (currentMode === "ism") {
+    label = "ISM · 433.92 MHz (sensors)";
   } else if (currentMode === "radio" || currentMode === "replay") {
     const b = bandAt(viewTuned / 1e6);
     label = b ? `Band: ${b}` : "";
@@ -259,6 +267,7 @@ sock.onJson((msg) => {
       locationControls.hidden = !["adsb", "ais", "aprs"].includes(msg.mode);
       mapOptions.hidden = !["adsb", "ais", "aprs"].includes(msg.mode);
       acarsControls.hidden = msg.mode !== "acars";
+      ismControls.hidden = msg.mode !== "ism";
       aptControls.hidden = msg.mode !== "apt";
       dabControls.hidden = msg.mode !== "dab";
       zoomOutBtn.hidden = !["scan", "spectrum", "radio", "replay"].includes(msg.mode);
@@ -353,6 +362,13 @@ sock.onJson((msg) => {
     case "acars":
       renderAcars(msg.messages);
       acarsCount.textContent = `${msg.count} messages`;
+      break;
+    case "ism_status":
+      ismStatus.textContent = msg.message;
+      break;
+    case "ism":
+      renderIsm(msg.devices);
+      ismCount.textContent = `${msg.count} device${msg.count === 1 ? "" : "s"}`;
       break;
     case "dab_status":
       dabStatus.textContent = msg.message;
@@ -449,14 +465,16 @@ function showView(mode: string): void {
   const isMap = mode === "adsb" || mode === "ais" || mode === "aprs";
   const isDab = mode === "dab";
   const isAcars = mode === "acars";
+  const isIsm = mode === "ism";
   const isApt = mode === "apt" || (mode === "replay" && replayApt.checked);
   const isScanner = mode === "scanner";
-  const isFft = !isMap && !isDab && !isAcars && !isApt && !isScanner; // radio/sweep/idle
+  const isFft = !isMap && !isDab && !isAcars && !isIsm && !isApt && !isScanner; // radio/sweep/idle
   fftView.hidden = !isFft;
   mapDiv.hidden = !isMap;
   aircraftPanel.hidden = !isMap;
   dabView.hidden = !isDab;
   acarsView.hidden = !isAcars;
+  ismView.hidden = !isIsm;
   aptView.hidden = !isApt;
   scannerView.hidden = !isScanner;
   if (isApt) zoomOutBtn.hidden = true;
@@ -735,6 +753,58 @@ function renderAcars(messages: any[]): void {
       const body = m.text ? `<div class="body">${esc(m.text)}</div>` : "";
       return `<div class="acars-row"><div class="meta"><span class="time">${time}</span> ` +
         `${esc(id)}${esc(tail)}${label}${freq}</div>${body}</div>`;
+    })
+    .join("");
+}
+
+// 433 MHz field name -> friendly label (everything else falls back to the key)
+const ISM_LABELS: Record<string, string> = {
+  temperature_C: "Temp", temperature_F: "Temp", humidity: "Humidity",
+  battery_ok: "Battery", wind_avg_km_h: "Wind", wind_max_km_h: "Gust",
+  wind_dir_deg: "Dir", rain_mm: "Rain", rain_rate_mm_h: "Rain rate",
+  pressure_hPa: "Pressure", pressure_kPa: "Pressure", moisture: "Moisture",
+  light_lux: "Light", uv: "UV", type: "Type", status: "Status",
+};
+const ISM_UNITS: Record<string, string> = {
+  temperature_C: "°C", temperature_F: "°F", humidity: "%", wind_avg_km_h: "km/h",
+  wind_max_km_h: "km/h", wind_dir_deg: "°", rain_mm: "mm", rain_rate_mm_h: "mm/h",
+  pressure_hPa: "hPa", pressure_kPa: "kPa", moisture: "%", light_lux: "lux",
+};
+
+function ismVal(key: string, v: any): string {
+  if (key === "battery_ok") return v ? "OK" : "low";
+  const unit = ISM_UNITS[key] || "";
+  return `${v}${unit ? " " + unit : ""}`;
+}
+
+function agoText(t: number): string {
+  const s = Math.max(0, Math.round(Date.now() / 1000 - t));
+  if (s < 60) return `${s}s ago`;
+  if (s < 3600) return `${Math.round(s / 60)}m ago`;
+  return `${Math.round(s / 3600)}h ago`;
+}
+
+function renderIsm(devices: any[]): void {
+  ismFeedCount.textContent = `(${devices.length})`;
+  if (!devices.length) {
+    ismLog.innerHTML =
+      '<div class="acars-empty">No devices yet. 433 MHz sensors transmit ' +
+      "periodically — give it a minute (busiest in the evening).</div>";
+    return;
+  }
+  ismLog.innerHTML = devices
+    .map((d) => {
+      const id = d.id != null ? ` · id ${esc(String(d.id))}` : "";
+      const ch = d.channel != null ? ` · ch ${esc(String(d.channel))}` : "";
+      const meta = `<span class="muted">×${d.count} · ${agoText(d.last || 0)}` +
+        (d.rssi != null ? ` · ${esc(String(d.rssi))} dB` : "") + "</span>";
+      const chips = Object.entries(d.fields || {})
+        .map(([k, v]) =>
+          `<span class="ism-chip"><b>${esc(ISM_LABELS[k] || k)}</b> ` +
+          `${esc(ismVal(k, v))}</span>`)
+        .join("");
+      return `<div class="ism-row"><div class="ism-name">${esc(d.model)}` +
+        `${id}${ch} ${meta}</div><div class="ism-chips">${chips}</div></div>`;
     })
     .join("");
 }

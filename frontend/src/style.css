@@ -316,6 +316,27 @@ details.advanced[open] > summary::before { content: "▾ "; }
 .acars-row .body { color: var(--text); white-space: pre-wrap; word-break: break-word; margin-top: 0.1rem; }
 .acars-empty { color: var(--muted); font-size: 0.85rem; }
 
+.ism-log {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  font-size: 0.8rem;
+}
+.ism-row { border-bottom: 1px solid var(--border); padding-bottom: 0.4rem; }
+.ism-name { color: var(--accent); font-weight: 600; }
+.ism-chips { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.25rem; }
+.ism-chip {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.1rem 0.4rem;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 0.75rem;
+}
+.ism-chip b { color: var(--muted); font-weight: 600; margin-right: 0.2rem; }
+
 .dab-view {
   position: absolute;
   inset: 0.6rem;
