@@ -328,9 +328,14 @@ Decodes the **433.92 MHz ISM band** — weather stations, soil/pool sensors,
 Needs [`rtl_433`](https://github.com/merbanan/rtl_433) (`brew install rtl_433`).
 
 - Switch to **433 MHz**; the view groups decodes **by device** — one card per
-  transmitter (**model · id · channel**) showing its latest reading as chips
-  (temperature, humidity, wind, rain, pressure, battery, TPMS pressure…), a hit
-  count, **last-seen** time, and signal level.
+  transmitter (**model · id · channel**) with a hit count, **last-seen** time and
+  signal level.
+- Each numeric reading (temperature, humidity, pressure, wind, rain, TPMS
+  pressure…) gets a live **sparkline** of its trend, with the current value and
+  the min–max range. Non-numeric fields (battery, type, status) and brand-new
+  readings show as plain chips until they have history.
+- Devices and their trends are **cached on disk** (`backend/data/ism_cache.json`),
+  so they reappear when you come back to the tab or restart the backend.
 - No map — these are short one-way beacons; it's a live per-device feed.
 - A short whip is plenty (λ/4 ≈ 17 cm). Gain/PPM are passed to `rtl_433`.
 

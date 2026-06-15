@@ -784,6 +784,27 @@ function agoText(t: number): string {
   return `${Math.round(s / 3600)}h ago`;
 }
 
+function ismNum(n: number): string {
+  return Number(n.toFixed(2)).toString();   // trim trailing zeros
+}
+
+// Tiny inline sparkline of a value series, normalised to its own min/max.
+function sparkline(vals: number[]): string {
+  const w = 88, h = 22, pad = 2;
+  const min = Math.min(...vals), max = Math.max(...vals);
+  const span = max - min || 1;
+  const n = vals.length;
+  const pts = vals
+    .map((v, i) => {
+      const x = pad + (i / (n - 1)) * (w - 2 * pad);
+      const y = h - pad - ((v - min) / span) * (h - 2 * pad);
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(" ");
+  return `<svg class="spark" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" ` +
+    `preserveAspectRatio="none"><polyline points="${pts}"/></svg>`;
+}
+
 function renderIsm(devices: any[]): void {
   ismFeedCount.textContent = `(${devices.length})`;
   if (!devices.length) {
@@ -798,13 +819,32 @@ function renderIsm(devices: any[]): void {
       const ch = d.channel != null ? ` · ch ${esc(String(d.channel))}` : "";
       const meta = `<span class="muted">×${d.count} · ${agoText(d.last || 0)}` +
         (d.rssi != null ? ` · ${esc(String(d.rssi))} dB` : "") + "</span>";
+      const hist = d.history || {};
+      // Chips: fields without a 2+ point series yet (flags, text, first reading).
       const chips = Object.entries(d.fields || {})
+        .filter(([k]) => !(Array.isArray(hist[k]) && hist[k].length >= 2))
         .map(([k, v]) =>
           `<span class="ism-chip"><b>${esc(ISM_LABELS[k] || k)}</b> ` +
           `${esc(ismVal(k, v))}</span>`)
         .join("");
+      // Metrics: numeric fields with enough history to trend, as sparklines.
+      const metrics = Object.entries(hist)
+        .filter(([, s]) => Array.isArray(s) && (s as number[]).length >= 2)
+        .map(([k, s]) => {
+          const series = s as number[];
+          const cur = series[series.length - 1];
+          const lo = Math.min(...series), hi = Math.max(...series);
+          return `<div class="ism-metric"><div class="ism-metric-head">` +
+            `<b>${esc(ISM_LABELS[k] || k)}</b> ` +
+            `<span class="cur">${esc(ismVal(k, cur))}</span></div>` +
+            `${sparkline(series)}<div class="ism-metric-range muted">` +
+            `${esc(ismNum(lo))} – ${esc(ismNum(hi))}</div></div>`;
+        })
+        .join("");
+      const chipsHtml = chips ? `<div class="ism-chips">${chips}</div>` : "";
+      const metricsHtml = metrics ? `<div class="ism-metrics">${metrics}</div>` : "";
       return `<div class="ism-row"><div class="ism-name">${esc(d.model)}` +
-        `${id}${ch} ${meta}</div><div class="ism-chips">${chips}</div></div>`;
+        `${id}${ch} ${meta}</div>${chipsHtml}${metricsHtml}</div>`;
     })
     .join("");
 }

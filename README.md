@@ -260,10 +260,13 @@ image"**, and play the recording back through the decoder.
 ### 433 MHz ISM devices (‖)
 Select **433 MHz**: the backend spawns [`rtl_433`](https://github.com/merbanan/rtl_433)
 on 433.92 MHz and forwards each decode to the browser. The view is grouped **by
-device** — one card per transmitter (model · id · channel) showing its latest
-reading as chips (temperature, humidity, wind, rain, pressure, battery, TPMS
-pressure…), a hit count, last-seen time, and signal level. Switching modes kills
-`rtl_433` and frees the dongle. Gain/PPM are passed through to `rtl_433`.
+device** — one card per transmitter (model · id · channel) with a hit count,
+last-seen time and signal level. Each numeric reading (temperature, humidity,
+pressure, wind, rain, TPMS pressure…) gets a live **sparkline** trend with its
+current value and min–max range; flags and text show as chips. Devices and their
+trends are cached on disk, so they persist across mode switches and restarts.
+Switching modes kills `rtl_433` and frees the dongle. Gain/PPM are passed
+through to `rtl_433`.
 
 The 433.92 MHz band is full of cheap one-way transmitters: weather stations,
 soil/pool/fridge sensors, **TPMS** tyre-pressure monitors, door/window contacts,
