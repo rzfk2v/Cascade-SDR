@@ -366,6 +366,31 @@ cd ../backend && ./.venv/bin/uvicorn app.main:app --port 8000
 > behaves oddly, do a **hard reload** — Vite's HMR can keep a stale module.
 > The single-process build above sidesteps this entirely.
 
+## Run (remote access over the LAN)
+
+To use Cascade SDR from another computer (or a phone/tablet) on your network,
+build the frontend and bind the backend to all interfaces:
+
+```bash
+cd frontend && npm run build
+cd ../backend && ./.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+
+Then browse to **`http://<this-machine-LAN-IP>:8000`** from the other device
+(e.g. `http://192.168.1.50:8000`). The frontend connects its WebSocket back to
+whatever host served the page, so no extra config is needed. On macOS, accept the
+one-time firewall prompt for `python`/`uvicorn`.
+
+> **Audio over plain HTTP works.** Browsers only allow the modern `AudioWorklet`
+> in a *secure context* (HTTPS or `localhost`), so over a plain-HTTP LAN address
+> the player automatically falls back to a `ScriptProcessorNode` with the same
+> jitter buffer — you still get sound. For HTTPS (and the modern path), run
+> uvicorn with `--ssl-keyfile`/`--ssl-certfile`.
+
+> **No authentication.** Binding `0.0.0.0` exposes the receiver to your whole
+> LAN. That's fine on a trusted home network — but don't port-forward it to the
+> open internet without putting auth / a reverse proxy in front.
+
 ## Run (native desktop app)
 
 Prefer a real app window over a browser tab? After building the frontend, launch
