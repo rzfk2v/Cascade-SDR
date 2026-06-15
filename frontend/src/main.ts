@@ -150,6 +150,15 @@ const scanControls = document.getElementById("scan-controls")!;
 const scanStart = document.getElementById("scan-start") as HTMLInputElement;
 const scanStop = document.getElementById("scan-stop") as HTMLInputElement;
 const scanPreset = document.getElementById("scan-preset") as HTMLSelectElement;
+const scannerControls = document.getElementById("scanner-controls")!;
+const scannerPreset = document.getElementById("scanner-preset") as HTMLSelectElement;
+const scannerSql = document.getElementById("scanner-sql") as HTMLInputElement;
+const scannerVol = document.getElementById("scanner-vol") as HTMLInputElement;
+const scannerStatus = document.getElementById("scanner-status")!;
+const scannerView = document.getElementById("scanner-view")!;
+const scannerNow = document.getElementById("scanner-now")!;
+const scannerGrid = document.getElementById("scanner-grid")!;
+let scannerChannels: { label: string; mhz: number; demod: string }[] = [];
 const zoomOutBtn = document.getElementById("zoom-out") as HTMLButtonElement;
 const displayControls = document.getElementById("display-controls")!;
 const tuningControls = document.getElementById("tuning-controls")!;
@@ -242,6 +251,7 @@ sock.onJson((msg) => {
       radioControls.hidden = !(msg.mode === "radio" || msg.mode === "replay");
       replayControls.hidden = msg.mode !== "replay";
       scanControls.hidden = msg.mode !== "scan";
+      scannerControls.hidden = msg.mode !== "scanner";
       adsbControls.hidden = msg.mode !== "adsb";
       aisControls.hidden = msg.mode !== "ais";
       aprsControls.hidden = msg.mode !== "aprs";
@@ -350,6 +360,19 @@ sock.onJson((msg) => {
     case "dab_ensemble":
       renderDab(msg);
       break;
+    case "scanner_config":
+      scannerChannels = msg.channels || [];
+      scannerPreset.innerHTML = (msg.presets || [])
+        .map((p: any) => `<option value="${p.id}">${esc(p.label)}</option>`)
+        .join("");
+      scannerPreset.value = msg.preset;
+      if (typeof msg.squelch === "number" && document.activeElement !== scannerSql)
+        scannerSql.value = String(msg.squelch);
+      renderScannerGrid();
+      break;
+    case "scanner_state":
+      updateScannerState(msg);
+      break;
     case "rec_status":
       iqRecording = msg.recording;
       recIqBtn.textContent = iqRecording ? "■ Stop IQ recording" : "● Record IQ";
@@ -427,13 +450,15 @@ function showView(mode: string): void {
   const isDab = mode === "dab";
   const isAcars = mode === "acars";
   const isApt = mode === "apt" || (mode === "replay" && replayApt.checked);
-  const isFft = !isMap && !isDab && !isAcars && !isApt; // spectrum / scan / radio / idle
+  const isScanner = mode === "scanner";
+  const isFft = !isMap && !isDab && !isAcars && !isApt && !isScanner; // radio/sweep/idle
   fftView.hidden = !isFft;
   mapDiv.hidden = !isMap;
   aircraftPanel.hidden = !isMap;
   dabView.hidden = !isDab;
   acarsView.hidden = !isAcars;
   aptView.hidden = !isApt;
+  scannerView.hidden = !isScanner;
   if (isApt) zoomOutBtn.hidden = true;
   if (isApt) requestAnimationFrame(() => {
     const r = aptView.getBoundingClientRect();
@@ -725,13 +750,15 @@ document.getElementById("mode-tabs")!.addEventListener("click", async (e) => {
   const btn = (e.target as HTMLElement).closest("button");
   if (!btn || (btn as HTMLButtonElement).disabled) return;
   const mode = btn.dataset.mode!;
-  if (mode === "radio" || mode === "replay") await audio.init(); // user gesture: unlock audio
+  if (mode === "radio" || mode === "replay" || mode === "scanner")
+    await audio.init(); // user gesture: unlock audio
   if (mode !== "idle") {
     waterfall.clear();
     scope.clear();
   }
   sock.send({ cmd: "set_mode", mode });
   if (mode === "radio" || mode === "replay") sendRadioPrefs();
+  if (mode === "scanner") sendScannerPrefs();
   if (mode === "replay") {
     renderReplayList();
     if (replayFile) sock.send({ cmd: "config", params: { file: replayFile, playing: true } });
@@ -870,6 +897,53 @@ scanPreset.addEventListener("change", () => {
   applyScanRange();
 });
 
+// --- scanner -------------------------------------------------------------
+function sendScannerPrefs(): void {
+  sock.send({
+    cmd: "config",
+    params: { squelch: parseFloat(scannerSql.value), volume: parseFloat(scannerVol.value) },
+  });
+}
+function renderScannerGrid(): void {
+  scannerGrid.innerHTML = scannerChannels
+    .map((c, i) =>
+      `<div class="scan-ch" data-i="${i}"><span class="ch-label">${esc(c.label)}</span>` +
+      `<span class="ch-freq">${c.mhz.toFixed(3)} MHz</span>` +
+      `<div class="ch-bar"><div class="ch-fill"></div></div></div>`,
+    )
+    .join("");
+}
+function updateScannerState(msg: any): void {
+  const tiles = scannerGrid.querySelectorAll(".scan-ch");
+  (msg.channels || []).forEach((ch: any, i: number) => {
+    const t = tiles[i] as HTMLElement | undefined;
+    if (!t) return;
+    t.classList.toggle("active", !!ch.active);
+    t.classList.toggle("parked", i === msg.parked);
+    // live signal strength (dB over noise) so you can see near-misses the
+    // squelch skipped — full bar ≈ 24 dB
+    const fill = t.querySelector(".ch-fill") as HTMLElement | null;
+    if (fill) fill.style.width = `${Math.max(0, Math.min(100, ((ch.level ?? 0) / 24) * 100))}%`;
+  });
+  const c = msg.parked >= 0 ? scannerChannels[msg.parked] : undefined;
+  if (c) {
+    scannerNow.textContent = `▶ ${c.label} · ${c.mhz.toFixed(3)} MHz`;
+    scannerStatus.textContent = `▶ on ${c.label} (${c.mhz.toFixed(3)} MHz)`;
+  } else {
+    scannerNow.textContent = "Scanning…";
+    scannerStatus.textContent = "scanning…";
+  }
+}
+scannerPreset.addEventListener("change", () =>
+  sock.send({ cmd: "config", params: { preset: scannerPreset.value } }),
+);
+scannerSql.addEventListener("input", () =>
+  sock.send({ cmd: "config", params: { squelch: parseFloat(scannerSql.value) } }),
+);
+scannerVol.addEventListener("input", () =>
+  sock.send({ cmd: "config", params: { volume: parseFloat(scannerVol.value) } }),
+);
+
 // --- display: contrast + peak hold ---------------------------------------
 function applyContrast(): void {
   const auto = wfAuto.checked;
@@ -927,6 +1001,13 @@ rateInput.addEventListener("change", () => {
   const ms = parseFloat(rateInput.value);
   if (isFinite(ms)) sock.send({ cmd: "tune", sample_rate: ms * 1e6 });
 });
+// Pan the captured band by exactly one capture width (~sample rate), to walk
+// across the spectrum block by block looking for signals.
+function stepBlock(dir: 1 | -1): void {
+  sock.send({ cmd: "tune", center_freq: tuner.centerFreq + dir * tuner.sampleRate });
+}
+document.getElementById("block-prev")!.addEventListener("click", () => stepBlock(-1));
+document.getElementById("block-next")!.addEventListener("click", () => stepBlock(1));
 // --- APT (weather satellite) controls ------------------------------------
 aptSat.addEventListener("change", () => {
   aptImage.clear();
@@ -989,6 +1070,7 @@ biasTee.addEventListener("change", () =>
 const persistValues: Record<string, HTMLInputElement | HTMLSelectElement> = {
   ppm: ppmInput, demod: demodSel, vol: volInput, sql: sqlInput,
   scanStart, scanStop, wfFloor, wfCeil, rxLoc, deemph: deemphSel, averaging,
+  scannerSql, scannerVol,
 };
 const persistChecks: Record<string, HTMLInputElement> = {
   gainAuto, biasTee, wfAuto, peakHold, rdsOn, stereoOn, showTracks,

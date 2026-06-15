@@ -20,8 +20,8 @@ and install, see the [README](../README.md).
   (below) with a **frequency axis**; in ADS-B/AIS/APRS it becomes a **map**, in DAB
   a **station list**, in ACARS a message log, in APT the satellite image.
 - **Top of sidebar** — connection dot (green = backend connected) and the mode
-  tabs, grouped **Explore** (Idle · Radio · Scan · Replay) and **Decode**
-  (DAB · ADS-B · AIS · APRS · ACARS · APT).
+  tabs, grouped **Explore** (Idle · Radio · Sweep · Replay · Scanner) and
+  **Decode** (DAB · ADS-B · AIS · APRS · ACARS · APT).
 - **Band label** — under the device status, names the service on the current
   frequency (e.g. “FM broadcast”, “Marine VHF”) so you know what you're looking at.
 
@@ -36,6 +36,7 @@ The sidebar shows only the panels that apply to the current mode.
 |---|---|
 | **Center (MHz)** | Type a frequency and press **Enter** to go there: it re-centers the band **and** tunes/listens to that frequency (the channel cursor follows). Range 24–1766 MHz (R820T). Click elsewhere in the waterfall afterwards to listen off-centre. |
 | **Sample rate (MS/s)** | Capture bandwidth, up to 2.4. Lower = less CPU/USB, narrower view. |
+| **◀ block / block ▶** | Jump the captured band down/up by one capture width (~2.4 MHz) to walk across the spectrum looking for signals. |
 
 Switching modes **keeps the current band** — listen to a ship on AIS (162 MHz), hit
 **Radio**, and you're looking at 162 MHz instead of jumping back to a default.
@@ -96,9 +97,9 @@ tone, switch Averaging to 8× and watch it firm up out of the grass.
 
 ---
 
-## Scan (wideband panorama)
+## Sweep (wideband panorama)
 
-The dongle can't see more than ~2.4 MHz at once, so Scan **sweeps** across a range
+The dongle can't see more than ~2.4 MHz at once, so Sweep **sweeps** across a range
 and stitches it into one wide waterfall — for surveying a whole band.
 
 - Set **From/To (MHz)** or pick a **Preset** (FM, Airband, 2 m, 70 cm).
@@ -107,8 +108,34 @@ and stitches it into one wide waterfall — for surveying a whole band.
 - Wider ranges refresh slower (each 2.4 MHz slice needs its own retune).
 
 **Try:** Preset **FM broadcast 88–108** to see every local station at once, then
-click the strongest to listen. Or scan **1080–1100** for ADS-B activity (needs a
+click the strongest to listen. Or sweep **1080–1100** for ADS-B activity (needs a
 1090 antenna).
+
+---
+
+## Scanner (monitor channels, stop on activity)
+
+A channel scanner: it steps through a preset's channels and **stops on the first
+one carrying a transmission**, plays it, then resumes a few seconds after it goes
+quiet — like a marine/PMR scanner.
+
+- Pick a **Preset**: **Marine VHF** (Ch 16 + ship-to-ship + Swedish leisure/fishing
+  channels), **PMR446**, or **Airband** (AM). Data-only channels (DSC 70, AIS) are
+  excluded — there's nothing to listen to.
+- The channel grid shows every channel with a live **signal bar**; the active one
+  turns green and the one it's parked on is highlighted.
+- **Squelch (dB over noise)** — how far above the noise floor counts as a signal.
+  Use the bars to set it: if a call you want makes a bar rise but it doesn't stop,
+  lower squelch; if it keeps stopping on noise, raise it.
+- **Volume** for the parked audio. It resumes scanning ~3 s after a channel falls
+  silent.
+- Because the dongle sees only ~2.4 MHz at once, wide presets are covered in a few
+  capture blocks — but the marine simplex channels all sit within ~1.4 MHz, so
+  they're watched at the same time.
+
+**Try:** Scanner → **Marine VHF** near a harbour and leave it running; it parks and
+plays whenever someone keys up (Ch 16 is the most active to confirm it works).
+Needs a VHF/marine antenna.
 
 ---
 
@@ -312,7 +339,7 @@ and watch the coastline scroll in. (Meteor-M LRPT is digital and not supported.)
 - **Bookmarks** — save the current frequency (+demod) with a name; click to recall,
   × to delete.
 - Your settings (gain, PPM, demod, FM stereo, de-emphasis, volume, squelch,
-  contrast, peak-hold, averaging, scan range, location, show-tracks, bookmarks)
+  contrast, peak-hold, averaging, sweep range, location, show-tracks, bookmarks)
   **persist across reloads**.
 - AIS **vessel names and your notes** are cached on the backend, so they survive
   restarts and reappear the moment a known ship is heard again.

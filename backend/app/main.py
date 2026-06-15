@@ -31,6 +31,7 @@ from app.modes.dab import DabMode
 from app.modes.radio import RadioMode
 from app.modes.replay import ReplayMode
 from app.modes.scan import ScanMode
+from app.modes.scanner import ScannerMode
 from app.modes.spectrum import SpectrumMode
 
 logging.basicConfig(level=logging.INFO)
@@ -42,6 +43,7 @@ MODE_REGISTRY: dict[str, type[Mode]] = {
     RadioMode.name: RadioMode,
     ReplayMode.name: ReplayMode,
     ScanMode.name: ScanMode,
+    ScannerMode.name: ScannerMode,
     AdsbMode.name: AdsbMode,
     AisMode.name: AisMode,
     AprsMode.name: AprsMode,

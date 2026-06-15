@@ -351,6 +351,52 @@ details.advanced[open] > summary::before { content: "▾ "; }
 .dab-station.playing { background: var(--accent); color: #fff; border-color: var(--accent); }
 .dab-empty { color: var(--muted); font-size: 0.85rem; }
 
+.scanner-view {
+  position: absolute;
+  inset: 0.6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.8rem;
+  overflow: hidden;
+}
+.scanner-head { font-size: 1.05rem; font-weight: 600; }
+.scanner-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 0.4rem;
+  overflow-y: auto;
+  align-content: start;
+}
+.scan-ch {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.5rem 0.6rem;
+}
+.scan-ch .ch-label { font-weight: 600; font-size: 0.9rem; }
+.scan-ch .ch-freq { color: var(--muted); font-size: 0.72rem; }
+.scan-ch .ch-bar {
+  margin-top: 0.3rem; height: 4px; border-radius: 2px;
+  background: var(--border); overflow: hidden;
+}
+.scan-ch .ch-fill {
+  height: 100%; width: 0; background: var(--muted); transition: width 0.15s linear;
+}
+.scan-ch.active { border-color: var(--ok); }          /* someone transmitting */
+.scan-ch.active .ch-fill { background: var(--ok); }
+.scan-ch.parked .ch-fill { background: #fff; }
+.scan-ch.parked {
+  background: var(--accent); color: #fff; border-color: var(--accent);
+}
+.scan-ch.parked .ch-freq { color: rgba(255, 255, 255, 0.85); }
+
 .cw-text {
   position: absolute;
   left: 0.6rem;

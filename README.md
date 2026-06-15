@@ -14,7 +14,8 @@ things to try. Status:
 | Mode | What it does | Status |
 |------|--------------|--------|
 | **Radio** | Live scrolling waterfall + scope; **click a signal to listen** (WFM/NFM/AM/USB/LSB/CW), squelch, browser audio. Scroll to zoom. | ✅ working |
-| **Scan** | Swept wideband panorama (e.g. whole 88–108 band) to find signals | ✅ working |
+| **Sweep** | Swept wideband panorama (e.g. whole 88–108 band) to find signals | ✅ working |
+| **Scanner** | Cycle a channel preset (Marine VHF / PMR446 / Airband) and stop on a transmission | ✅ working |
 | **Replay** | Play a saved `.cu8` capture back through the spectrum + demodulators — no dongle needed | ✅ working |
 | **DAB** | DAB/DAB+ digital radio — ensemble station list + playback (via `welle-cli`) | ✅ working† |
 | **ADS-B** | Aircraft on a Leaflet map (via `dump1090`) | ✅ working* |
@@ -50,12 +51,21 @@ you're selecting channels *within* that band digitally — type a frequency in
 Audio uses a ~120 ms jitter buffer to stay click-free. The device is read on a
 dedicated thread (kept drained at real time) so DSP never starves the USB stream.
 
-### Finding signals with Scan
-The dongle only sees ~2.4 MHz at once, so **Scan** sweeps it across a wider range
-(set *Scan from/to* in MHz, or pick a **preset** like FM 88–108 or Airband) and
+### Finding signals with Sweep
+The dongle only sees ~2.4 MHz at once, so **Sweep** sweeps it across a wider range
+(set *Sweep from/to* in MHz, or pick a **preset** like FM 88–108 or Airband) and
 stitches the slices into one wide spectrum + waterfall. **Click any peak** to
 re-center the dongle there and drop straight into the Radio view to listen. Wider
 ranges sweep more slowly (each ~2.4 MHz slice needs its own retune + capture).
+
+### Scanner (monitor channels, stop on activity)
+Select **Scanner** and pick a **preset** — **Marine VHF** (Ch 16 + ship-to-ship +
+Swedish leisure/fishing), **PMR446**, or **Airband** (AM). It cycles the channels,
+watching every channel in a 2.4 MHz block at once via one FFT, and **parks on the
+first that breaks squelch**, playing it until it's quiet for a few seconds, then
+resumes. Each channel shows a live **signal bar** so you can set **squelch (dB over
+noise)** by eye — lower it if wanted calls don't stop, raise it if it stops on
+noise. Marine VHF needs a VHF/marine antenna; Ch 16 is the easiest to test with.
 
 ### Replay a recording
 Select **Replay** and click a saved `.cu8` capture: it streams the file back
@@ -68,7 +78,7 @@ like live. The capture's center frequency and sample rate come from its filename
 - **Scroll** (mouse wheel) over the scope/waterfall to **zoom** the display into
   part of the captured band; **shift-drag** to pan; **Zoom out** (top-right) resets.
   This is a *display* zoom — it magnifies what's captured without retuning. (In
-  **Scan**, drag still narrows the swept range; plain **drag** in the Radio view
+  **Sweep**, drag still narrows the swept range; plain **drag** in the Radio view
   sets demod bandwidth.)
 - **Gain** — uncheck *Auto gain* for a manual slider over the device's gain steps.
   High manual gain helps weak signals (e.g. ADS-B); too much overloads.
@@ -115,7 +125,7 @@ weather satellites). It updates as you type a Center frequency.
 - **Bookmarks**: save the current frequency (+ demod) with a name; click to recall,
   × to delete.
 - **Settings persist** across reloads (gain, PPM, bias-T, demod, volume, squelch,
-  contrast, peak-hold, scan range, receiver location, bookmarks) via localStorage.
+  contrast, peak-hold, sweep range, receiver location, bookmarks) via localStorage.
 
 ### Layout
 Controls live in the left sidebar; the spectrum scope + waterfall fill the rest of
