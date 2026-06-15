@@ -475,6 +475,38 @@ the Pi needs no sound hardware.
 > Use a **Pi 4 or 5 with a 64-bit OS** — the DSP runs at 2.4 MS/s. On a Pi 3, lower
 > the sample rate (e.g. 1.024 MS/s). `numpy`/`scipy` install quickly from piwheels.
 
+### Hardware recommendations
+
+The backend does real-time DSP at 2.4 MS/s (FFT + FM/AM/SSB demod) and can run a
+decoder subprocess alongside it, so **CPU and a clean, well-powered USB bus matter
+more than RAM**. You supply the RTL-SDR dongle and antenna; the notes below are for
+the host.
+
+| Tier | Board | Why |
+|---|---|---|
+| **Recommended** | **Pi 5, 4 GB** | Live Radio/Sweep DSP + a decoder at once, no sweat. 8 GB is overkill; 2 GB works. |
+| **Solid value** | **Pi 4, 2–4 GB** | The baseline above. Fine for normal use; a bit less headroom for "live DSP + heavy decoder" together. |
+| **Budget** | **used Pi 4, 2 GB** | Cheapest that still runs everything well — just pair it with a *proper* PSU. |
+| **Decoders only** | **Pi Zero 2 W** | Too weak for the live waterfall/Radio DSP, but fine as a headless ADS-B / AIS / 433 MHz box at a reduced sample rate. |
+| **Left-field** | **used mini PC / N100** | x86, far more DSP headroom than any Pi, no PSU/cooling fuss — often better value than a full Pi 5 kit. Same `apt`/venv setup. |
+
+Whatever you pick, budget for these — they're where SDR-on-Pi setups usually go wrong:
+
+- **A proper power supply.** Official **27 W** (Pi 5) or **15 W / 5V·3A** (Pi 4)
+  USB-C. Underpowering causes USB brown-outs that silently drop the tuner — the #1
+  failure mode. Don't run the dongle off a phone charger.
+- **Active cooling.** A Pi 5 (and a Pi 4 under sustained load) will thermally
+  throttle the DSP without a fan/heatsink.
+- **A short USB extension cable** so the dongle sits ~30 cm away from the Pi/SSD —
+  noticeably lowers RFI. On a Pi 4, also prefer a **USB 2.0 (black) port**; the
+  blue USB 3.0 ports emit hash that desensitises the SDR.
+- **64-bit OS** (Raspberry Pi OS Lite 64-bit is ideal — headless, low overhead),
+  **Ethernet** for an always-on LAN appliance, and an **A2 microSD** (or boot from
+  a USB SSD if you'll record IQ a lot).
+- If your dongle is an **RTL-SDR Blog V4**, install the `rtl-sdr-blog` driver fork,
+  not the stock `rtl-sdr` package — a V4 won't tune correctly on the old driver
+  (a V3 is fine with stock drivers).
+
 ```bash
 # 1) dependencies
 sudo apt update
