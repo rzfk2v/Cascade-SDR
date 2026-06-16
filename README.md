@@ -542,10 +542,80 @@ Pi's address with `hostname -I`). That's the only change needed for network use 
 `--host 0.0.0.0` makes it reachable; the frontend automatically connects back to
 whatever host served it.
 
-**External decoders** on the Pi (optional): `sudo apt install dump1090-fa` for
-ADS-B; build [`AIS-catcher`](https://github.com/jvde-github/AIS-catcher) and
-[`welle.io`](https://github.com/AlbrechtL/welle.io) from source (both compile on
-the Pi) for AIS / DAB. Put them on `PATH`.
+### External decoders on the Pi (optional)
+
+Each decode mode shells out to an external tool. Cascade finds them on your
+`PATH` and **launches them itself**, so you just need the binary installed — and
+only the ones for the modes you'll use. Install them on the Pi as follows.
+
+**ISM (rtl_433)** — in the Debian repos (note the dash in the package name):
+
+```bash
+sudo apt install -y rtl-433
+```
+
+**APRS (direwolf + rtl_fm)** — `rtl_fm` ships with the `rtl-sdr` package:
+
+```bash
+sudo apt install -y direwolf rtl-sdr
+```
+
+**ADS-B (dump1090)** — *not* in the default repos (`dump1090-fa` is a FlightAware
+package). Build it from source; Cascade spawns its own copy, so a plain binary on
+`PATH` is all you need (no background service competing for the dongle):
+
+```bash
+sudo apt install -y build-essential librtlsdr-dev pkg-config libncurses-dev
+git clone https://github.com/flightaware/dump1090.git ~/dump1090-fa
+cd ~/dump1090-fa && make
+sudo cp dump1090 /usr/local/bin/dump1090
+```
+
+> Alternatively use FlightAware's apt repo (`install_piaware_repository.sh`, then
+> `sudo apt install dump1090-fa`) — but then `sudo systemctl disable --now
+> dump1090-fa` so its auto-started service doesn't hold the dongle.
+
+**AIS (AIS-catcher):**
+
+```bash
+sudo apt install -y git cmake build-essential pkg-config librtlsdr-dev libusb-1.0-0-dev
+git clone https://github.com/jvde-github/AIS-catcher.git ~/AIS-catcher
+cd ~/AIS-catcher && mkdir build && cd build
+cmake .. && make && sudo make install
+```
+
+> Cascade passes `-X off`, so received AIS is **not** uploaded to aiscatcher.org.
+
+**DAB (welle-cli):**
+
+```bash
+sudo apt install -y git build-essential cmake libfftw3-dev libusb-1.0-0-dev \
+  libfaad-dev libmpg123-dev librtlsdr-dev libsndfile1-dev libmp3lame-dev
+git clone https://github.com/AlbrechtL/welle.io.git ~/welle.io
+cd ~/welle.io && mkdir build && cd build
+cmake .. -DRTLSDR=ON
+make -j4 welle-cli                 # the CLI target only — skips the Qt GUI deps
+sudo cp welle-cli /usr/local/bin/welle-cli
+```
+
+**ACARS (acarsdec + libacars):**
+
+```bash
+sudo apt install -y git cmake build-essential librtlsdr-dev zlib1g-dev libxml2-dev
+git clone https://github.com/szpajder/libacars.git ~/libacars
+cd ~/libacars && mkdir build && cd build && cmake .. && make && sudo make install && sudo ldconfig
+git clone https://github.com/TLeconte/acarsdec.git ~/acarsdec
+cd ~/acarsdec && mkdir build && cd build && cmake .. -Drtl=ON && make
+sudo cp acarsdec /usr/local/bin/
+```
+
+> On the Pi you don't need the macOS portability patches mentioned in the ACARS
+> section above — those are Apple-Silicon-only.
+
+If a build stops on a missing header, the error names the `lib*-dev` to
+`apt install`; install it and re-run `make`. After installing, just switch to the
+mode in Cascade — it spawns the tool on demand and frees the dongle when you
+switch away.
 
 ### Auto-start on boot (systemd)
 
