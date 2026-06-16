@@ -8,8 +8,8 @@
 // underrun we emit one clean silence gap and re-buffer rather than crackling, and
 // we cap the queue so latency stays bounded.
 
-const PREBUFFER_S = 0.12; // ~120 ms cushion before playback starts
-const MAXBUFFER_S = 0.5;  // drop oldest beyond this to bound latency
+const PREBUFFER_S = 0.25; // ~250 ms cushion — absorbs Pi/LAN jitter, not just localhost
+const MAXBUFFER_S = 0.8;  // drop oldest beyond this to bound latency
 
 class PcmPlayer extends AudioWorkletProcessor {
   constructor() {

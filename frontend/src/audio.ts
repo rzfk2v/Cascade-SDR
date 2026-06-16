@@ -11,8 +11,8 @@
 // deprecated-but-insecure-context-friendly ScriptProcessorNode. The fallback
 // re-implements the worklet's jitter buffer here on the main thread.
 
-const PREBUFFER_S = 0.12; // ~120 ms cushion before playback starts
-const MAXBUFFER_S = 0.5;  // drop oldest beyond this to bound latency
+const PREBUFFER_S = 0.25; // ~250 ms cushion — absorbs Pi/LAN jitter, not just localhost
+const MAXBUFFER_S = 0.8;  // drop oldest beyond this to bound latency
 
 export class AudioPlayer {
   private ctx: AudioContext | null = null;
