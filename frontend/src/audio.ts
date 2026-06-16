@@ -11,8 +11,8 @@
 // deprecated-but-insecure-context-friendly ScriptProcessorNode. The fallback
 // re-implements the worklet's jitter buffer here on the main thread.
 
-const PREBUFFER_S = 0.25; // ~250 ms cushion — absorbs Pi/LAN jitter, not just localhost
-const MAXBUFFER_S = 0.8;  // drop oldest beyond this to bound latency
+const PREBUFFER_S = 0.40; // ~400 ms cushion — rides WiFi jitter bursts (scan/roam spikes)
+const MAXBUFFER_S = 1.0;  // allow catch-up bursts after a spike before dropping
 
 export class AudioPlayer {
   private ctx: AudioContext | null = null;
