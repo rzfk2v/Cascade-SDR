@@ -222,5 +222,17 @@ class IsmMode(Mode):
         except Exception:
             pass
 
+    def configure(self, params: dict) -> None:
+        """Client commands. ``remove``: drop a device from the feed and cache.
+
+        (An actively-transmitting device will reappear on its next decode; use
+        the UI type filter to hide ones you simply don't want to watch.)
+        """
+        key = params.get("remove")
+        if isinstance(key, str) and self._devices.pop(key, None) is not None:
+            self._cache_dirty = True
+            self._flush_cache()       # user action -> save immediately
+            self._emit()
+
     def snapshot(self) -> list[dict]:
         return [self._feed_msg()]

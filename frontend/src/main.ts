@@ -84,6 +84,7 @@ const ismCount = document.getElementById("ism-count")!;
 const ismView = document.getElementById("ism-view")!;
 const ismLog = document.getElementById("ism-log")!;
 const ismFeedCount = document.getElementById("ism-feedcount")!;
+const ismFilterSel = document.getElementById("ism-filter") as HTMLSelectElement;
 const aptControls = document.getElementById("apt-controls")!;
 const aptStatus = document.getElementById("apt-status")!;
 const aptSat = document.getElementById("apt-sat") as HTMLSelectElement;
@@ -805,15 +806,43 @@ function sparkline(vals: number[]): string {
     `preserveAspectRatio="none"><polyline points="${pts}"/></svg>`;
 }
 
+// Latest feed kept so the type filter / close button can re-render instantly,
+// without waiting for the next push from the backend.
+let lastIsmDevices: any[] = [];
+let ismFilter = String((loadSettings() as any).ismFilter || "");
+let ismFilterSig = "";
+
+// Rebuild the type dropdown only when the set of seen models changes, so it
+// doesn't reset while the user is interacting with it.
+function updateIsmFilterOptions(devices: any[]): void {
+  const models = [...new Set(devices.map((d) => String(d.model)))]
+    .sort((a, b) => a.localeCompare(b));
+  if (ismFilter && !models.includes(ismFilter)) models.push(ismFilter); // keep selection alive
+  const sig = models.join("|");
+  if (sig !== ismFilterSig) {
+    ismFilterSig = sig;
+    ismFilterSel.innerHTML = `<option value="">All types</option>` +
+      models.map((m) => `<option value="${esc(m)}">${esc(m)}</option>`).join("");
+  }
+  ismFilterSel.value = ismFilter;
+}
+
 function renderIsm(devices: any[]): void {
-  ismFeedCount.textContent = `(${devices.length})`;
-  if (!devices.length) {
-    ismLog.innerHTML =
-      '<div class="acars-empty">No devices yet. 433 MHz sensors transmit ' +
-      "periodically — give it a minute (busiest in the evening).</div>";
+  lastIsmDevices = devices;
+  updateIsmFilterOptions(devices);
+  const shown = ismFilter
+    ? devices.filter((d) => String(d.model) === ismFilter) : devices;
+  ismFeedCount.textContent = ismFilter
+    ? `(${shown.length} of ${devices.length})` : `(${devices.length})`;
+
+  if (!shown.length) {
+    ismLog.innerHTML = devices.length
+      ? `<div class="acars-empty">No <b>${esc(ismFilter)}</b> devices right now.</div>`
+      : '<div class="acars-empty">No devices yet. 433 MHz sensors transmit ' +
+        "periodically — give it a minute (busiest in the evening).</div>";
     return;
   }
-  ismLog.innerHTML = devices
+  ismLog.innerHTML = shown
     .map((d) => {
       const id = d.id != null ? ` · id ${esc(String(d.id))}` : "";
       const ch = d.channel != null ? ` · ch ${esc(String(d.channel))}` : "";
@@ -843,11 +872,35 @@ function renderIsm(devices: any[]): void {
         .join("");
       const chipsHtml = chips ? `<div class="ism-chips">${chips}</div>` : "";
       const metricsHtml = metrics ? `<div class="ism-metrics">${metrics}</div>` : "";
-      return `<div class="ism-row"><div class="ism-name">${esc(d.model)}` +
-        `${id}${ch} ${meta}</div>${chipsHtml}${metricsHtml}</div>`;
+      const close = `<button class="ism-close" data-key="${esc(String(d.key))}" ` +
+        `title="Remove this device and its history" aria-label="Remove">×</button>`;
+      return `<div class="ism-row"><div class="ism-name"><span class="ism-title">` +
+        `${esc(d.model)}${id}${ch} ${meta}</span>${close}</div>` +
+        `${chipsHtml}${metricsHtml}</div>`;
     })
     .join("");
 }
+
+// Type filter: persist the choice and re-render immediately.
+ismFilterSel.addEventListener("change", () => {
+  ismFilter = ismFilterSel.value;
+  const s = loadSettings() as any;
+  s.ismFilter = ismFilter;
+  saveSettings(s);
+  renderIsm(lastIsmDevices);
+});
+
+// Close button: tell the backend to drop the device + its history, and remove
+// it from the view right away (optimistic).
+ismLog.addEventListener("click", (e) => {
+  const btn = (e.target as HTMLElement).closest(".ism-close") as HTMLElement | null;
+  if (!btn) return;
+  const key = btn.dataset.key;
+  if (!key) return;
+  sock.send({ cmd: "config", params: { remove: key } });
+  lastIsmDevices = lastIsmDevices.filter((d) => String(d.key) !== key);
+  renderIsm(lastIsmDevices);
+});
 
 function highlightMode(mode: string): void {
   document.querySelectorAll("#mode-tabs button").forEach((b) => {

@@ -264,9 +264,10 @@ device** — one card per transmitter (model · id · channel) with a hit count,
 last-seen time and signal level. Each numeric reading (temperature, humidity,
 pressure, wind, rain, TPMS pressure…) gets a live **sparkline** trend with its
 current value and min–max range; flags and text show as chips. Devices and their
-trends are cached on disk, so they persist across mode switches and restarts.
-Switching modes kills `rtl_433` and frees the dongle. Gain/PPM are passed
-through to `rtl_433`.
+trends are cached on disk, so they persist across mode switches and restarts. A
+**type filter** narrows the list to one sensor model, and **×** removes a device
+from the view and the cache. Switching modes kills `rtl_433` and frees the dongle.
+Gain/PPM are passed through to `rtl_433`.
 
 ![433 MHz — nearby ISM devices grouped per transmitter (Bresser & AmbientWeather sensors) with live temperature/humidity sparklines, min–max range and signal level](docs/433.png)
 

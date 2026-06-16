@@ -336,6 +336,11 @@ Needs [`rtl_433`](https://github.com/merbanan/rtl_433) (`brew install rtl_433`).
   readings show as plain chips until they have history.
 - Devices and their trends are **cached on disk** (`backend/data/ism_cache.json`),
   so they reappear when you come back to the tab or restart the backend.
+- **Filter by type** with the dropdown (top-right): pick a model to show only that
+  sensor, or *All types*. The choice is remembered.
+- **Remove a device** with the **×** on its card — drops it from the view *and*
+  the cached history. (A device that's still transmitting reappears on its next
+  beacon; use the type filter to hide ones you simply don't want to watch.)
 - No map — these are short one-way beacons; it's a live per-device feed.
 - A short whip is plenty (λ/4 ≈ 17 cm). Gain/PPM are passed to `rtl_433`.
 

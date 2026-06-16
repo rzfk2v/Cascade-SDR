@@ -325,7 +325,35 @@ details.advanced[open] > summary::before { content: "▾ "; }
   font-size: 0.8rem;
 }
 .ism-row { border-bottom: 1px solid var(--border); padding-bottom: 0.4rem; }
-.ism-name { color: var(--accent); font-weight: 600; }
+.ism-name {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  color: var(--accent);
+  font-weight: 600;
+}
+.ism-close {
+  flex: none;
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 1.05rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 0.2rem;
+  border-radius: 4px;
+}
+.ism-close:hover { color: var(--text); background: var(--border); }
+.ism-filter {
+  margin-left: auto;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.1rem 0.3rem;
+  font-size: 0.78rem;
+}
 .ism-chips { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.25rem; }
 .ism-chip {
   background: var(--bg);
