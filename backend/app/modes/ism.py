@@ -28,14 +28,21 @@ from pathlib import Path
 
 from app.modes.base import Mode
 
-DEFAULT_FREQ = "433.92M"
+# Selectable ISM bands (MHz). 433.92 / 868.3 are the EU favourites; 315 / 915
+# are common in the Americas. Switching restarts rtl_433 on the new frequency.
+ISM_BANDS = [315.0, 433.92, 868.3, 915.0]
+DEFAULT_BAND_MHZ = 433.92
+_ALLOWED = {round(b, 2): b for b in ISM_BANDS}
+
 MAX_DEVICES = 80          # evict the least-recently-heard beyond this
 EMIT_EVERY = 0.5          # s — throttle pushes to the browser
 HISTORY_LEN = 60          # points kept per numeric field, for UI sparklines
 
 # Persist the device feed (incl. per-field history) so trends survive a mode
-# switch or a backend restart, like the AIS name cache.
-CACHE_PATH = Path(__file__).resolve().parents[2] / "data" / "ism_cache.json"
+# switch or a backend restart, like the AIS name cache. ``ISM_CACHE_PATH`` can
+# override the location (handy for tests, or to put it on a different disk).
+CACHE_PATH = Path(os.environ.get("ISM_CACHE_PATH")
+                  or Path(__file__).resolve().parents[2] / "data" / "ism_cache.json")
 CACHE_FLUSH_SECONDS = 10
 
 # rtl_433 JSON keys that are metadata, not a measurement to chip out in the UI.
@@ -79,6 +86,8 @@ class IsmMode(Mode):
         self._devices: dict[str, dict] = _load_cache()   # restore last session
         self._dirty = False
         self._cache_dirty = False
+        self._freq_mhz = DEFAULT_BAND_MHZ
+        self._restart = False        # set by configure() to retune rtl_433
 
     @staticmethod
     def _exe() -> str | None:
@@ -90,7 +99,7 @@ class IsmMode(Mode):
 
     def _cmd(self) -> list[str]:
         cmd = [
-            self._exe(), "-d", "0", "-f", DEFAULT_FREQ,
+            self._exe(), "-d", "0", "-f", f"{self._freq_mhz}M",
             "-F", "json", "-M", "time:unix", "-M", "level",
         ]
         if isinstance(self.manager.gain, (int, float)):
@@ -98,6 +107,18 @@ class IsmMode(Mode):
         if self.manager.freq_correction:
             cmd += ["-p", str(int(self.manager.freq_correction))]
         return cmd
+
+    @staticmethod
+    def _band_label(mhz: float) -> str:
+        return f"{mhz:g} MHz"
+
+    def _config_msg(self) -> dict:
+        """Band selector state for the UI (available bands + current choice)."""
+        return {
+            "type": "ism_config",
+            "bands": [{"mhz": b, "label": self._band_label(b)} for b in ISM_BANDS],
+            "freq_mhz": self._freq_mhz,
+        }
 
     async def run(self) -> None:
         if self._exe() is None:
@@ -107,38 +128,50 @@ class IsmMode(Mode):
             })
             return
 
-        self._proc = await asyncio.create_subprocess_exec(
-            *self._cmd(),
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        err = self._watch_stderr(self._proc)
-        self.manager.emit_json({"type": "ism_status",
-                                "message": "rtl_433 running · 433.92 MHz"})
-        if self._devices:
-            self._emit()        # show cached devices/trends right away
-        assert self._proc.stdout is not None
+        self.manager.emit_json(self._config_msg())
         try:
-            last_emit = last_flush = 0.0
+            # (Re)spawn loop: a band change in configure() breaks the inner read
+            # loop, kills rtl_433 and comes back here to relaunch on the new -f.
             while True:
-                if self._proc.returncode is not None:
-                    raise RuntimeError(self._exit_error("rtl_433", err))
-                try:
-                    raw = await asyncio.wait_for(
-                        self._proc.stdout.readline(), timeout=0.5)
-                except asyncio.TimeoutError:
-                    raw = b""
-                line = raw.decode(errors="ignore").strip()
-                if line.startswith("{"):
-                    self._ingest(line)
-                now = time.monotonic()
-                if self._dirty and now - last_emit >= EMIT_EVERY:
-                    last_emit = now
-                    self._dirty = False
-                    self._emit()
-                if self._cache_dirty and now - last_flush >= CACHE_FLUSH_SECONDS:
-                    last_flush = now
-                    self._flush_cache()
+                self._restart = False
+                self._proc = await asyncio.create_subprocess_exec(
+                    *self._cmd(),
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                err = self._watch_stderr(self._proc)
+                self.manager.emit_json({
+                    "type": "ism_status",
+                    "message": f"rtl_433 running · {self._band_label(self._freq_mhz)}",
+                })
+                if self._devices:
+                    self._emit()        # show cached devices/trends right away
+                assert self._proc.stdout is not None
+
+                last_emit = last_flush = 0.0
+                while not self._restart:
+                    if self._proc.returncode is not None:
+                        raise RuntimeError(self._exit_error("rtl_433", err))
+                    try:
+                        raw = await asyncio.wait_for(
+                            self._proc.stdout.readline(), timeout=0.5)
+                    except asyncio.TimeoutError:
+                        raw = b""
+                    line = raw.decode(errors="ignore").strip()
+                    if line.startswith("{"):
+                        self._ingest(line)
+                    now = time.monotonic()
+                    if self._dirty and now - last_emit >= EMIT_EVERY:
+                        last_emit = now
+                        self._dirty = False
+                        self._emit()
+                    if self._cache_dirty and now - last_flush >= CACHE_FLUSH_SECONDS:
+                        last_flush = now
+                        self._flush_cache()
+
+                # band change requested -> drop this rtl_433 and respawn
+                await self._kill_proc()
+                self._cancel_stderr_watch()
         finally:
             self._flush_cache()      # persist anything learned this session
             await self._kill_proc()
@@ -223,10 +256,14 @@ class IsmMode(Mode):
             pass
 
     def configure(self, params: dict) -> None:
-        """Client commands. ``remove``: drop a device from the feed and cache.
+        """Client commands.
 
-        (An actively-transmitting device will reappear on its next decode; use
-        the UI type filter to hide ones you simply don't want to watch.)
+        ``remove``: drop a device from the feed and cache. (An actively-
+        transmitting device reappears on its next decode; use the type filter to
+        hide ones you simply don't want to watch.)
+
+        ``freq_mhz``: retune to one of ``ISM_BANDS`` — flags a restart so the
+        run loop relaunches rtl_433 on the new frequency.
         """
         key = params.get("remove")
         if isinstance(key, str) and self._devices.pop(key, None) is not None:
@@ -234,5 +271,13 @@ class IsmMode(Mode):
             self._flush_cache()       # user action -> save immediately
             self._emit()
 
+        f = params.get("freq_mhz")
+        if isinstance(f, (int, float)):
+            band = _ALLOWED.get(round(float(f), 2))
+            if band is not None and band != self._freq_mhz:
+                self._freq_mhz = band
+                self._restart = True          # run loop respawns rtl_433
+                self.manager.emit_json(self._config_msg())
+
     def snapshot(self) -> list[dict]:
-        return [self._feed_msg()]
+        return [self._config_msg(), self._feed_msg()]

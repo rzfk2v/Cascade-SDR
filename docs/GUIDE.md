@@ -18,10 +18,10 @@ and install, see the [README](../README.md).
 - **Left sidebar** — all controls. The panels shown change with the mode.
 - **Right display** — the spectrum **scope** (top) + scrolling **waterfall**
   (below) with a **frequency axis**; in ADS-B/AIS/APRS it becomes a **map**, in DAB
-  a **station list**, in ACARS / 433 MHz a device feed, in APT the satellite image.
+  a **station list**, in ACARS / ISM a device feed, in APT the satellite image.
 - **Top of sidebar** — connection dot (green = backend connected) and the mode
   tabs, grouped **Explore** (Idle · Radio · Sweep · Replay · Scanner) and
-  **Decode** (DAB · ADS-B · AIS · APRS · ACARS · APT · 433 MHz).
+  **Decode** (DAB · ADS-B · AIS · APRS · ACARS · APT · ISM).
 - **Band label** — under the device status, names the service on the current
   frequency (e.g. “FM broadcast”, “Marine VHF”) so you know what you're looking at.
 
@@ -321,13 +321,13 @@ and watch the coastline scroll in. (Meteor-M LRPT is digital and not supported.)
 
 ---
 
-## 433 MHz (ISM devices)
+## ISM (315–915 MHz devices)
 
 Decodes the **433.92 MHz ISM band** — weather stations, soil/pool sensors,
 **TPMS** tyre-pressure monitors, door/window contacts, remotes, energy meters.
 Needs [`rtl_433`](https://github.com/merbanan/rtl_433) (`brew install rtl_433`).
 
-- Switch to **433 MHz**; the view groups decodes **by device** — one card per
+- Switch to **ISM**; the view groups decodes **by device** — one card per
   transmitter (**model · id · channel**) with a hit count, **last-seen** time and
   signal level.
 - Each numeric reading (temperature, humidity, pressure, wind, rain, TPMS
@@ -341,8 +341,12 @@ Needs [`rtl_433`](https://github.com/merbanan/rtl_433) (`brew install rtl_433`).
 - **Remove a device** with the **×** on its card — drops it from the view *and*
   the cached history. (A device that's still transmitting reappears on its next
   beacon; use the type filter to hide ones you simply don't want to watch.)
+- **Band** selector: switch between **315 / 433.92 / 868.3 / 915 MHz**. Picking a
+  band relaunches `rtl_433` on that frequency. 433.92 and 868.3 are the EU bands;
+  315 and 915 are common in the Americas.
 - No map — these are short one-way beacons; it's a live per-device feed.
-- A short whip is plenty (λ/4 ≈ 17 cm). Gain/PPM are passed to `rtl_433`.
+- A short whip is plenty (λ/4 ≈ 17 cm at 433 MHz; shorter for 868/915). Gain/PPM
+  are passed to `rtl_433`.
 
 **Try:** leave it running for a minute (devices beacon periodically, busiest in
 the evening) and watch your neighbourhood's weather sensors and car TPMS appear.
@@ -395,7 +399,7 @@ frequency in the scope. Typical dongles need ~0–60 ppm. It's saved automatical
 | AIS | 161.975 / 162.025 MHz | AIS mode |
 | DAB+ (Stockholm 12C) | 174–240 MHz | DAB mode |
 | TETRA / Rakel | 380–400 MHz | (digital) |
-| ISM sensors / TPMS | 433.92 MHz | 433 MHz mode |
+| ISM sensors / TPMS | 433.92 · 868.3 MHz (also 315/915) | ISM mode |
 | PMR446 | 446.0–446.2 MHz | NFM |
 | 70 cm ham | 430–440 MHz | NFM / SSB / CW |
 | ADS-B | 1090 MHz | ADS-B mode |
@@ -412,6 +416,6 @@ frequency in the scope. Typical dongles need ~0–60 ppm. It's saved automatical
 - **Audio crackles** — shouldn't, thanks to the jitter buffer; if it does, avoid
   running heavy apps that starve the browser tab.
 - **Frequency looks off** — set **PPM** (see Calibration).
-- **ADS-B/AIS/DAB/433 MHz say a tool is missing** — install `dump1090` /
+- **ADS-B/AIS/DAB/ISM say a tool is missing** — install `dump1090` /
   `rtl_433` (both `brew install`) or build `AIS-catcher` / `welle-cli` (see the
   README).

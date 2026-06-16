@@ -23,7 +23,7 @@ things to try. Status:
 | **APRS** | Packet-radio stations on the map (via `rtl_fm` → `direwolf`) | ✅ working‡ |
 | **ACARS** | Aircraft VHF data messages as a live feed (via `acarsdec`) | ✅ working§ |
 | **APT** | NOAA weather-satellite images at 137 MHz (hand-written decoder) | ✅ working¶ |
-| **433 MHz** | 433.92 MHz ISM devices — weather stations, TPMS, sensors, remotes (via `rtl_433`) | ✅ working‖ |
+| **ISM** | 315–915 MHz ISM-band devices — weather stations, TPMS, sensors, remotes (via `rtl_433`) | ✅ working‖ |
 
 \* Needs `dump1090` installed (`brew install dump1090-mutability`) **and a decent
 1090 MHz antenna** — the stock whip barely hears ADS-B. The pipeline runs and
@@ -257,8 +257,8 @@ image"**, and play the recording back through the decoder.
 > **"V"** (~120°), elements at ~53 cm. The stock whip will barely work. Meteor-M
 > (digital LRPT) is *not* supported — this is analog NOAA APT only.
 
-### 433 MHz ISM devices (‖)
-Select **433 MHz**: the backend spawns [`rtl_433`](https://github.com/merbanan/rtl_433)
+### ISM devices (315–915 MHz) (‖)
+Select **ISM**: the backend spawns [`rtl_433`](https://github.com/merbanan/rtl_433)
 on 433.92 MHz and forwards each decode to the browser. The view is grouped **by
 device** — one card per transmitter (model · id · channel) with a hit count,
 last-seen time and signal level. Each numeric reading (temperature, humidity,
@@ -266,10 +266,12 @@ pressure, wind, rain, TPMS pressure…) gets a live **sparkline** trend with its
 current value and min–max range; flags and text show as chips. Devices and their
 trends are cached on disk, so they persist across mode switches and restarts. A
 **type filter** narrows the list to one sensor model, and **×** removes a device
-from the view and the cache. Switching modes kills `rtl_433` and frees the dongle.
-Gain/PPM are passed through to `rtl_433`.
+from the view and the cache. A **Band** selector switches between the ISM bands
+(**315 / 433.92 / 868.3 / 915 MHz**) — picking one relaunches `rtl_433` on that
+frequency. Switching modes kills `rtl_433` and frees the dongle. Gain/PPM are
+passed through to `rtl_433`.
 
-![433 MHz — nearby ISM devices grouped per transmitter (Bresser & AmbientWeather sensors, Toyota TPMS) with live temperature/humidity sparklines and min–max range, a per-type filter, and a × to remove a device](docs/433.png)
+![ISM — nearby ISM-band devices grouped per transmitter (Bresser & AmbientWeather sensors, Toyota TPMS) with live temperature/humidity sparklines and min–max range, a band selector, a per-type filter, and a × to remove a device](docs/ism.png)
 
 The 433.92 MHz band is full of cheap one-way transmitters: weather stations,
 soil/pool/fridge sensors, **TPMS** tyre-pressure monitors, door/window contacts,
@@ -282,9 +284,10 @@ periodically, so leave it running a minute; the band is busiest in the evening.
 brew install rtl_433
 ```
 
-> A short whip works fine at 433 MHz (λ/4 ≈ 17 cm). Set **`RTL_433_BIN`** to point
-> at the binary if it isn't on `PATH`. Some regions also use 868/915 MHz — only
-> 433.92 MHz is wired up here for now.
+> A short whip works fine at 433 MHz (λ/4 ≈ 17 cm); use a shorter element for
+> 868/915 MHz. 433.92 and 868.3 MHz are the EU favourites; 315 and 915 MHz are
+> common in the Americas. Set **`RTL_433_BIN`** to point at the binary if it isn't
+> on `PATH`, and **`ISM_CACHE_PATH`** to relocate the device-history cache.
 
 > FM **de-emphasis** defaults to 50 µs (Europe); switch it to 75 µs
 > (Americas/Korea) in the Radio panel when listening to WFM broadcast.
@@ -490,7 +493,7 @@ the host.
 | **Recommended** | **Pi 5, 4 GB** | Live Radio/Sweep DSP + a decoder at once, no sweat. 8 GB is overkill; 2 GB works. |
 | **Solid value** | **Pi 4, 2–4 GB** | The baseline above. Fine for normal use; a bit less headroom for "live DSP + heavy decoder" together. |
 | **Budget** | **used Pi 4, 2 GB** | Cheapest that still runs everything well — just pair it with a *proper* PSU. |
-| **Decoders only** | **Pi Zero 2 W** | Too weak for the live waterfall/Radio DSP, but fine as a headless ADS-B / AIS / 433 MHz box at a reduced sample rate. |
+| **Decoders only** | **Pi Zero 2 W** | Too weak for the live waterfall/Radio DSP, but fine as a headless ADS-B / AIS / ISM box at a reduced sample rate. |
 | **Left-field** | **used mini PC / N100** | x86, far more DSP headroom than any Pi, no PSU/cooling fuss — often better value than a full Pi 5 kit. Same `apt`/venv setup. |
 
 Whatever you pick, budget for these — they're where SDR-on-Pi setups usually go wrong:

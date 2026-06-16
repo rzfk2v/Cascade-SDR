@@ -85,6 +85,7 @@ const ismView = document.getElementById("ism-view")!;
 const ismLog = document.getElementById("ism-log")!;
 const ismFeedCount = document.getElementById("ism-feedcount")!;
 const ismFilterSel = document.getElementById("ism-filter") as HTMLSelectElement;
+const ismBandSel = document.getElementById("ism-band") as HTMLSelectElement;
 const aptControls = document.getElementById("apt-controls")!;
 const aptStatus = document.getElementById("apt-status")!;
 const aptSat = document.getElementById("apt-sat") as HTMLSelectElement;
@@ -197,7 +198,7 @@ function updateBandInfo(): void {
   } else if (currentMode === "apt") {
     label = "NOAA APT · 137 MHz (weather sat)";
   } else if (currentMode === "ism") {
-    label = "ISM · 433.92 MHz (sensors)";
+    label = `ISM · ${ismFreqMhz} MHz (sensors)`;
   } else if (currentMode === "radio" || currentMode === "replay") {
     const b = bandAt(viewTuned / 1e6);
     label = b ? `Band: ${b}` : "";
@@ -363,6 +364,9 @@ sock.onJson((msg) => {
     case "acars":
       renderAcars(msg.messages);
       acarsCount.textContent = `${msg.count} messages`;
+      break;
+    case "ism_config":
+      renderIsmBands(msg);
       break;
     case "ism_status":
       ismStatus.textContent = msg.message;
@@ -758,7 +762,7 @@ function renderAcars(messages: any[]): void {
     .join("");
 }
 
-// 433 MHz field name -> friendly label (everything else falls back to the key)
+// ISM device field name -> friendly label (everything else falls back to the key)
 const ISM_LABELS: Record<string, string> = {
   temperature_C: "Temp", temperature_F: "Temp", humidity: "Humidity",
   battery_ok: "Battery", wind_avg_km_h: "Wind", wind_max_km_h: "Gust",
@@ -806,6 +810,30 @@ function sparkline(vals: number[]): string {
     `preserveAspectRatio="none"><polyline points="${pts}"/></svg>`;
 }
 
+// Current ISM band (MHz), reflected in the band label; updated by ism_config.
+let ismFreqMhz = 433.92;
+
+// Populate the band selector and reflect the active frequency.
+function renderIsmBands(msg: any): void {
+  const bands = msg.bands || [];
+  const sig = bands.map((b: any) => b.mhz).join("|");
+  if (ismBandSel.dataset.sig !== sig) {
+    ismBandSel.dataset.sig = sig;
+    ismBandSel.innerHTML = bands
+      .map((b: any) => `<option value="${b.mhz}">${esc(b.label)}</option>`)
+      .join("");
+  }
+  if (typeof msg.freq_mhz === "number") {
+    ismFreqMhz = msg.freq_mhz;
+    ismBandSel.value = String(msg.freq_mhz);
+    if (currentMode === "ism") updateBandInfo();
+  }
+}
+
+ismBandSel.addEventListener("change", () => {
+  sock.send({ cmd: "config", params: { freq_mhz: parseFloat(ismBandSel.value) } });
+});
+
 // Latest feed kept so the type filter / close button can re-render instantly,
 // without waiting for the next push from the backend.
 let lastIsmDevices: any[] = [];
@@ -838,7 +866,7 @@ function renderIsm(devices: any[]): void {
   if (!shown.length) {
     ismLog.innerHTML = devices.length
       ? `<div class="acars-empty">No <b>${esc(ismFilter)}</b> devices right now.</div>`
-      : '<div class="acars-empty">No devices yet. 433 MHz sensors transmit ' +
+      : '<div class="acars-empty">No devices yet. ISM-band sensors transmit ' +
         "periodically — give it a minute (busiest in the evening).</div>";
     return;
   }
