@@ -19,8 +19,15 @@
 // stalls need a much deeper cushion to stay glitch-free.
 const WORKLET_PREBUFFER_S = 0.20;
 const WORKLET_MAXBUFFER_S = 0.6;
-const FALLBACK_PREBUFFER_S = 0.70;
-const FALLBACK_MAXBUFFER_S = 1.6;
+// Plain-HTTP LAN clients can see multi-second bursty delivery (WiFi), so the
+// fallback uses a DAB-like multi-second cushion. Tunable live without a rebuild
+// via localStorage["cascadeAudioBufferS"] (seconds) — handy for dialing it in.
+const FALLBACK_PREBUFFER_S = 2.0;
+
+function fallbackPrebufferS(): number {
+  const ov = parseFloat(localStorage.getItem("cascadeAudioBufferS") || "");
+  return isFinite(ov) && ov >= 0.1 && ov <= 10 ? ov : FALLBACK_PREBUFFER_S;
+}
 
 export class AudioPlayer {
   private ctx: AudioContext | null = null;
@@ -72,8 +79,9 @@ export class AudioPlayer {
   // Older ScriptProcessorNode path for insecure contexts (plain-HTTP LAN access).
   private initScriptFallback(): void {
     const sr = this.ctx!.sampleRate;
-    this.prebuffer = Math.floor(sr * FALLBACK_PREBUFFER_S) * 2;  // ×2 for the two channels
-    this.maxbuffer = Math.floor(sr * FALLBACK_MAXBUFFER_S) * 2;
+    const pre = fallbackPrebufferS();
+    this.prebuffer = Math.floor(sr * pre) * 2;          // ×2 for the two channels
+    this.maxbuffer = Math.floor(sr * pre * 2.5) * 2;    // generous catch-up headroom
     // 0 input channels (we synthesise), 2 output channels. 4096 keeps callbacks
     // sparse so the main thread's waterfall drawing doesn't starve playback.
     this.script = this.ctx!.createScriptProcessor(4096, 0, 2);
