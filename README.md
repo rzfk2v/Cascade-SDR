@@ -66,7 +66,11 @@ watching every channel in a 2.4 MHz block at once via one FFT, and **parks on th
 first that breaks squelch**, playing it until it's quiet for a few seconds, then
 resumes. Each channel shows a live **signal bar** so you can set **squelch (dB over
 noise)** by eye — lower it if wanted calls don't stop, raise it if it stops on
-noise. Marine VHF needs a VHF/marine antenna; Ch 16 is the easiest to test with.
+noise. Set a **Priority** channel (e.g. Marine Ch 16) and the scanner pre-empts to
+it whenever it's active, even while parked elsewhere. **Customize channels** lets
+you edit/reorder/add channels (NFM or AM) and **save your own presets** (persisted
+on the backend; built-ins can't be overwritten). Marine VHF needs a VHF/marine
+antenna; Ch 16 is the easiest to test with.
 
 ### Replay a recording
 Select **Replay** and click a saved `.cu8` capture: it streams the file back

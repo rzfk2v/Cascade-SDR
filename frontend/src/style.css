@@ -462,6 +462,30 @@ details.advanced[open] > summary::before { content: "▾ "; }
 }
 .scan-ch.parked .ch-freq { color: rgba(255, 255, 255, 0.85); }
 
+/* Scanner channel editor */
+.scanner-edit { margin: 0.2rem 0; }
+.scanner-edit summary { cursor: pointer; color: var(--muted); font-size: 0.85rem; }
+.scanner-edit-list { display: flex; flex-direction: column; gap: 0.25rem; margin: 0.4rem 0; }
+.sc-edit-row { display: flex; gap: 0.2rem; align-items: center; }
+.sc-edit-row input, .sc-edit-row select {
+  padding: 0.15rem 0.25rem;
+  font-size: 0.78rem;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.sc-edit-row .sc-label { flex: 1 1 2.5rem; min-width: 2.5rem; }
+.sc-edit-row .sc-mhz { flex: 0 0 4.4rem; min-width: 0; }
+.sc-edit-row .sc-demod { flex: 0 0 3.1rem; min-width: 0; }
+.sc-edit-row button {
+  flex: none; padding: 0.1rem 0.2rem; font-size: 0.75rem; line-height: 1;
+  background: var(--bg); color: var(--muted);
+  border: 1px solid var(--border); border-radius: 4px; cursor: pointer;
+}
+.sc-edit-row button:hover { color: var(--text); background: var(--border); }
+.scanner-del { color: var(--err, #e66); font-size: 0.8rem; margin-top: 0.3rem; }
+
 .cw-text {
   position: absolute;
   left: 0.6rem;

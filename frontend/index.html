@@ -95,11 +95,29 @@
           <label>Preset
             <select id="scanner-preset"></select>
           </label>
+          <label>Priority
+            <select id="scanner-prio"><option value="">Off</option></select>
+          </label>
           <label>Squelch (dB over noise)<input id="scanner-sql" type="range" min="3" max="30" step="1" value="8" /></label>
           <label>Volume<input id="scanner-vol" type="range" min="0" max="1.5" step="0.05" value="0.7" /></label>
           <p id="scanner-status" class="status-line">scanning…</p>
+          <details id="scanner-edit" class="scanner-edit">
+            <summary>Customize channels</summary>
+            <div id="scanner-edit-list" class="scanner-edit-list"></div>
+            <button id="scanner-add" type="button">+ Add channel</button>
+            <div class="bm-add">
+              <input id="scanner-name" type="text" placeholder="preset name" maxlength="24" />
+              <button id="scanner-save" type="button">Save preset</button>
+            </div>
+            <button id="scanner-del" type="button" class="scanner-del" hidden>Delete this preset</button>
+            <p class="hint">Edit the channels, then <b>Save</b> as a named preset
+              (saving with a custom preset's own name updates it). Channels are NFM
+              or AM. Built-in presets can't be overwritten — save under a new name.</p>
+          </details>
           <p class="hint">Steps through the channels and stops on a transmission
-            until it goes quiet. Marine VHF (~156 MHz) needs a VHF/marine antenna.</p>
+            until it goes quiet. Set a <b>Priority</b> channel (e.g. Marine Ch 16)
+            to jump to it whenever it's active. Marine VHF (~156 MHz) needs a
+            VHF/marine antenna.</p>
         </section>
 
         <!-- My location: shared by all map modes (AIS / ADS-B / APRS) for distance -->

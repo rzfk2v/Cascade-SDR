@@ -26,7 +26,9 @@ from app.dsp.fft import Spectrum
 from app.hub import FrameTag
 from app.modes.base import Mode
 from app.modes.radio import AUDIO_RATE, DEMODS, IF_DECIM
-from app.modes.scanner_presets import PRESET_LABELS, PRESETS
+from app.modes.scanner_presets import (
+    PRESET_LABELS, PRESETS, channels_from_client, load_custom, save_custom,
+)
 
 FFT_SIZE = 1024
 USABLE = 0.9            # fraction of a 2.4 MHz block we trust (drop edge rolloff)
@@ -48,14 +50,42 @@ class ScannerMode(Mode):
         self.squelch_margin = 8.0   # dB above the block's noise floor = "active"
         self.hold = 3.0             # s of silence before resuming the scan
         self.volume = 0.7
+        self.priority = ""          # channel label to watch + pre-empt to (or "")
+        self._custom = load_custom()   # user-saved presets {name: [channels]}
         self._spectrum = Spectrum(FFT_SIZE)
         self._dirty = True          # rebuild channel/block layout in the worker
         self._channels: list[dict] = []
         self._blocks: list[dict] = []
+        self._pending: dict | None = None   # priority channel to jump to next
 
     # --- config -------------------------------------------------------------
+    def _channels_for(self, preset: str) -> list[dict] | None:
+        """Channel list for a preset name (built-in or user custom)."""
+        if preset in PRESETS:
+            return PRESETS[preset]
+        return self._custom.get(preset)
+
     def configure(self, params: dict) -> None:
-        if params.get("preset") in PRESETS:
+        # save/delete come first so a save_preset can also switch to it below
+        save = params.get("save_preset")
+        if isinstance(save, dict) and isinstance(save.get("name"), str):
+            name = save["name"].strip()[:24]
+            chans = channels_from_client(save.get("channels"))
+            if name and name not in PRESETS and chans:   # don't shadow built-ins
+                self._custom[name] = chans
+                save_custom(self._custom)
+                self.preset = name
+                self._dirty = True
+
+        delete = params.get("delete_preset")
+        if isinstance(delete, str) and delete in self._custom:
+            del self._custom[delete]
+            save_custom(self._custom)
+            if self.preset == delete:
+                self.preset = "marine"
+                self._dirty = True
+
+        if self._channels_for(params.get("preset")) is not None:
             self.preset = params["preset"]
             self._dirty = True
         if params.get("squelch") is not None:
@@ -64,11 +94,23 @@ class ScannerMode(Mode):
             self.hold = float(np.clip(params["hold"], 0.5, 30.0))
         if params.get("volume") is not None:
             self.volume = float(np.clip(params["volume"], 0.0, 2.0))
+        if "priority" in params:
+            self.priority = str(params["priority"] or "")[:12]
         self.manager.emit_json(self._config_msg())
+
+    def _priority_channel(self) -> dict | None:
+        """The active-preset channel flagged as priority, if any."""
+        if not self.priority:
+            return None
+        for c in self._channels:
+            if c["label"] == self.priority:
+                return c
+        return None
 
     def _rebuild(self, sr: float) -> None:
         # flat channel list (preset order) + 2.4 MHz capture blocks
-        self._channels = [dict(c, _level=0.0, _active=False) for c in PRESETS[self.preset]]
+        chans = self._channels_for(self.preset) or []
+        self._channels = [dict(c, _level=0.0, _active=False) for c in chans]
         usable = sr * USABLE
         blocks: list[list[dict]] = []
         for c in sorted(self._channels, key=lambda x: x["freq"]):
@@ -85,16 +127,23 @@ class ScannerMode(Mode):
         self._dirty = False
 
     def _config_msg(self) -> dict:
+        presets = [{"id": k, "label": PRESET_LABELS[k], "builtin": True}
+                   for k in PRESETS]
+        presets += [{"id": name, "label": name, "builtin": False}
+                    for name in self._custom]
+        chans = self._channels_for(self.preset) or []
         return {
             "type": "scanner_config",
-            "presets": [{"id": k, "label": PRESET_LABELS[k]} for k in PRESETS],
+            "presets": presets,
             "preset": self.preset,
+            "builtin": self.preset in PRESETS,
             "squelch": self.squelch_margin,
             "hold": self.hold,
+            "priority": self.priority,
             "channels": [
                 {"label": c["label"], "mhz": round(c["freq"] / 1e6, 4),
                  "demod": c["demod"]}
-                for c in PRESETS[self.preset]
+                for c in chans
             ],
         }
 
@@ -150,6 +199,12 @@ class ScannerMode(Mode):
             if best is not None:
                 self._emit_state(self._channels.index(best))
                 self._park(sdr, stop_event, best, sr)    # smooth audio via a reader thread
+                # priority pre-empt: park() may have flagged a higher-priority
+                # channel that went active — jump straight to it (and chain).
+                while self._pending is not None and not stop_event.is_set():
+                    nxt, self._pending = self._pending, None
+                    self._emit_state(self._channels.index(nxt))
+                    self._park(sdr, stop_event, nxt, sr)
                 last_state = 0.0                          # force a fresh state on resume
             elif now - last_state >= 0.25:
                 last_state = now
@@ -177,10 +232,13 @@ class ScannerMode(Mode):
         freqs = center + (np.arange(FFT_SIZE) / FFT_SIZE - 0.5) * sr
         row = self._spectrum.row(x)
         floor = float(np.median(row))
+        prio = self._priority_channel()
         best, best_level = None, self.squelch_margin
         for c in blk["channels"]:
             lvl = self._channel_level(row, freqs, c, floor)
             c["_level"], c["_active"] = lvl, lvl >= self.squelch_margin
+            if c is prio and c["_active"]:
+                return c                                  # priority wins outright
             if c["_active"] and lvl >= best_level:
                 best, best_level = c, lvl
         return best
@@ -223,6 +281,12 @@ class ScannerMode(Mode):
                     except (_queue.Empty, _queue.Full):
                         pass
 
+        # Priority watch: a different channel in this same capture block we should
+        # jump to the moment it goes active (e.g. Marine Ch 16 while on Ch 72).
+        prio = self._priority_channel()
+        if not (prio is not None and prio is not ch and prio.get("block") == ch["block"]):
+            prio = None
+
         rt = threading.Thread(target=reader, daemon=True)
         rt.start()
         last_active = time.monotonic()
@@ -243,9 +307,19 @@ class ScannerMode(Mode):
                 self._emit_audio(audio)
 
                 row = self._spectrum.row(x)
-                lvl = self._channel_level(row, freqs, ch, float(np.median(row)))
+                floor = float(np.median(row))
+                lvl = self._channel_level(row, freqs, ch, floor)
                 ch["_level"], ch["_active"] = lvl, lvl >= self.squelch_margin
                 now = time.monotonic()
+
+                if prio is not None:                     # pre-empt to the priority channel
+                    plvl = self._channel_level(row, freqs, prio, floor)
+                    prio["_level"], prio["_active"] = plvl, plvl >= self.squelch_margin
+                    if prio["_active"]:
+                        self._pending = prio
+                        self._emit_state(idx)
+                        break
+
                 if ch["_active"]:
                     last_active = now
                 elif now - last_active > self.hold:

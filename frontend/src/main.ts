@@ -163,10 +163,19 @@ const scannerPreset = document.getElementById("scanner-preset") as HTMLSelectEle
 const scannerSql = document.getElementById("scanner-sql") as HTMLInputElement;
 const scannerVol = document.getElementById("scanner-vol") as HTMLInputElement;
 const scannerStatus = document.getElementById("scanner-status")!;
+const scannerPrio = document.getElementById("scanner-prio") as HTMLSelectElement;
+const scannerEditList = document.getElementById("scanner-edit-list")!;
+const scannerAdd = document.getElementById("scanner-add")!;
+const scannerName = document.getElementById("scanner-name") as HTMLInputElement;
+const scannerSave = document.getElementById("scanner-save")!;
+const scannerDel = document.getElementById("scanner-del")!;
 const scannerView = document.getElementById("scanner-view")!;
 const scannerNow = document.getElementById("scanner-now")!;
 const scannerGrid = document.getElementById("scanner-grid")!;
-let scannerChannels: { label: string; mhz: number; demod: string }[] = [];
+type ScanChan = { label: string; mhz: number; demod: string };
+let scannerChannels: ScanChan[] = [];
+let editChannels: ScanChan[] = [];   // working copy for the channel editor
+let scannerPresetId = "";            // current preset id (built-in key or custom name)
 const zoomOutBtn = document.getElementById("zoom-out") as HTMLButtonElement;
 const displayControls = document.getElementById("display-controls")!;
 const tuningControls = document.getElementById("tuning-controls")!;
@@ -383,12 +392,19 @@ sock.onJson((msg) => {
       break;
     case "scanner_config":
       scannerChannels = msg.channels || [];
-      scannerPreset.innerHTML = (msg.presets || [])
-        .map((p: any) => `<option value="${p.id}">${esc(p.label)}</option>`)
-        .join("");
-      scannerPreset.value = msg.preset;
+      renderScannerPresets(msg.presets || [], msg.preset);
       if (typeof msg.squelch === "number" && document.activeElement !== scannerSql)
         scannerSql.value = String(msg.squelch);
+      renderScannerPrio(msg.priority || "");
+      // Reload the editor's working copy only when the preset actually changes,
+      // so a squelch/priority push doesn't wipe edits in progress.
+      if (msg.preset !== scannerPresetId) {
+        scannerPresetId = msg.preset;
+        editChannels = scannerChannels.map((c) => ({ ...c }));
+        scannerName.value = msg.builtin ? "" : msg.preset;
+        scannerDel.hidden = !!msg.builtin;
+        renderScannerEditor();
+      }
       renderScannerGrid();
       break;
     case "scanner_state":
@@ -1092,9 +1108,94 @@ scanPreset.addEventListener("change", () => {
 function sendScannerPrefs(): void {
   sock.send({
     cmd: "config",
-    params: { squelch: parseFloat(scannerSql.value), volume: parseFloat(scannerVol.value) },
+    params: {
+      squelch: parseFloat(scannerSql.value),
+      volume: parseFloat(scannerVol.value),
+      priority: String((loadSettings() as any).scannerPrio || ""),  // persisted choice
+    },
   });
 }
+// Preset dropdown, split into Built-in / Custom groups.
+function renderScannerPresets(presets: any[], current: string): void {
+  const grp = (builtin: boolean) => presets
+    .filter((p) => !!p.builtin === builtin)
+    .map((p) => `<option value="${esc(p.id)}">${esc(p.label)}</option>`)
+    .join("");
+  const custom = grp(false);
+  scannerPreset.innerHTML =
+    `<optgroup label="Built-in">${grp(true)}</optgroup>` +
+    (custom ? `<optgroup label="Custom">${custom}</optgroup>` : "");
+  scannerPreset.value = current;
+}
+// Priority dropdown = Off + the current preset's channels.
+function renderScannerPrio(current: string): void {
+  if (document.activeElement === scannerPrio) return;   // don't disrupt mid-pick
+  scannerPrio.innerHTML = `<option value="">Off</option>` +
+    scannerChannels
+      .map((c) => `<option value="${esc(c.label)}">${esc(c.label)} · ${c.mhz.toFixed(3)}</option>`)
+      .join("");
+  scannerPrio.value = current;
+}
+// Channel editor (working copy in editChannels).
+function renderScannerEditor(): void {
+  scannerEditList.innerHTML = editChannels
+    .map((c, i) =>
+      `<div class="sc-edit-row" data-i="${i}">` +
+      `<input class="sc-label" data-f="label" value="${esc(c.label)}" maxlength="12" placeholder="name" />` +
+      `<input class="sc-mhz" data-f="mhz" type="number" step="0.0125" min="24" max="1766" value="${c.mhz}" />` +
+      `<select class="sc-demod" data-f="demod">` +
+      `<option value="nfm"${c.demod === "nfm" ? " selected" : ""}>NFM</option>` +
+      `<option value="am"${c.demod === "am" ? " selected" : ""}>AM</option></select>` +
+      `<button type="button" class="sc-up" title="Move up">↑</button>` +
+      `<button type="button" class="sc-down" title="Move down">↓</button>` +
+      `<button type="button" class="sc-rm" title="Remove">×</button></div>`,
+    )
+    .join("") ||
+    `<div class="muted" style="font-size:.8rem">No channels — add one below.</div>`;
+}
+// Live-update editChannels from a field edit (no re-render, to keep focus).
+scannerEditList.addEventListener("input", (e) => {
+  const el = e.target as HTMLElement;
+  const row = el.closest(".sc-edit-row") as HTMLElement | null;
+  const f = (el as HTMLElement).dataset.f;
+  if (!row || !f) return;
+  const i = Number(row.dataset.i);
+  const v = (el as HTMLInputElement).value;
+  if (f === "mhz") editChannels[i].mhz = parseFloat(v);
+  else if (f === "label") editChannels[i].label = v;
+  else if (f === "demod") editChannels[i].demod = v;
+});
+// Reorder / remove (structural -> re-render).
+scannerEditList.addEventListener("click", (e) => {
+  const btn = (e.target as HTMLElement).closest("button");
+  const row = (e.target as HTMLElement).closest(".sc-edit-row") as HTMLElement | null;
+  if (!btn || !row) return;
+  const i = Number(row.dataset.i);
+  if (btn.classList.contains("sc-rm")) editChannels.splice(i, 1);
+  else if (btn.classList.contains("sc-up") && i > 0)
+    [editChannels[i - 1], editChannels[i]] = [editChannels[i], editChannels[i - 1]];
+  else if (btn.classList.contains("sc-down") && i < editChannels.length - 1)
+    [editChannels[i + 1], editChannels[i]] = [editChannels[i], editChannels[i + 1]];
+  renderScannerEditor();
+});
+scannerAdd.addEventListener("click", () => {
+  editChannels.push({ label: "", mhz: 156.8, demod: "nfm" });
+  renderScannerEditor();
+});
+scannerSave.addEventListener("click", () => {
+  const name = scannerName.value.trim();
+  const channels = editChannels.filter((c) => c.label.trim() && isFinite(c.mhz));
+  if (!name) { scannerStatus.textContent = "name the preset first"; return; }
+  if (!channels.length) { scannerStatus.textContent = "add at least one channel"; return; }
+  sock.send({ cmd: "config", params: { save_preset: { name, channels } } });
+});
+scannerDel.addEventListener("click", () => {
+  if (scannerPresetId) sock.send({ cmd: "config", params: { delete_preset: scannerPresetId } });
+});
+scannerPrio.addEventListener("change", () => {
+  sock.send({ cmd: "config", params: { priority: scannerPrio.value } });
+  persist();
+});
 function renderScannerGrid(): void {
   scannerGrid.innerHTML = scannerChannels
     .map((c, i) =>
@@ -1261,7 +1362,7 @@ biasTee.addEventListener("change", () =>
 const persistValues: Record<string, HTMLInputElement | HTMLSelectElement> = {
   ppm: ppmInput, demod: demodSel, vol: volInput, sql: sqlInput,
   scanStart, scanStop, wfFloor, wfCeil, rxLoc, deemph: deemphSel, averaging,
-  scannerSql, scannerVol,
+  scannerSql, scannerVol, scannerPrio,
 };
 const persistChecks: Record<string, HTMLInputElement> = {
   gainAuto, biasTee, wfAuto, peakHold, rdsOn, stereoOn, showTracks,

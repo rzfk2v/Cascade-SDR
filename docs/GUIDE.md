@@ -129,9 +129,20 @@ quiet — like a marine/PMR scanner.
   lower squelch; if it keeps stopping on noise, raise it.
 - **Volume** for the parked audio. It resumes scanning ~3 s after a channel falls
   silent.
+- **Priority** — pick a channel (e.g. Marine **Ch 16**) and the scanner jumps to it
+  the moment it's active, even while parked on another channel, then returns to
+  normal scanning when it goes quiet. "Off" disables it.
+- **Customize channels** — expand it to build your own list: edit a channel's
+  label / frequency / demod (NFM or AM), reorder with **↑ ↓**, remove with **×**,
+  **+ Add channel**, then **Save** under a name. Saved presets appear under
+  *Custom* in the dropdown (saving with a custom preset's own name updates it; a
+  built-in can't be overwritten — save under a new name). **Delete this preset**
+  removes a custom one. Presets persist on the backend
+  (`backend/data/scanner_custom.json`).
 - Because the dongle sees only ~2.4 MHz at once, wide presets are covered in a few
   capture blocks — but the marine simplex channels all sit within ~1.4 MHz, so
-  they're watched at the same time.
+  they're watched at the same time. (Priority pre-emption works while parked on a
+  channel sharing the priority channel's capture window — all built-in presets do.)
 
 **Try:** Scanner → **Marine VHF** near a harbour and leave it running; it parks and
 plays whenever someone keys up (Ch 16 is the most active to confirm it works).
