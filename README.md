@@ -269,7 +269,7 @@ trends are cached on disk, so they persist across mode switches and restarts. A
 from the view and the cache. Switching modes kills `rtl_433` and frees the dongle.
 Gain/PPM are passed through to `rtl_433`.
 
-![433 MHz — nearby ISM devices grouped per transmitter (Bresser & AmbientWeather sensors) with live temperature/humidity sparklines, min–max range and signal level](docs/433.png)
+![433 MHz — nearby ISM devices grouped per transmitter (Bresser & AmbientWeather sensors, Toyota TPMS) with live temperature/humidity sparklines and min–max range, a per-type filter, and a × to remove a device](docs/433.png)
 
 The 433.92 MHz band is full of cheap one-way transmitters: weather stations,
 soil/pool/fridge sensors, **TPMS** tyre-pressure monitors, door/window contacts,
