@@ -8,19 +8,25 @@
 // underrun we emit one clean silence gap and re-buffer rather than crackling, and
 // we cap the queue so latency stays bounded.
 
-const PREBUFFER_S = 0.40; // ~400 ms cushion — rides WiFi jitter bursts (scan/roam spikes)
-const MAXBUFFER_S = 1.0;  // allow catch-up bursts after a spike before dropping
+// Defaults if the page doesn't pass sizes via processorOptions. The worklet runs
+// on a dedicated audio thread in a secure context (localhost/HTTPS), so a small
+// cushion stays glitch-free with low latency.
+const DEFAULT_PREBUFFER_S = 0.20;
+const DEFAULT_MAXBUFFER_S = 0.6;
 
 class PcmPlayer extends AudioWorkletProcessor {
-  constructor() {
+  constructor(options) {
     super();
+    const opts = (options && options.processorOptions) || {};
+    const preS = opts.prebuffer > 0 ? opts.prebuffer : DEFAULT_PREBUFFER_S;
+    const maxS = opts.maxbuffer > 0 ? opts.maxbuffer : DEFAULT_MAXBUFFER_S;
     this.buffers = [];        // queued interleaved Float32Array chunks (L,R,...)
     this.readIndex = 0;       // read offset into buffers[0] (in samples)
     this.available = 0;       // total unread samples queued (interleaved)
     this.playing = false;     // false => buffering
     // counts are in interleaved samples, so ×2 for the two channels
-    this.prebuffer = Math.floor(sampleRate * PREBUFFER_S) * 2;
-    this.maxbuffer = Math.floor(sampleRate * MAXBUFFER_S) * 2;
+    this.prebuffer = Math.floor(sampleRate * preS) * 2;
+    this.maxbuffer = Math.floor(sampleRate * maxS) * 2;
     this.port.onmessage = (e) => {
       const chunk = e.data;
       this.buffers.push(chunk);

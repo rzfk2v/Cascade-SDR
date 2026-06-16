@@ -11,8 +11,16 @@
 // deprecated-but-insecure-context-friendly ScriptProcessorNode. The fallback
 // re-implements the worklet's jitter buffer here on the main thread.
 
-const PREBUFFER_S = 0.40; // ~400 ms cushion — rides WiFi jitter bursts (scan/roam spikes)
-const MAXBUFFER_S = 1.0;  // allow catch-up bursts after a spike before dropping
+// The buffer is sized to the playback path, so we don't add latency where it
+// isn't needed. The AudioWorklet only runs in a secure context (localhost /
+// HTTPS) and plays on a dedicated audio thread, so a small cushion is plenty
+// and keeps latency low. The ScriptProcessor fallback only runs over plain-HTTP
+// (a LAN IP) and on the main thread, where network jitter + TCP retransmit
+// stalls need a much deeper cushion to stay glitch-free.
+const WORKLET_PREBUFFER_S = 0.20;
+const WORKLET_MAXBUFFER_S = 0.6;
+const FALLBACK_PREBUFFER_S = 0.70;
+const FALLBACK_MAXBUFFER_S = 1.6;
 
 export class AudioPlayer {
   private ctx: AudioContext | null = null;
@@ -44,6 +52,10 @@ export class AudioPlayer {
         await this.ctx.audioWorklet.addModule("/pcm-worklet.js");
         this.node = new AudioWorkletNode(this.ctx, "pcm-player", {
           outputChannelCount: [2],
+          processorOptions: {
+            prebuffer: WORKLET_PREBUFFER_S,
+            maxbuffer: WORKLET_MAXBUFFER_S,
+          },
         });
         this.node.connect(this.ctx.destination);
         await this.ctx.resume();
@@ -60,8 +72,8 @@ export class AudioPlayer {
   // Older ScriptProcessorNode path for insecure contexts (plain-HTTP LAN access).
   private initScriptFallback(): void {
     const sr = this.ctx!.sampleRate;
-    this.prebuffer = Math.floor(sr * PREBUFFER_S) * 2;  // ×2 for the two channels
-    this.maxbuffer = Math.floor(sr * MAXBUFFER_S) * 2;
+    this.prebuffer = Math.floor(sr * FALLBACK_PREBUFFER_S) * 2;  // ×2 for the two channels
+    this.maxbuffer = Math.floor(sr * FALLBACK_MAXBUFFER_S) * 2;
     // 0 input channels (we synthesise), 2 output channels. 4096 keeps callbacks
     // sparse so the main thread's waterfall drawing doesn't starve playback.
     this.script = this.ctx!.createScriptProcessor(4096, 0, 2);
