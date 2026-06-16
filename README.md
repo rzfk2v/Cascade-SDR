@@ -589,14 +589,19 @@ cmake .. && make && sudo make install
 **DAB (welle-cli):**
 
 ```bash
-sudo apt install -y git build-essential cmake libfftw3-dev libusb-1.0-0-dev \
+sudo apt install -y git build-essential cmake xxd libfftw3-dev libusb-1.0-0-dev \
   libfaad-dev libmpg123-dev librtlsdr-dev libsndfile1-dev libmp3lame-dev
 git clone https://github.com/AlbrechtL/welle.io.git ~/welle.io
 cd ~/welle.io && mkdir build && cd build
-cmake .. -DRTLSDR=ON
-make -j4 welle-cli                 # the CLI target only — skips the Qt GUI deps
+cmake .. -DRTLSDR=ON -DBUILD_WELLE_IO=OFF -DBUILD_WELLE_CLI=ON
+make -j4 welle-cli
 sudo cp welle-cli /usr/local/bin/welle-cli
 ```
+
+> `-DBUILD_WELLE_IO=OFF` skips the Qt6 GUI (which you don't need and which would
+> otherwise fail to configure without Qt6 installed); `welle-cli` embeds a small
+> web UI, so it needs **`xxd`** at build time (split into its own package on
+> Bookworm).
 
 **ACARS (acarsdec + libacars):**
 
