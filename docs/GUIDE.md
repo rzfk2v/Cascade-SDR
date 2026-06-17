@@ -371,7 +371,10 @@ the evening) and watch your neighbourhood's weather sensors and car TPMS appear.
 - **IQ (.cu8)** — *Record IQ* in the Radio view; saves the **raw radio** so you
   can replay/analyse it later — in Cascade's own **Replay** mode, or in gqrx /
   `rtl_sdr` / etc. Files list with download/delete; the name carries the frequency +
-  sample rate. **They're big (~290 MB/min)** — delete when done.
+  sample rate. **They're big (~290 MB/min)** — delete when done. To keep them off
+  the boot disk (e.g. on a Pi), set **`CASCADE_RECORDINGS_DIR`** to a USB drive or
+  an NFS-mounted NAS folder; on a Pi, record over Ethernet so a WiFi stall can't
+  drop samples.
 
 **Try:** record 10 s of IQ on a busy band; later you can replay it offline.
 

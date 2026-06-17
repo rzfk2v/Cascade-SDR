@@ -110,6 +110,11 @@ differential → block-syndrome sync → group parsing), no external tool.
   standard **.cu8** file — replayable in Cascade's own **Replay** mode, or in
   rtl_sdr/gqrx/etc. — listed with download/delete; the filename carries the center
   frequency and sample rate.
+  - IQ is **heavy** (~290 MB/min at 2.4 MS/s). By default it goes to
+    `backend/recordings`; set **`CASCADE_RECORDINGS_DIR`** to write somewhere with
+    room to spare and less wear — e.g. a USB drive, or an **NFS-mounted NAS share**
+    (handy on a Pi to keep big captures off the SD card). On a Pi, prefer Ethernet
+    while recording so a WiFi stall can't drop samples mid-capture.
 
 ### Antenna helper (dipole kit)
 Under the band label, a live hint tells you how to set the **RTL-SDR.com dipole

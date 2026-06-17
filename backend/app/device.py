@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import threading
 import time
 from pathlib import Path
@@ -32,7 +33,11 @@ from app.modes.base import Mode
 
 log = logging.getLogger("sdr.device")
 
-RECORDINGS_DIR = Path(__file__).resolve().parents[1] / "recordings"
+# Where IQ captures are written. Override with ``CASCADE_RECORDINGS_DIR`` to put
+# them on a different disk or a network share (e.g. an NFS-mounted NAS folder),
+# which spares the SD card from the heavy sustained writes of IQ recording.
+RECORDINGS_DIR = Path(os.environ.get("CASCADE_RECORDINGS_DIR")
+                      or Path(__file__).resolve().parents[1] / "recordings")
 
 try:
     from rtlsdr import RtlSdr  # type: ignore
