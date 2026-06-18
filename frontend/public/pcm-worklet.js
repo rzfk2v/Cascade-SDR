@@ -55,10 +55,9 @@ class PcmPlayer extends AudioWorkletProcessor {
 
     for (let i = 0; i < outL.length; i++) {
       if (this.available < 2) {
-        // Underrun: finish this render quantum with silence and re-buffer.
+        // Underrun: play silence and resume immediately when data returns.
         outL.fill(0, i);
         if (outR !== outL) outR.fill(0, i);
-        this.playing = false;
         break;
       }
       let cur = this.buffers[0];

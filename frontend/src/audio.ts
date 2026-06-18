@@ -18,7 +18,7 @@
 // (a LAN IP) and on the main thread, where network jitter + TCP retransmit
 // stalls need a much deeper cushion to stay glitch-free.
 const WORKLET_PREBUFFER_S = 0.20;
-const WORKLET_MAXBUFFER_S = 0.6;
+const WORKLET_MAXBUFFER_S = 3.0;
 // Plain-HTTP LAN clients see bursty WiFi delivery. The fallback uses a short
 // initial prebuffer (0.5 s) before starting play; after any gap/underrun it
 // outputs silence seamlessly and resumes the moment data returns — no
