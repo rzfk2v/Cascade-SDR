@@ -24,11 +24,11 @@ StartLimitBurst=5
 [Service]
 Type=simple
 # EDIT 1: the user that owns the checkout and may access the USB dongle.
-User=pi
+User=YOUR_USERNAME
 # EDIT 2: absolute path to the backend/ directory of your checkout.
-WorkingDirectory=/home/pi/Cascade-SDR/backend
+WorkingDirectory=/home/YOUR_USERNAME/Cascade-SDR/backend
 # EDIT 3: same path again, in the venv uvicorn below.
-ExecStart=/home/pi/Cascade-SDR/backend/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000
+ExecStart=/home/YOUR_USERNAME/Cascade-SDR/backend/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000
 Restart=on-failure
 RestartSec=3
 

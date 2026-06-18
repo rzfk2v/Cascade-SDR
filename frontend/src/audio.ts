@@ -126,8 +126,14 @@ export class AudioPlayer {
     if (!this.node && !this.script) return;
     const n = body.byteLength >> 1;             // total samples (L,R interleaved)
     const i16 = new Int16Array(body.buffer, body.byteOffset, n);
-    const f32 = new Float32Array(n);
+    let f32 = new Float32Array(n);
     for (let i = 0; i < n; i++) f32[i] = i16[i] / 32768;
+
+    // Resample if the AudioContext settled at a different rate than the backend's
+    // 48 kHz (e.g. macOS may run at 44.1 or 96 kHz depending on the audio device).
+    if (this.ctx!.sampleRate !== this.rate) {
+      f32 = this.resampleStereo(f32, this.rate, this.ctx!.sampleRate);
+    }
 
     if (this.node) {
       this.node.port.postMessage(f32, [f32.buffer]);
@@ -141,6 +147,23 @@ export class AudioPlayer {
       this.available -= dropped.length - this.readIndex;
       this.readIndex = 0;
     }
+  }
+
+  // Linear-interpolation stereo resample (interleaved L,R input/output).
+  private resampleStereo(input: Float32Array, fromRate: number, toRate: number): Float32Array<ArrayBuffer> {
+    const inFrames  = input.length >> 1;
+    const outFrames = Math.round(inFrames * toRate / fromRate);
+    const out = new Float32Array(outFrames * 2);
+    for (let i = 0; i < outFrames; i++) {
+      const src  = i * fromRate / toRate;
+      const lo   = Math.floor(src);
+      const frac = src - lo;
+      const a = Math.min(lo * 2, input.length - 2);
+      const b = Math.min(a + 2, input.length - 2);
+      out[i * 2]     = input[a]     + (input[b]     - input[a])     * frac;
+      out[i * 2 + 1] = input[a + 1] + (input[b + 1] - input[a + 1]) * frac;
+    }
+    return out;
   }
 
   async suspend(): Promise<void> {
