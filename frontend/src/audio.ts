@@ -53,7 +53,9 @@ export class AudioPlayer {
       await this.ctx.resume();
       return;
     }
-    this.ctx = new AudioContext({ sampleRate: this.rate });
+    // Use the browser's native hardware rate — avoids double resampling when
+    // the hardware doesn't run at 48 kHz. pushInt16 resamples as needed.
+    this.ctx = new AudioContext();
 
     if (this.ctx.audioWorklet) {
       try {
