@@ -59,7 +59,7 @@ export class AudioPlayer {
 
     if (this.ctx.audioWorklet) {
       try {
-        await this.ctx.audioWorklet.addModule("/pcm-worklet.js");
+        await this.ctx.audioWorklet.addModule("/pcm-worklet.js?v=2");
         this.node = new AudioWorkletNode(this.ctx, "pcm-player", {
           outputChannelCount: [2],
           processorOptions: {
