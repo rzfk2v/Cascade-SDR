@@ -17,6 +17,8 @@ decimation ratio is integer and the decimation grid stays aligned across blocks.
 """
 from __future__ import annotations
 
+import queue
+import threading
 import time
 
 import numpy as np
@@ -80,6 +82,8 @@ class RadioMode(Mode):
         self.rds_enabled = True      # decode RDS (station name/radiotext) on WFM
         self._rds: RdsDemod | None = None
         self._rds_dirty = False      # tuned to a new station -> reset RDS
+        self._rds_queue: queue.Queue | None = None
+        self._rds_thread: threading.Thread | None = None
         self.stereo_enabled = True   # decode FM stereo (L−R from 38 kHz) on WFM
         self._stereo: StereoDecoder | None = None
         self._deemph_l: DeEmphasis | None = None
@@ -190,6 +194,31 @@ class RadioMode(Mode):
         self.manager.emit_json(self._spectrum_config_msg())
         self._announce_radio()
 
+    def _rds_worker(self) -> None:
+        q = self._rds_queue
+        while True:
+            block = q.get()
+            if block is None:
+                break
+            rds = self._rds
+            if rds is not None:
+                rds.process(block)
+
+    def _stop_rds_worker(self) -> None:
+        q, t = self._rds_queue, self._rds_thread
+        self._rds_queue = None
+        self._rds_thread = None
+        if q is not None:
+            # drain then send sentinel so there's always room
+            while True:
+                try:
+                    q.get_nowait()
+                except queue.Empty:
+                    break
+            q.put(None)
+        if t is not None and t.is_alive():
+            t.join(timeout=1.0)
+
     def _build_chain(self) -> None:
         sr = self.manager.sample_rate
         cfg = DEMODS.get(self.demod, DEMODS["wfm"])
@@ -204,6 +233,7 @@ class RadioMode(Mode):
         self._agc = None
         self._env_decim = None
         self._cw = None
+        self._stop_rds_worker()
         self._rds = None
         self._stereo = None
         self._apt = None
@@ -223,8 +253,14 @@ class RadioMode(Mode):
             if self.demod == "wfm" and self.rds_enabled:
                 # RDS lives at 57 kHz in the MPX (the discriminator output), so it
                 # needs the full IF-rate signal, before audio decimation.
+                # Run it on a background thread so the expensive resample_poly calls
+                # don't stall audio production on the IQ worker thread.
                 self._rds = RdsDemod(if_rate, self._emit_rds)
                 self._rds_dirty = False
+                self._rds_queue = queue.Queue(maxsize=4)
+                self._rds_thread = threading.Thread(
+                    target=self._rds_worker, daemon=True, name="rds-decoder")
+                self._rds_thread.start()
             if self.demod == "wfm" and self.apt_enabled:
                 self._apt = AptDecoder(self._audio_decim.out_rate, self._emit_apt)
                 self._apt_dirty = False
@@ -293,11 +329,20 @@ class RadioMode(Mode):
             # RDS: decode the 57 kHz subcarrier from the full MPX (pre-decimation)
             if self.demod == "wfm" and self.rds_enabled:
                 if self._rds is None or self._rds_dirty:
+                    self._stop_rds_worker()
                     self._rds = RdsDemod(if_rate, self._emit_rds)
                     self._rds_dirty = False
                     self.manager.emit_json({"type": "rds", "pi": None, "pty": None,
                                             "ps": "", "rt": ""})
-                self._rds.process(disc)
+                    self._rds_queue = queue.Queue(maxsize=4)
+                    self._rds_thread = threading.Thread(
+                        target=self._rds_worker, daemon=True, name="rds-decoder")
+                    self._rds_thread.start()
+                if self._rds_queue is not None:
+                    try:
+                        self._rds_queue.put_nowait(disc)
+                    except queue.Full:
+                        pass  # RDS thread busy; drop block (display data, not audio)
             mono = self._audio_decim.process(disc)
             # NOAA APT: decode the 2400 Hz image subcarrier from the FM audio
             # (before de-emphasis, which would tilt the subcarrier amplitude)

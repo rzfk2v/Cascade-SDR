@@ -189,6 +189,10 @@ class RdsDemod:
         # resample the baseband to 16 samples/symbol (1187.5 * 16 = 19 kHz)
         self._sps = 16
         self._sym_rate = RDS_BITRATE * self._sps   # 19000 Hz
+        from math import gcd
+        _up, _down = int(self._sym_rate), int(fs)
+        _g = gcd(_up, _down)
+        self._resample_up, self._resample_down = _up // _g, _down // _g
         self._decoder = RdsGroupDecoder(on_update)
         self._prev_enc = 0
         self._sym_buf_i = np.zeros(0)
@@ -207,16 +211,9 @@ class RdsDemod:
         i, self._zi_i = lfilter(self._lp, 1.0, i, zi=self._zi_i)
         q, self._zi_q = lfilter(self._lp, 1.0, q, zi=self._zi_q)
         # resample both to the symbol-clock rate (19 kHz, 16 samples/symbol)
-        up, down = self._ratio()
-        ri = resample_poly(i, up, down)
-        rq = resample_poly(q, up, down)
+        ri = resample_poly(i, self._resample_up, self._resample_down)
+        rq = resample_poly(q, self._resample_up, self._resample_down)
         self._symbolize(ri, rq)
-
-    def _ratio(self) -> tuple[int, int]:
-        from math import gcd
-        up, down = int(self._sym_rate), int(self.fs)
-        g = gcd(up, down)
-        return up // g, down // g
 
     def _symbolize(self, si: np.ndarray, sq: np.ndarray) -> None:
         """Recover symbols continuously across blocks.
