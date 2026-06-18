@@ -19,10 +19,11 @@
 // stalls need a much deeper cushion to stay glitch-free.
 const WORKLET_PREBUFFER_S = 0.20;
 const WORKLET_MAXBUFFER_S = 0.6;
-// Plain-HTTP LAN clients can see multi-second bursty delivery (WiFi), so the
-// fallback uses a DAB-like multi-second cushion. Tunable live without a rebuild
-// via localStorage["cascadeAudioBufferS"] (seconds) — handy for dialing it in.
-const FALLBACK_PREBUFFER_S = 2.0;
+// Plain-HTTP LAN clients see bursty WiFi delivery. The fallback uses a short
+// initial prebuffer (0.5 s) before starting play; after any gap/underrun it
+// outputs silence seamlessly and resumes the moment data returns — no
+// multi-second re-buffering wait. Tunable via localStorage["cascadeAudioBufferS"].
+const FALLBACK_PREBUFFER_S = 0.5;
 
 function fallbackPrebufferS(): number {
   const ov = parseFloat(localStorage.getItem("cascadeAudioBufferS") || "");
@@ -80,8 +81,8 @@ export class AudioPlayer {
   private initScriptFallback(): void {
     const sr = this.ctx!.sampleRate;
     const pre = fallbackPrebufferS();
-    this.prebuffer = Math.floor(sr * pre) * 2;          // ×2 for the two channels
-    this.maxbuffer = Math.floor(sr * pre * 2.5) * 2;    // generous catch-up headroom
+    this.prebuffer = Math.floor(sr * pre) * 2;   // ×2 for the two channels
+    this.maxbuffer = Math.floor(sr * 5.0) * 2;   // 5 s ceiling absorbs WiFi bursts
     // 0 input channels (we synthesise), 2 output channels. 4096 keeps callbacks
     // sparse so the main thread's waterfall drawing doesn't starve playback.
     this.script = this.ctx!.createScriptProcessor(4096, 0, 2);
@@ -106,10 +107,10 @@ export class AudioPlayer {
 
     for (let i = 0; i < outL.length; i++) {
       if (this.available < 2) {
-        // Underrun: finish with silence and re-buffer (mirrors the worklet).
+        // Underrun: play silence and resume immediately when data returns.
+        // Don't reset to re-buffering state — that causes multi-second pauses.
         outL.fill(0, i);
         if (outR !== outL) outR.fill(0, i);
-        this.playing = false;
         break;
       }
       let cur = this.buffers[0];
