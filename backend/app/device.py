@@ -280,6 +280,11 @@ class DeviceManager:
                 await task
             except (asyncio.CancelledError, Exception):
                 pass
+            # The mode's external decoder (rtl_fm/dump1090/rtl_433/…) held the
+            # dongle. Give librtlsdr a moment to release the USB device before the
+            # next mode opens it, otherwise an owns_device mode (e.g. Radio) hits
+            # 'LIBUSB_ERROR_BUSY' — most visible on a Pi over USB.
+            await asyncio.sleep(0.7)
         self._sdr = None
 
     def _apply_settings(self, sdr) -> None:
