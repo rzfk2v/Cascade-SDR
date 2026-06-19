@@ -22,6 +22,7 @@ class FrameTag(IntEnum):
     FFT = 0x01      # waterfall magnitude row (float32 little-endian)
     AUDIO = 0x02    # demodulated PCM (int16 little-endian, interleaved stereo)
     APT = 0x03      # one NOAA APT image line (2080 bytes, uint8 grayscale)
+    SSTV = 0x04     # one SSTV image row (width*3 bytes, uint8 RGB)
 
 
 class Hub:

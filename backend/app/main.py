@@ -29,11 +29,13 @@ from app.modes.apt import AptMode
 from app.modes.base import Mode
 from app.modes.dab import DabMode
 from app.modes.ism import IsmMode
+from app.modes.pager import PagerMode
 from app.modes.radio import RadioMode
 from app.modes.replay import ReplayMode
 from app.modes.scan import ScanMode
 from app.modes.scanner import ScannerMode
 from app.modes.spectrum import SpectrumMode
+from app.modes.sstv import SstvMode
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("sdr.main")
@@ -50,6 +52,8 @@ MODE_REGISTRY: dict[str, type[Mode]] = {
     AprsMode.name: AprsMode,
     AcarsMode.name: AcarsMode,
     AptMode.name: AptMode,
+    SstvMode.name: SstvMode,
+    PagerMode.name: PagerMode,
     DabMode.name: DabMode,
     IsmMode.name: IsmMode,
 }

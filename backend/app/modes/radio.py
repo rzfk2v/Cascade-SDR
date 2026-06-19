@@ -36,6 +36,7 @@ from app.dsp.apt import AptDecoder
 from app.dsp.cw import CwDecoder
 from app.dsp.fft import Spectrum
 from app.dsp.rds import RdsDemod
+from app.dsp.sstv import SstvDecoder
 from app.hub import FrameTag
 from app.modes.base import Mode
 
@@ -91,6 +92,9 @@ class RadioMode(Mode):
         self.apt_enabled = False     # decode NOAA APT image (137 MHz weather sats)
         self._apt: AptDecoder | None = None
         self._apt_dirty = False
+        self.sstv_enabled = False    # decode SSTV image (auto-detects the mode)
+        self._sstv: SstvDecoder | None = None
+        self._sstv_dirty = False
         self._need_rebuild = True
         self._user_tuned = False     # has the client picked a channel yet?
         self._last_band = (0.0, 0.0)  # detect Center/rate changes to follow the band
@@ -124,6 +128,7 @@ class RadioMode(Mode):
             self._user_tuned = True
             self._rds_dirty = True       # different station -> clear RDS
             self._apt_dirty = True       # different pass -> restart the image
+            self._sstv_dirty = True      # different signal -> restart SSTV detect
         if "bandwidth" in params and params["bandwidth"] is not None:
             self.bandwidth = float(params["bandwidth"])
             self._need_rebuild = True
@@ -146,6 +151,9 @@ class RadioMode(Mode):
         if "apt" in params and params["apt"] is not None:
             self.apt_enabled = bool(params["apt"])
             self._need_rebuild = True
+        if "sstv" in params and params["sstv"] is not None:
+            self.sstv_enabled = bool(params["sstv"])
+            self._need_rebuild = True
         self._announce_radio()
 
     def _radio_config_msg(self) -> dict:
@@ -160,6 +168,7 @@ class RadioMode(Mode):
             "rds": self.rds_enabled,
             "stereo": self.stereo_enabled,
             "apt": self.apt_enabled,
+            "sstv": self.sstv_enabled,
             "audio_rate": AUDIO_RATE,
         }
 
@@ -183,6 +192,22 @@ class RadioMode(Mode):
 
     def _emit_apt(self, row) -> None:
         self.manager.emit_binary(FrameTag.APT, row.tobytes())
+
+    def _emit_sstv_start(self, mode: str, width: int, height: int) -> None:
+        self.manager.emit_json({"type": "sstv_start", "mode": mode,
+                                "width": width, "height": height})
+
+    def _emit_sstv_row(self, row) -> None:
+        self.manager.emit_binary(FrameTag.SSTV, row.tobytes())
+
+    def _feed_sstv(self, signal, rate: float) -> None:
+        """Decode SSTV from the demodulated audio (auto-detects the mode)."""
+        if not self.sstv_enabled:
+            return
+        if self._sstv is None or self._sstv_dirty:
+            self._sstv = SstvDecoder(rate, self._emit_sstv_start, self._emit_sstv_row)
+            self._sstv_dirty = False
+        self._sstv.process(signal)
 
     # --- lifecycle (worker thread) ------------------------------------------
     def on_start(self) -> None:
@@ -237,6 +262,7 @@ class RadioMode(Mode):
         self._rds = None
         self._stereo = None
         self._apt = None
+        self._sstv = None
         self._deemph_l = self._deemph_r = None
         if self.demod in ("wfm", "nfm"):
             self._disc = FmDiscriminator()
@@ -303,7 +329,7 @@ class RadioMode(Mode):
         # waterfall but emit no audio. This is what makes one combined view serve
         # as both "browse the band" and "listen". (APT decodes the centre channel
         # without a click, so it's exempt.)
-        if not self._user_tuned and not self.apt_enabled:
+        if not self._user_tuned and not self.apt_enabled and not self.sstv_enabled:
             return
 
         # 2) (re)build the channel chain if bandwidth/demod changed
@@ -351,6 +377,8 @@ class RadioMode(Mode):
                     self._apt = AptDecoder(self._audio_decim.out_rate, self._emit_apt)
                     self._apt_dirty = False
                 self._apt.process(mono)
+            # SSTV: decode the image tone straight from the FM audio (pre-deemphasis)
+            self._feed_sstv(mono, self._audio_decim.out_rate)
             # Stereo: recover L−R from the 38 kHz subcarrier (only when a pilot is
             # present), otherwise fall back to mono (L = R).
             if (self.demod == "wfm" and self.stereo_enabled
@@ -368,11 +396,13 @@ class RadioMode(Mode):
             env = self._audio_decim.process(np.abs(baseband))
             carrier = float(np.mean(env))                  # carrier-normalised:
             audio = (env - carrier) / carrier if carrier > 1e-6 else env * 0.0
+            self._feed_sstv(audio, self._audio_decim.out_rate)
         else:  # usb / lsb / cw
             assert self._cplx_decim is not None and self._ssb is not None
             audio = self._ssb.process(self._cplx_decim.process(baseband))
             if self._agc is not None:
                 audio = self._agc.process(audio)
+            self._feed_sstv(audio, self._cplx_decim.out_rate)
             if self.demod == "cw" and self._cw is not None and self._env_decim is not None:
                 text = self._cw.process(self._env_decim.process(np.abs(baseband)))
                 if text:

@@ -40,6 +40,8 @@
               <button data-mode="aprs">APRS</button>
               <button data-mode="acars">ACARS</button>
               <button data-mode="apt">APT</button>
+              <button data-mode="sstv">SSTV</button>
+              <button data-mode="pager">Pager</button>
               <button data-mode="ism">ISM</button>
             </div>
           </div>
@@ -196,6 +198,31 @@
             2 lines/s over ~10–15 min. Record IQ to decode again later in Replay.</p>
         </section>
 
+        <section class="group" id="sstv-controls" hidden>
+          <h2>SSTV (image)</h2>
+          <p id="sstv-status" class="status-line">waiting for a transmission…</p>
+          <div class="bm-add">
+            <button id="sstv-save">⤓ Save PNG</button>
+            <button id="sstv-clear">Clear</button>
+          </div>
+          <p class="hint">Slow-scan TV pictures. Default is the 2 m calling
+            frequency <b>144.500 MHz</b> (NBFM). The mode (Martin / Scottie) is
+            auto-detected from the VIS header — a picture builds top-down over
+            ~1–2 min. For HF SSTV (e.g. 14.230 MHz) open <b>Radio</b>, switch to
+            USB, tune, and turn on the SSTV toggle. Record IQ to decode again in
+            Replay.</p>
+        </section>
+
+        <section class="group" id="pager-controls" hidden>
+          <h2>Pager (POCSAG/FLEX)</h2>
+          <label>Channel<select id="pager-channel"></select></label>
+          <p id="pager-status" class="status-line">starting…</p>
+          <p id="pager-count" class="level-meter"></p>
+          <p class="hint">Pager messages (POCSAG 512/1200/2400 + FLEX). Needs
+            <b>multimon-ng</b> (<code>brew install multimon-ng</code>). Traffic and
+            legality vary by region — DAPNET (439.9875) is the amateur network.</p>
+        </section>
+
         <section class="group" id="acars-controls" hidden>
           <h2>ACARS</h2>
           <p id="acars-status" class="status-line">starting…</p>
@@ -330,6 +357,13 @@
         </div>
         <div id="apt-view" class="apt-view" hidden>
           <canvas id="apt-canvas" class="apt-canvas"></canvas>
+        </div>
+        <div id="sstv-view" class="apt-view" hidden>
+          <canvas id="sstv-canvas" class="apt-canvas"></canvas>
+        </div>
+        <div id="pager-view" class="acars-view" hidden>
+          <div class="acars-head"><span>Pager</span> <span id="pager-feedcount" class="muted"></span></div>
+          <div id="pager-log" class="acars-log"></div>
         </div>
         <div id="acars-view" class="acars-view" hidden>
           <div class="acars-head"><span>ACARS</span> <span id="acars-feedcount" class="muted"></span></div>

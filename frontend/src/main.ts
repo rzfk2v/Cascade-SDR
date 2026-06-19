@@ -24,6 +24,7 @@ import { bandAt, bandsInSpan } from "./bands";
 import { antennaText } from "./antenna";
 import { WavRecorder, downloadBlob } from "./recorder";
 import { AptImage } from "./aptimage";
+import { SstvImage } from "./sstvimage";
 
 const sock = new SdrSocket();
 const waterfall = new Waterfall(
@@ -93,6 +94,18 @@ const aptView = document.getElementById("apt-view")!;
 const replayApt = document.getElementById("replay-apt") as HTMLInputElement;
 const aptImage = new AptImage(document.getElementById("apt-canvas") as HTMLCanvasElement);
 let aptLineCount = 0;
+const sstvControls = document.getElementById("sstv-controls")!;
+const sstvStatus = document.getElementById("sstv-status")!;
+const sstvView = document.getElementById("sstv-view")!;
+const sstvImage = new SstvImage(document.getElementById("sstv-canvas") as HTMLCanvasElement);
+let sstvRowCount = 0;
+const pagerControls = document.getElementById("pager-controls")!;
+const pagerStatus = document.getElementById("pager-status")!;
+const pagerCount = document.getElementById("pager-count")!;
+const pagerView = document.getElementById("pager-view")!;
+const pagerLog = document.getElementById("pager-log")!;
+const pagerFeedCount = document.getElementById("pager-feedcount")!;
+const pagerChannel = document.getElementById("pager-channel") as HTMLSelectElement;
 const dabControls = document.getElementById("dab-controls")!;
 const dabChannel = document.getElementById("dab-channel") as HTMLSelectElement;
 const dabStatus = document.getElementById("dab-status")!;
@@ -206,6 +219,10 @@ function updateBandInfo(): void {
     label = "ACARS · ~131 MHz (aircraft data)";
   } else if (currentMode === "apt") {
     label = "NOAA APT · 137 MHz (weather sat)";
+  } else if (currentMode === "sstv") {
+    label = "SSTV · 144.500 MHz (slow-scan TV)";
+  } else if (currentMode === "pager") {
+    label = "Pager · POCSAG/FLEX";
   } else if (currentMode === "ism") {
     label = `ISM · ${ismFreqMhz} MHz (sensors)`;
   } else if (currentMode === "radio" || currentMode === "replay") {
@@ -280,6 +297,8 @@ sock.onJson((msg) => {
       acarsControls.hidden = msg.mode !== "acars";
       ismControls.hidden = msg.mode !== "ism";
       aptControls.hidden = msg.mode !== "apt";
+      sstvControls.hidden = msg.mode !== "sstv";
+      pagerControls.hidden = msg.mode !== "pager";
       dabControls.hidden = msg.mode !== "dab";
       zoomOutBtn.hidden = !["scan", "spectrum", "radio", "replay"].includes(msg.mode);
       displayControls.hidden = !["spectrum", "scan", "radio", "replay"].includes(msg.mode);
@@ -288,7 +307,7 @@ sock.onJson((msg) => {
       tuningControls.hidden = !["spectrum", "radio"].includes(msg.mode);
       receptionControls.hidden = msg.mode === "idle";
       // IQ capture needs a fixed-tuned IQ mode (not scan/replay/decoders).
-      recordingControls.hidden = !["spectrum", "radio", "apt"].includes(msg.mode);
+      recordingControls.hidden = !["spectrum", "radio", "apt", "sstv"].includes(msg.mode);
       showView(msg.mode);
       break;
     case "spectrum_config":
@@ -374,6 +393,21 @@ sock.onJson((msg) => {
       renderAcars(msg.messages);
       acarsCount.textContent = `${msg.count} messages`;
       break;
+    case "sstv_start":
+      sstvImage.start(msg.mode, msg.width, msg.height);
+      sstvRowCount = 0;
+      sstvStatus.textContent = `▶ ${msg.mode} · ${msg.width}×${msg.height}`;
+      break;
+    case "pager_config":
+      renderPagerChannels(msg.channels || [], msg.freq);
+      break;
+    case "pager_status":
+      pagerStatus.textContent = msg.message;
+      break;
+    case "pager":
+      renderPager(msg.messages);
+      pagerCount.textContent = `${msg.count} messages`;
+      break;
     case "ism_config":
       renderIsmBands(msg);
       break;
@@ -435,6 +469,11 @@ sock.onBinary((tag, body) => {
     aptImage.pushLine(new Uint8Array(body.buffer, body.byteOffset, body.byteLength));
     aptLineCount++;
     aptStatus.textContent = `▶ decoding · ${aptLineCount} lines`;
+  } else if (tag === FrameTag.SSTV) {
+    sstvImage.pushRow(new Uint8Array(body.buffer, body.byteOffset, body.byteLength));
+    sstvRowCount++;
+    const label = sstvImage.modeLabel();
+    sstvStatus.textContent = `▶ ${label} · ${sstvRowCount} rows`;
   } else if (tag === FrameTag.AUDIO) {
     audio.pushInt16(body);                       // interleaved L,R stereo
     if (wavRec.recording) {
@@ -488,8 +527,12 @@ function showView(mode: string): void {
   const isAcars = mode === "acars";
   const isIsm = mode === "ism";
   const isApt = mode === "apt" || (mode === "replay" && replayApt.checked);
+  const isSstv = mode === "sstv";
+  const isPager = mode === "pager";
   const isScanner = mode === "scanner";
-  const isFft = !isMap && !isDab && !isAcars && !isIsm && !isApt && !isScanner; // radio/sweep/idle
+  const isFft =
+    !isMap && !isDab && !isAcars && !isIsm && !isApt && !isSstv && !isPager &&
+    !isScanner; // radio/sweep/idle
   fftView.hidden = !isFft;
   mapDiv.hidden = !isMap;
   aircraftPanel.hidden = !isMap;
@@ -497,11 +540,17 @@ function showView(mode: string): void {
   acarsView.hidden = !isAcars;
   ismView.hidden = !isIsm;
   aptView.hidden = !isApt;
+  sstvView.hidden = !isSstv;
+  pagerView.hidden = !isPager;
   scannerView.hidden = !isScanner;
-  if (isApt) zoomOutBtn.hidden = true;
+  if (isApt || isSstv) zoomOutBtn.hidden = true;
   if (isApt) requestAnimationFrame(() => {
     const r = aptView.getBoundingClientRect();
     aptImage.resize(Math.round(r.width), Math.round(r.height));
+  });
+  if (isSstv) requestAnimationFrame(() => {
+    const r = sstvView.getBoundingClientRect();
+    sstvImage.resize(Math.round(r.width), Math.round(r.height));
   });
   if (isMap) {
     adsbMap.ensure("map");
@@ -778,6 +827,35 @@ function renderAcars(messages: any[]): void {
     .join("");
 }
 
+function renderPager(messages: any[]): void {
+  pagerFeedCount.textContent = `(${messages.length})`;
+  if (!messages.length) {
+    pagerLog.innerHTML =
+      '<div class="acars-empty">No messages yet. Pager traffic is bursty — leave it running.</div>';
+    return;
+  }
+  pagerLog.innerHTML = messages
+    .map((m) => {
+      const time = new Date((m.t || 0) * 1000).toLocaleTimeString();
+      const proto = esc(m.proto || "");
+      const addr = m.addr ? ` · ${esc(m.addr)}` : "";
+      const kind = m.kind ? ` · ${esc(m.kind)}` : "";
+      const body = m.text ? `<div class="body">${esc(m.text)}</div>` : "";
+      return `<div class="acars-row"><div class="meta"><span class="time">${time}</span> ` +
+        `${proto}${addr}${kind}</div>${body}</div>`;
+    })
+    .join("");
+}
+
+function renderPagerChannels(channels: any[], freq: number): void {
+  if (pagerChannel.options.length !== channels.length) {
+    pagerChannel.innerHTML = channels
+      .map((c) => `<option value="${c.freq}">${esc(c.label)}</option>`)
+      .join("");
+  }
+  if (freq != null) pagerChannel.value = String(freq);
+}
+
 // ISM device field name -> friendly label (everything else falls back to the key)
 const ISM_LABELS: Record<string, string> = {
   temperature_C: "Temp", temperature_F: "Temp", humidity: "Humidity",
@@ -976,6 +1054,13 @@ document.getElementById("mode-tabs")!.addEventListener("click", async (e) => {
     aptStatus.textContent = "waiting for a pass…";
     sock.send({ cmd: "tune", center_freq: parseFloat(aptSat.value) });
   }
+  if (mode === "sstv") {
+    sstvImage.clear();
+    sstvRowCount = 0;
+    sstvStatus.textContent = "waiting for a transmission…";
+  }
+  if (mode === "pager" && pagerChannel.value)
+    sock.send({ cmd: "config", params: { freq: parseFloat(pagerChannel.value) } });
   if (mode === "dab") sock.send({ cmd: "config", params: { channel: dabChannel.value } });
 });
 
@@ -1325,6 +1410,26 @@ replayApt.addEventListener("change", () => {
   showView(currentMode);
 });
 
+// --- SSTV controls -------------------------------------------------------
+document.getElementById("sstv-save")!.addEventListener("click", () => {
+  const url = sstvImage.toPng();
+  if (!url) { sstvStatus.textContent = "nothing to save yet"; return; }
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `sstv_${new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19)}.png`;
+  a.click();
+});
+document.getElementById("sstv-clear")!.addEventListener("click", () => {
+  sstvImage.clear();
+  sstvRowCount = 0;
+  sstvStatus.textContent = "cleared";
+});
+
+// --- Pager controls ------------------------------------------------------
+pagerChannel.addEventListener("change", () => {
+  sock.send({ cmd: "config", params: { freq: parseFloat(pagerChannel.value) } });
+});
+
 // live antenna advice as the user types a frequency (before tuning)
 freqInput.addEventListener("input", () => {
   const f = parseFloat(freqInput.value);
@@ -1609,6 +1714,10 @@ function layoutCanvases(): void {
   if (!aptView.hidden) {
     const r = aptView.getBoundingClientRect();
     aptImage.resize(Math.round(r.width), Math.round(r.height));
+  }
+  if (!sstvView.hidden) {
+    const r = sstvView.getBoundingClientRect();
+    sstvImage.resize(Math.round(r.width), Math.round(r.height));
   }
 }
 

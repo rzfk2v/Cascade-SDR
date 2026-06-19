@@ -18,10 +18,10 @@ and install, see the [README](../README.md).
 - **Left sidebar** — all controls. The panels shown change with the mode.
 - **Right display** — the spectrum **scope** (top) + scrolling **waterfall**
   (below) with a **frequency axis**; in ADS-B/AIS/APRS it becomes a **map**, in DAB
-  a **station list**, in ACARS / ISM a device feed, in APT the satellite image.
+  a **station list**, in ACARS / ISM / Pager a feed, in APT / SSTV an image.
 - **Top of sidebar** — connection dot (green = backend connected) and the mode
   tabs, grouped **Explore** (Idle · Radio · Sweep · Replay · Scanner) and
-  **Decode** (DAB · ADS-B · AIS · APRS · ACARS · APT · ISM).
+  **Decode** (DAB · ADS-B · AIS · APRS · ACARS · APT · SSTV · Pager · ISM).
 - **Band label** — under the device status, names the service on the current
   frequency (e.g. “FM broadcast”, “Marine VHF”) so you know what you're looking at.
 
@@ -40,7 +40,7 @@ The sidebar shows only the panels that apply to the current mode.
 
 Switching modes **keeps the current band** — listen to a ship on AIS (162 MHz), hit
 **Radio**, and you're looking at 162 MHz instead of jumping back to a default.
-Decoder modes (ADS-B/AIS/APRS/ACARS/DAB) tune themselves, so they hide Center.
+Decoder modes (ADS-B/AIS/APRS/ACARS/DAB/SSTV/Pager) tune themselves, so they hide Center.
 
 ### Reception (all live modes)
 | Control | What it does |
@@ -51,7 +51,7 @@ Decoder modes (ADS-B/AIS/APRS/ACARS/DAB) tune themselves, so they hide Center.
 
 PPM and Bias-T sit under a collapsible **Advanced** disclosure — they're usually set once.
 
-### Recording (Radio / APT)
+### Recording (Radio / APT / SSTV)
 **Record IQ** captures the raw stream to a `.cu8` file (see *Recording* below).
 
 ### 📡 Antenna helper (dipole kit)
@@ -329,6 +329,41 @@ antenna helper shows this when you're on 137 MHz). The stock whip barely works.
 
 **Try:** find the next NOAA pass for your location, start APT a minute before,
 and watch the coastline scroll in. (Meteor-M LRPT is digital and not supported.)
+
+---
+
+## SSTV (slow-scan TV images)
+
+Decodes **SSTV** — pictures sent as audio tones over the radio. Hand-written
+decoder, no external tool.
+
+- Switch to **SSTV**; it listens on **144.500 MHz** (the 2 m calling frequency,
+  NBFM) and decodes any transmission it hears. The **mode is auto-detected** from
+  the VIS header — **Martin M1/M2** and **Scottie S1/S2/DX** are supported.
+- The picture builds **top-down** over ~1–2 min. **Save PNG** downloads the
+  full-resolution image; **Clear** restarts.
+- For **HF SSTV** (e.g. 14.230 MHz USB — needs an HF upconverter for an RTL-SDR),
+  open **Radio**, switch demod to **USB**, tune the signal, and toggle **SSTV**
+  on — the same decoder runs. Record IQ to decode a transmission again in Replay.
+
+> The tone's instantaneous frequency carries the picture (1500 Hz = black …
+> 2300 Hz = white, 1200 Hz = line sync). Robot36 / PD modes aren't decoded yet.
+
+---
+
+## Pager (POCSAG/FLEX)
+
+Shows **pager messages** — POCSAG (512/1200/2400 baud) and FLEX. The backend pipes
+`rtl_fm` into [`multimon-ng`](https://github.com/EliasOenal/multimon-ng)
+(`brew install multimon-ng`).
+
+- Switch to **Pager**, pick a **channel** — **DAPNET 439.9875** (the amateur-radio
+  POCSAG network) plus common EU/VHF POCSAG frequencies. Decoded messages stream
+  into a **feed** (newest on top) with the protocol, address/capcode and text.
+- No map — pages don't carry position; it's a live feed.
+
+> What's on the air, and whether you may listen, **varies by country**. Use this
+> for the amateur DAPNET network and other lawful, unencrypted traffic.
 
 ---
 

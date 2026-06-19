@@ -7,6 +7,7 @@ export const FrameTag = {
   FFT: 0x01,
   AUDIO: 0x02,
   APT: 0x03,
+  SSTV: 0x04,
 } as const;
 
 type JsonHandler = (msg: any) => void;

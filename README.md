@@ -23,6 +23,8 @@ things to try. Status:
 | **APRS** | Packet-radio stations on the map (via `rtl_fm` → `direwolf`) | ✅ working‡ |
 | **ACARS** | Aircraft VHF data messages as a live feed (via `acarsdec`) | ✅ working§ |
 | **APT** | NOAA weather-satellite images at 137 MHz (hand-written decoder) | ✅ working¶ |
+| **SSTV** | Slow-scan TV images — auto-detects Martin / Scottie (hand-written decoder) | ✅ working◇ |
+| **Pager** | POCSAG/FLEX pager messages as a live feed (via `multimon-ng`) | ✅ working◆ |
 | **ISM** | 315–915 MHz ISM-band devices — weather stations, TPMS, sensors, remotes (via `rtl_433`) | ✅ working‖ |
 
 \* Needs `dump1090` installed (`brew install dump1090-mutability`) **and a decent
@@ -265,6 +267,34 @@ image"**, and play the recording back through the decoder.
 > n2yo.com for pass times) and a proper antenna — the dipole kit in a horizontal
 > **"V"** (~120°), elements at ~53 cm. The stock whip will barely work. Meteor-M
 > (digital LRPT) is *not* supported — this is analog NOAA APT only.
+
+### SSTV (slow-scan TV images) (◇)
+Select **SSTV**: it listens on the 2 m SSTV calling frequency **144.500 MHz**
+(NBFM) and decodes any picture it hears. The **mode is auto-detected** from the
+transmission's VIS header — the common RGB modes **Martin M1/M2** and **Scottie
+S1/S2/DX** are supported. The image builds top-down over ~1–2 min; **Save PNG**
+downloads it full-resolution, **Clear** restarts. It's a **hand-written decoder**
+(no external tool): recover the instantaneous tone frequency (1500 Hz black …
+2300 Hz white) → detect VIS → slice each line's R/G/B sweeps → image.
+
+For **HF SSTV** (e.g. 14.230 MHz, an HF upconverter required for an RTL-SDR),
+open **Radio**, switch the demod to **USB**, tune the signal, and turn on the
+**SSTV** toggle — the same decoder runs. Record IQ during a transmission to
+decode it again later in Replay. Robot36 / PD modes are not decoded yet.
+
+### Pager (POCSAG/FLEX) (◆)
+Select **Pager**: the backend pipes `rtl_fm` (NBFM audio) into
+[`multimon-ng`](https://github.com/EliasOenal/multimon-ng), which decodes
+**POCSAG** (512/1200/2400 baud) and **FLEX**; messages stream into a live **feed**
+(newest on top). Pick the **channel** from the dropdown — **DAPNET 439.9875**
+(the amateur-radio POCSAG network) plus common EU/VHF POCSAG frequencies.
+
+```bash
+brew install multimon-ng     # rtl_fm ships with rtl-sdr
+```
+
+> What's on the air — and whether you may listen to it — **varies by country**.
+> Use this for the amateur DAPNET network and other lawful, unencrypted traffic.
 
 ### ISM devices (315–915 MHz) (‖)
 Select **ISM**: the backend spawns [`rtl_433`](https://github.com/merbanan/rtl_433)
