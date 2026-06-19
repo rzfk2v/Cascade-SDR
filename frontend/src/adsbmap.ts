@@ -146,6 +146,8 @@ export class AdsbMap {
   private homeMarker: L.CircleMarker | null = null;
   private tracksVisible = true;
   private didAutoCenter = false;
+  private followId: string | null = null;
+  private followKind: "aircraft" | "vessel" | "station" | null = null;
 
   private static MAX_TRACK_PTS = 400;
 
@@ -198,6 +200,7 @@ export class AdsbMap {
     }).addTo(this.map);
     // Leaflet measures the container on creation; it may be 0 until visible.
     setTimeout(() => this.map?.invalidateSize(), 0);
+    this.map.on("dragstart", () => this.clearFollow());
   }
 
   update(list: Aircraft[]): void {
@@ -236,9 +239,12 @@ export class AdsbMap {
       if (!seen.has(icao)) {
         this.map.removeLayer(m);
         this.markers.delete(icao);
+        if (this.followKind === "aircraft" && this.followId === icao)
+          this.clearFollow();
       }
     }
     this.pruneTracks(this.aircraftTracks, seen);
+    this.applyFollow();
     // center on traffic the first time we actually see some
     if (!this.didAutoCenter && this.markers.size > 0) {
       this.didAutoCenter = true;
@@ -282,11 +288,13 @@ export class AdsbMap {
     }
   }
 
-  // Pan to an aircraft (from the list) and open its detail popup.
+  // Center on an aircraft (from the list), open its popup, and follow it.
   focus(icao: string): void {
     const m = this.markers.get(icao);
     if (!m || !this.map) return;
-    this.map.panTo(m.getLatLng());
+    this.followId = icao;
+    this.followKind = "aircraft";
+    this.map.setView(m.getLatLng(), Math.max(this.map.getZoom(), 9));
     m.openPopup();
   }
 
@@ -326,9 +334,12 @@ export class AdsbMap {
       if (!seen.has(id)) {
         this.map.removeLayer(m);
         this.vesselMarkers.delete(id);
+        if (this.followKind === "vessel" && this.followId === id)
+          this.clearFollow();
       }
     }
     this.pruneTracks(this.vesselTracks, seen);
+    this.applyFollow();
     if (!this.didAutoCenter && this.vesselMarkers.size > 0) {
       this.didAutoCenter = true;
       const group = L.featureGroup([...this.vesselMarkers.values()]);
@@ -339,7 +350,9 @@ export class AdsbMap {
   vesselFocus(mmsi: string): void {
     const m = this.vesselMarkers.get(mmsi);
     if (!m || !this.map) return;
-    this.map.panTo(m.getLatLng());
+    this.followId = mmsi;
+    this.followKind = "vessel";
+    this.map.setView(m.getLatLng(), Math.max(this.map.getZoom(), 11));
     m.openPopup();
   }
 
@@ -374,9 +387,12 @@ export class AdsbMap {
       if (!seen.has(id)) {
         this.map.removeLayer(m);
         this.stationMarkers.delete(id);
+        if (this.followKind === "station" && this.followId === id)
+          this.clearFollow();
       }
     }
     this.pruneTracks(this.stationTracks, seen);
+    this.applyFollow();
     if (!this.didAutoCenter && this.stationMarkers.size > 0) {
       this.didAutoCenter = true;
       const group = L.featureGroup([...this.stationMarkers.values()]);
@@ -387,8 +403,24 @@ export class AdsbMap {
   stationFocus(call: string): void {
     const m = this.stationMarkers.get(call);
     if (!m || !this.map) return;
-    this.map.panTo(m.getLatLng());
+    this.followId = call;
+    this.followKind = "station";
+    this.map.setView(m.getLatLng(), Math.max(this.map.getZoom(), 10));
     m.openPopup();
+  }
+
+  private applyFollow(): void {
+    if (!this.followId || !this.map) return;
+    let m: L.Marker | undefined;
+    if (this.followKind === "aircraft") m = this.markers.get(this.followId);
+    else if (this.followKind === "vessel") m = this.vesselMarkers.get(this.followId);
+    else if (this.followKind === "station") m = this.stationMarkers.get(this.followId);
+    if (m) this.map.panTo(m.getLatLng());
+  }
+
+  private clearFollow(): void {
+    this.followId = null;
+    this.followKind = null;
   }
 
   clearStations(): void {
@@ -397,6 +429,7 @@ export class AdsbMap {
     this.stationMarkers.clear();
     this.stationTracks.clear();
     this.didAutoCenter = false;
+    this.clearFollow();
   }
 
   // Clear one layer when switching modes; reset auto-center for the new layer.
@@ -406,6 +439,7 @@ export class AdsbMap {
     this.markers.clear();
     this.aircraftTracks.clear();
     this.didAutoCenter = false;
+    this.clearFollow();
   }
   clearVessels(): void {
     for (const m of this.vesselMarkers.values()) this.map?.removeLayer(m);
@@ -413,5 +447,6 @@ export class AdsbMap {
     this.vesselMarkers.clear();
     this.vesselTracks.clear();
     this.didAutoCenter = false;
+    this.clearFollow();
   }
 }
