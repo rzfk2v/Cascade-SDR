@@ -124,6 +124,17 @@ class PagerMode(Mode):
                 self._freq = f
                 self._restart = True   # break the read loop and relaunch on the new channel
 
+    def _announce_tuned(self) -> None:
+        """Reflect the channel rtl_fm is actually on in the device status readout.
+
+        We own no IQ worker (rtl_fm holds the dongle), so center_freq is just the
+        displayed frequency — keep it in sync so it doesn't show the stale default.
+        """
+        self.manager.center_freq = self._freq
+        self.manager.emit_json(self.manager.status())
+        self.manager.emit_json({"type": "pager_status",
+                                "message": f"multimon-ng running · {self._label()}"})
+
     async def run(self) -> None:
         rtl, multimon = self._have_tools()
         if rtl is None or multimon is None:
@@ -136,6 +147,7 @@ class PagerMode(Mode):
             return
 
         self.manager.emit_json(self._config_msg())
+        retries = 0
         try:
             # (Re)spawn loop: a freq change in configure() breaks the inner loop,
             # kills the pipe, and comes back here to relaunch on the new channel.
@@ -149,14 +161,15 @@ class PagerMode(Mode):
                 )
                 err = self._watch_stderr(self._proc)
                 out_tail: deque[str] = deque(maxlen=8)
-                self.manager.emit_json({"type": "pager_status",
-                                        "message": f"multimon-ng running · {self._label()}"})
+                self._announce_tuned()
                 assert self._proc.stdout is not None
+                started = time.monotonic()
                 last_emit = 0.0
+                crashed = False
                 while not self._restart:
                     if self._proc.returncode is not None:
-                        raise RuntimeError(
-                            self._exit_error("rtl_fm/multimon-ng", out_tail, err))
+                        crashed = True
+                        break
                     try:
                         raw = await asyncio.wait_for(self._proc.stdout.readline(), 0.5)
                         if raw:
@@ -173,6 +186,24 @@ class PagerMode(Mode):
                         self._emit()
                 await self._kill_proc()
                 self._cancel_stderr_watch()
+                # Let librtlsdr fully release the USB device before relaunching —
+                # otherwise the next rtl_fm hits 'usb_claim_interface error -6'
+                # (device busy), which is the dongle error seen when switching
+                # channels. This grace matters most on a Pi over USB.
+                await asyncio.sleep(0.7)
+                if crashed and not self._restart:
+                    # Died on its own (often a transient busy dongle just after a
+                    # retune). Retry a few times before giving up.
+                    if time.monotonic() - started > 5.0:
+                        retries = 0       # it ran fine for a while; fresh hiccup
+                    retries += 1
+                    if retries > 3:
+                        raise RuntimeError(
+                            self._exit_error("rtl_fm/multimon-ng", out_tail, err))
+                    self.manager.emit_json({"type": "pager_status",
+                                            "message": "restarting (dongle busy)…"})
+                else:
+                    retries = 0           # a clean user retune
         finally:
             await self._kill_proc()
 

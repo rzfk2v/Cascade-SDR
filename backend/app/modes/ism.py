@@ -172,6 +172,10 @@ class IsmMode(Mode):
                 # band change requested -> drop this rtl_433 and respawn
                 await self._kill_proc()
                 self._cancel_stderr_watch()
+                # Let librtlsdr release the USB device before relaunching, otherwise
+                # the next rtl_433 hits 'usb_claim_interface error -6' (device busy)
+                # — matters most on a Pi over USB.
+                await asyncio.sleep(0.7)
         finally:
             self._flush_cache()      # persist anything learned this session
             await self._kill_proc()
