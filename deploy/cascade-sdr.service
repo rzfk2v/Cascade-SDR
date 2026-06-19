@@ -12,6 +12,9 @@
 #
 # Build the frontend once first so the backend has something to serve:
 #   cd frontend && npm run build
+#
+# To update later (pull + rebuild + restart), just run:
+#   ~/Cascade-SDR/deploy/update.sh
 
 [Unit]
 Description=Cascade SDR backend (RTL-SDR receiver)

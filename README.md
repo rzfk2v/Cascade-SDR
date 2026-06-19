@@ -674,6 +674,16 @@ journalctl -u cascade-sdr -f        # follow logs
 See [deploy/cascade-sdr.service](deploy/cascade-sdr.service). It restarts on crash
 and starts after the network is up.
 
+**Updating a deployment.** Pull, rebuild the frontend, and restart the service in
+one step with the bundled script:
+
+```bash
+~/Cascade-SDR/deploy/update.sh
+```
+
+It only reinstalls backend/frontend dependencies when they actually changed. Set
+`SERVICE=<name>` if you named the unit something other than `cascade-sdr`.
+
 > **Security:** Cascade SDR has **no authentication**. Keep it on your trusted LAN,
 > or reach it over a VPN / SSH tunnel (`ssh -L 8000:localhost:8000 pi@<pi-ip>`).
 > Do **not** port-forward it to the public internet as-is.
