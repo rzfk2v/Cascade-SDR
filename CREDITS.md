@@ -48,3 +48,9 @@ yourself (see the README). They keep their own licenses.
 Map tiles are © OpenStreetMap contributors, used under the OSM tile usage policy.
 The attribution is shown on the map. For heavy or public deployments, use a
 dedicated tile provider rather than the public OSM tile server.
+
+## External data services (opt-in)
+
+| Service | Used for |
+| --- | --- |
+| [adsbdb.com](https://www.adsbdb.com) | ADS-B flight-route lookup (origin → destination by callsign) — only queried when the user enables the "Look up route" toggle |

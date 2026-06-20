@@ -17,8 +17,17 @@ import json
 import os
 import shutil
 import tempfile
+import urllib.error
+import urllib.parse
+import urllib.request
 
 from app.modes.base import Mode
+
+# Free flight-route database (callsign -> origin/destination airports). Only
+# queried when the user opts in via the "routes" toggle; the route is NOT part
+# of the ADS-B signal, so this is the only way to know where a flight is going.
+ROUTE_API = "https://api.adsbdb.com/v0/callsign/"
+ROUTE_MAX_INFLIGHT = 6   # cap concurrent lookups so the 1 s loop never stalls
 
 # ADS-B emitter categories -> human label
 AC_CATEGORY = {
@@ -40,6 +49,19 @@ class AdsbMode(Mode):
         self._proc: asyncio.subprocess.Process | None = None
         self._jsondir: str | None = None
         self._latest = {"type": "aircraft", "aircraft": [], "count": 0, "positioned": 0}
+        # Route lookups (opt-in): callsign -> route dict, or None once we've
+        # learned the route is unknown (negative-cached to avoid re-querying).
+        self._routes_enabled = False
+        self._route_cache: dict[str, dict | None] = {}
+        self._route_inflight: set[str] = set()
+        self._route_tasks: set[asyncio.Task] = set()
+
+    def configure(self, params: dict) -> None:
+        if "routes" in params:
+            self._routes_enabled = bool(params["routes"])
+            self.manager.emit_json(
+                {"type": "adsb_config", "routes": self._routes_enabled}
+            )
 
     def _cmd(self) -> list[str]:
         exe = shutil.which("dump1090") or shutil.which("dump1090-fa") or "dump1090"
@@ -79,6 +101,9 @@ class AdsbMode(Mode):
                 await asyncio.sleep(1.0)
                 msg = self._read(path)
                 if msg is not None:
+                    if self._routes_enabled:
+                        self._apply_routes()
+                        self._schedule_route_lookups()
                     if not announced:
                         self.manager.emit_json(
                             {"type": "adsb_status", "message": "dump1090 running"}
@@ -131,13 +156,25 @@ class AdsbMode(Mode):
             if a.get("lat") is not None and a.get("lon") is not None:
                 item["lat"] = a["lat"]
                 item["lon"] = a["lon"]
-            if a.get("baro_rate") is not None:
-                item["vert_rate"] = round(a["baro_rate"])
+            # Vertical rate: prefer barometric, fall back to geometric (GNSS).
+            rate = a.get("baro_rate")
+            if rate is None:
+                rate = a.get("geom_rate")
+            if rate is not None:
+                item["vert_rate"] = round(rate)
             if a.get("squawk"):
                 item["squawk"] = a["squawk"]
             cat = a.get("category")
             if cat:
                 item["type"] = AC_CATEGORY.get(cat, cat)
+            # Registration ("r") and ICAO type designator ("t", e.g. B738) come
+            # from dump1090-fa's aircraft database when that build is in use.
+            reg = (a.get("r") or "").strip()
+            if reg:
+                item["reg"] = reg
+            actype = (a.get("t") or "").strip()
+            if actype:
+                item["actype"] = actype
             if a.get("messages") is not None:
                 item["msgs"] = a["messages"]
             if a.get("seen") is not None:
@@ -149,5 +186,71 @@ class AdsbMode(Mode):
                         "count": len(out), "positioned": positioned}
         return self._latest
 
+    # --- route lookups (opt-in) --------------------------------------------
+    def _apply_routes(self) -> None:
+        """Attach cached origin/destination to the current aircraft snapshot."""
+        for item in self._latest["aircraft"]:
+            r = self._route_cache.get(item.get("flight", ""))
+            if r:
+                item["origin"] = r["from"]
+                item["origin_name"] = r["from_name"]
+                item["destination"] = r["to"]
+                item["dest_name"] = r["to_name"]
+
+    def _schedule_route_lookups(self) -> None:
+        """Fire background fetches for callsigns we haven't resolved yet."""
+        for item in self._latest["aircraft"]:
+            cs = item.get("flight")
+            if not cs or cs in self._route_cache or cs in self._route_inflight:
+                continue
+            if len(self._route_inflight) >= ROUTE_MAX_INFLIGHT:
+                break
+            self._route_inflight.add(cs)
+            task = asyncio.create_task(self._fetch_route(cs))
+            self._route_tasks.add(task)
+            task.add_done_callback(self._route_tasks.discard)
+
+    async def _fetch_route(self, cs: str) -> None:
+        try:
+            loop = asyncio.get_running_loop()
+            res = await loop.run_in_executor(None, self._http_get_route, cs)
+            # res: route dict (found), "" (known-unknown), or None (transient
+            # error — leave uncached so we retry on a later tick).
+            if res or res == "":
+                self._route_cache[cs] = res or None
+        finally:
+            self._route_inflight.discard(cs)
+
+    @staticmethod
+    def _http_get_route(cs: str) -> dict | str | None:
+        url = ROUTE_API + urllib.parse.quote(cs)
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "Cascade-SDR"})
+            with urllib.request.urlopen(req, timeout=6) as resp:
+                payload = json.load(resp)
+        except urllib.error.HTTPError as e:
+            # 404 (and other 4xx) = unknown callsign; negative-cache it so we
+            # don't re-query every tick. 5xx/timeouts fall through as transient.
+            return "" if 400 <= e.code < 500 else None
+        except Exception:
+            return None  # network/timeout — retry later
+        fr = payload.get("response")
+        if not isinstance(fr, dict):
+            return ""  # "unknown callsign"
+        fr = fr.get("flightroute")
+        if not fr:
+            return ""
+        o = fr.get("origin") or {}
+        d = fr.get("destination") or {}
+
+        def code(x: dict) -> str:
+            return x.get("iata_code") or x.get("icao_code") or "?"
+
+        def place(x: dict) -> str:
+            return x.get("municipality") or x.get("name") or ""
+
+        return {"from": code(o), "from_name": place(o),
+                "to": code(d), "to_name": place(d)}
+
     def snapshot(self) -> list[dict]:
-        return [self._latest]
+        return [self._latest, {"type": "adsb_config", "routes": self._routes_enabled}]

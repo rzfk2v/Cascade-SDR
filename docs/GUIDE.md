@@ -225,8 +225,18 @@ Plots aircraft from their 1090 MHz transponders on a map.
 
 - Switch to **ADS-B**; the map shows planes with **heading-rotated icons** and
   **trails**. The **Aircraft list** (top-right) is sorted by distance.
-- **Click** a plane or a row → popup with callsign, ICAO, **type** (light/large/
-  heavy/rotorcraft…), squawk, altitude, climb, speed, track.
+- The list shows a **climb/descent arrow** next to each altitude — **▲ green**
+  climbing, **▼ red** descending, **– grey** level (small deadband, so it doesn't
+  flicker at cruise).
+- **Click** a plane or a row → popup with callsign, ICAO, **registration** and
+  **model** (when your dump1090 build ships an aircraft database), **category**
+  (light/large/heavy/rotorcraft…), squawk, altitude, climb (with the same arrow),
+  speed, track.
+- **Route (origin → destination)** is *not* in the ADS-B signal. Tick **"Look up
+  route"** in the ADS-B controls to fetch it by callsign from **adsbdb.com** — the
+  popup then shows **From / To** airports. It's **off by default**: leaving it off
+  keeps ADS-B fully offline (no internet, nothing leaves your machine). Results are
+  cached per callsign.
 - Needs a **1090 MHz antenna** for real range; a 1090 LNA on Bias-T helps a lot.
 - See **Map options** below to set your location (for distances) and toggle trails.
 

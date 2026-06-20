@@ -144,14 +144,20 @@ Controls live in the left sidebar; the spectrum scope + waterfall fill the rest 
 the window and resize with it.
 
 ### ADS-B (aircraft map)
-Select **ADS-B**: the backend spawns `dump1090`, reads its BaseStation feed
-(TCP 30003), and plots aircraft on an OpenStreetMap map. Switching to another mode
+Select **ADS-B**: the backend spawns `dump1090`, reads its `aircraft.json` snapshot
+(once a second), and plots aircraft on an OpenStreetMap map. Switching to another mode
 kills `dump1090` and hands the dongle back. **Bias-T** (Reception ▸ Advanced) can power a
 1090 MHz LNA — strongly recommended for real range. Gain/PPM are passed to dump1090.
-Click a plane or a row in the **Aircraft** list for full detail (callsign, ICAO,
-**type/category** — light/small/large/heavy/rotorcraft, squawk, altitude, climb,
-speed, track); the list is sorted by distance from your location (set it in the
-ADS-B panel). Each aircraft also draws a **track trail** as it moves.
+The **Aircraft** list (sorted by distance from your location) shows a **climb/descent
+arrow** by each altitude — ▲ climbing, ▼ descending, – level. Click a plane or a row
+for full detail (callsign, ICAO, **registration** + **model** when your dump1090 build
+has an aircraft DB, **category** — light/small/large/heavy/rotorcraft, squawk, altitude,
+climb, speed, track). Each aircraft also draws a **track trail** as it moves.
+
+**Route lookup (opt-in):** origin/destination aren't in the ADS-B signal, so the
+**"Look up route"** toggle (off by default) fetches them by callsign from
+[adsbdb.com](https://www.adsbdb.com) and shows **From → To** in the popup. Leaving it
+off keeps ADS-B fully offline; results are cached per callsign.
 
 ### DAB radio (†)
 Select **DAB**, pick a **Band III block** (5A–13F). The backend runs `welle-cli`,

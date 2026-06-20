@@ -18,8 +18,23 @@ export interface Aircraft {
   squawk?: string;
   ground?: boolean;
   type?: string;
+  reg?: string;      // registration / tail number (dump1090-fa DB)
+  actype?: string;   // ICAO type designator, e.g. "B738"
+  origin?: string;        // departure airport code (route lookup)
+  origin_name?: string;
+  destination?: string;   // arrival airport code (route lookup)
+  dest_name?: string;
   msgs?: number;
   age?: number;
+}
+
+// Climb/descent indicator from the vertical rate (ft/min). A small deadband
+// avoids flapping on the noise around level flight.
+export function vsArrow(vr?: number): { arrow: string; cls: string; label: string } {
+  if (vr == null) return { arrow: "", cls: "", label: "" };
+  if (vr > 100) return { arrow: "▲", cls: "vs-up", label: `climbing ${vr} ft/min` };
+  if (vr < -100) return { arrow: "▼", cls: "vs-down", label: `descending ${vr} ft/min` };
+  return { arrow: "–", cls: "vs-level", label: "level" };
 }
 
 export interface Vessel {
@@ -121,12 +136,20 @@ function popupHtml(ac: Aircraft): string {
   const rows: [string, string][] = [];
   rows.push(["Callsign", ac.flight || "—"]);
   rows.push(["ICAO", ac.icao.toUpperCase()]);
-  if (ac.type) rows.push(["Type", ac.type]);
+  if (ac.reg) rows.push(["Registration", ac.reg]);
+  if (ac.actype) rows.push(["Model", ac.actype]);
+  if (ac.type) rows.push(["Category", ac.type]);
   if (ac.squawk) rows.push(["Squawk", ac.squawk]);
   if (ac.alt != null) rows.push(["Altitude", `${ac.alt.toLocaleString()} ft`]);
-  if (ac.vert_rate != null) rows.push(["Climb", `${ac.vert_rate > 0 ? "+" : ""}${ac.vert_rate} ft/min`]);
+  if (ac.vert_rate != null) {
+    const vs = vsArrow(ac.vert_rate);
+    rows.push(["Climb",
+      `<span class="vs ${vs.cls}">${vs.arrow}</span> ${ac.vert_rate > 0 ? "+" : ""}${ac.vert_rate} ft/min`]);
+  }
   if (ac.speed != null) rows.push(["Speed", `${ac.speed} kt`]);
   if (ac.track != null) rows.push(["Track", `${ac.track}°`]);
+  if (ac.origin) rows.push(["From", ac.origin_name ? `${ac.origin} · ${ac.origin_name}` : ac.origin]);
+  if (ac.destination) rows.push(["To", ac.dest_name ? `${ac.destination} · ${ac.dest_name}` : ac.destination]);
   if (ac.ground) rows.push(["State", "on ground"]);
   if (ac.age != null) rows.push(["Seen", `${ac.age}s ago`]);
   const body = rows
@@ -134,6 +157,23 @@ function popupHtml(ac: Aircraft): string {
     .join("");
   return `<div class="ac-popup"><b>${ac.flight || ac.icao.toUpperCase()}</b><table>${body}</table></div>`;
 }
+
+// Marker glyphs drawn as inline SVG (instead of the ✈ text character, whose
+// baseline orientation varies by font). Both point NORTH (nose up) at 0°, so
+// rotating the marker by the reported track makes it face its heading exactly.
+const PLANE_SVG =
+  `<svg viewBox="0 0 24 24" class="ac-svg"><path d="M12 2 L13 10 L22 15 L22 17` +
+  ` L13 14 L13 19 L16 21 L16 22.5 L12 21 L8 22.5 L8 21 L11 19 L11 14 L2 17 L2 15` +
+  ` L11 10 Z"/></svg>`;
+const HELI_SVG =
+  `<svg viewBox="0 0 24 24" class="ac-svg heli">` +
+  `<rect x="11.4" y="11" width="1.2" height="9" rx="0.6"/>` +     // tail boom
+  `<rect x="9.3" y="19" width="5.4" height="1.4" rx="0.7"/>` +    // tail rotor
+  `<ellipse cx="12" cy="10" rx="3.2" ry="4.6"/>` +               // fuselage
+  `<rect x="2" y="8.3" width="20" height="1.5" rx="0.75"/>` +     // main rotor
+  `<rect x="11.25" y="1" width="1.5" height="16" rx="0.75"/>` +   // main rotor
+  `</svg>`;
+const PLANE_SIZE = 30;
 
 export class AdsbMap {
   private map: L.Map | null = null;
@@ -212,13 +252,14 @@ export class AdsbMap {
       this.addTrackPoint(this.aircraftTracks, ac.icao, ac.lat, ac.lon, "#16a3c7");
       const label =
         (ac.flight || ac.icao) + (ac.alt != null ? ` · ${ac.alt} ft` : "");
+      const svg = ac.type === "Rotorcraft" ? HELI_SVG : PLANE_SVG;
       const icon = L.divIcon({
         className: "plane-icon",
         html:
-          `<div class="plane-rot" style="transform:rotate(${ac.track ?? 0}deg)">✈</div>` +
+          `<div class="plane-rot" style="transform:rotate(${ac.track ?? 0}deg)">${svg}</div>` +
           `<span class="plane-label">${label}</span>`,
-        iconSize: [22, 22],
-        iconAnchor: [11, 11],
+        iconSize: [PLANE_SIZE, PLANE_SIZE],
+        iconAnchor: [PLANE_SIZE / 2, PLANE_SIZE / 2],
       });
       let m = this.markers.get(ac.icao);
       if (!m) {

@@ -9,6 +9,7 @@ import { AudioPlayer } from "./audio";
 import {
   AdsbMap,
   flagEmoji,
+  vsArrow,
   type Aircraft,
   type Vessel,
   type Station,
@@ -51,6 +52,10 @@ const mapDiv = document.getElementById("map")!;
 const adsbControls = document.getElementById("adsb-controls")!;
 const adsbStatus = document.getElementById("adsb-status")!;
 const adsbCount = document.getElementById("adsb-count")!;
+const adsbRoutes = document.getElementById("adsb-routes") as HTMLInputElement;
+adsbRoutes.addEventListener("change", () =>
+  sock.send({ cmd: "config", params: { routes: adsbRoutes.checked } }),
+);
 const aircraftPanel = document.getElementById("aircraft-panel")!;
 const apBody = document.getElementById("ap-body")!;
 const apCount = document.getElementById("ap-count")!;
@@ -350,6 +355,9 @@ sock.onJson((msg) => {
       break;
     case "adsb_status":
       adsbStatus.textContent = msg.message;
+      break;
+    case "adsb_config":
+      adsbRoutes.checked = !!msg.routes;
       break;
     case "cw_text":
       cwOut.textContent = (cwOut.textContent + msg.text).slice(-400);
@@ -666,7 +674,11 @@ function renderAircraftList(list: Aircraft[]): void {
   apBody.innerHTML = rows
     .map(({ ac, dist }) => {
       const name = ac.flight || ac.icao.toUpperCase();
-      const alt = ac.alt != null ? ac.alt.toLocaleString() : "—";
+      const vs = vsArrow(ac.vert_rate);
+      const arrow = vs.arrow
+        ? ` <span class="vs ${vs.cls}" title="${vs.label}">${vs.arrow}</span>`
+        : "";
+      const alt = ac.alt != null ? `${ac.alt.toLocaleString()}${arrow}` : "—";
       const spd = ac.speed != null ? ac.speed : "—";
       const trk = ac.track != null ? `${ac.track}°` : "—";
       const d = dist != null ? `${dist.toFixed(0)} km` : "—";
