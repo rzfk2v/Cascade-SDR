@@ -20,9 +20,10 @@ export class SdrSocket {
   private binaryHandlers: BinaryHandler[] = [];
   private reconnectTimer: number | null = null;
 
-  constructor(path = "/ws") {
+  constructor(path = "ws") {
     const proto = location.protocol === "https:" ? "wss" : "ws";
-    this.url = `${proto}://${location.host}${path}`;
+    const base = import.meta.env.BASE_URL || "/";
+    this.url = `${proto}://${location.host}${base}${path}`;
   }
 
   connect(): void {

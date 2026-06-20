@@ -27,6 +27,7 @@ import { WavRecorder, downloadBlob } from "./recorder";
 import { AptImage } from "./aptimage";
 import { SstvImage } from "./sstvimage";
 
+const BASE = import.meta.env.BASE_URL || "/";
 const sock = new SdrSocket();
 const waterfall = new Waterfall(
   document.getElementById("waterfall") as HTMLCanvasElement,
@@ -1638,12 +1639,12 @@ recIqBtn.addEventListener("click", () => {
 
 async function refreshRecordings(): Promise<void> {
   try {
-    const d = await (await fetch("/api/recordings")).json();
+    const d = await (await fetch(`${BASE}api/recordings`)).json();
     const list: any[] = d.recordings || [];
     recList.innerHTML = list
       .map(
         (it) =>
-          `<div class="bm-row"><a class="recall" href="/recordings/${it.name}" download>` +
+          `<div class="bm-row"><a class="recall" href="${BASE}recordings/${it.name}" download>` +
           `${it.name.replace("iq_", "").replace(".cu8", "")} ` +
           `<span class="muted">${(it.size / 1e6).toFixed(1)} MB</span></a>` +
           `<button class="del" data-name="${it.name}" title="delete">×</button></div>`,
@@ -1657,7 +1658,7 @@ async function refreshRecordings(): Promise<void> {
 recList.addEventListener("click", async (e) => {
   const btn = (e.target as HTMLElement).closest("button.del") as HTMLElement | null;
   if (!btn) return;
-  await fetch(`/api/recordings/${btn.dataset.name}`, { method: "DELETE" });
+  await fetch(`${BASE}api/recordings/${btn.dataset.name}`, { method: "DELETE" });
   refreshRecordings();
 });
 
@@ -1666,7 +1667,7 @@ refreshRecordings();
 // --- Replay (play a saved .cu8 back through the spectrum view) ------------
 async function renderReplayList(): Promise<void> {
   try {
-    const d = await (await fetch("/api/recordings")).json();
+    const d = await (await fetch(`${BASE}api/recordings`)).json();
     const list: any[] = d.recordings || [];
     if (!list.length) {
       replayList.innerHTML =

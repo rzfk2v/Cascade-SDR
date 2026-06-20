@@ -699,6 +699,24 @@ one step with the bundled script:
 It only reinstalls backend/frontend dependencies when they actually changed. Set
 `SERVICE=<name>` if you named the unit something other than `cascade-sdr`.
 
+### HTTPS with nginx (optional)
+
+If you already run nginx on the Pi (e.g. for another app), you can put Cascade
+behind it as a subpath. The bundled
+[deploy/nginx-sdr.conf](deploy/nginx-sdr.conf) is a ready-to-paste `location`
+block that proxies `/sdr/` to the uvicorn backend on port 8000, including the
+WebSocket upgrade for real-time data:
+
+```bash
+# paste the contents of deploy/nginx-sdr.conf into your existing
+# server { } block, then:
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+The production frontend build sets `base="/sdr/"` automatically, so all asset
+and WebSocket paths work under the subpath. No backend changes needed — nginx
+strips the `/sdr` prefix before forwarding.
+
 > **Security:** Cascade SDR has **no authentication**. Keep it on your trusted LAN,
 > or reach it over a VPN / SSH tunnel (`ssh -L 8000:localhost:8000 pi@<pi-ip>`).
 > Do **not** port-forward it to the public internet as-is.
