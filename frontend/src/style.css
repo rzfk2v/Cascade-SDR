@@ -566,6 +566,7 @@ details.advanced[open] > summary::before { content: "▾ "; }
   width: 100%;
   height: 100%;
   cursor: crosshair;
+  touch-action: none; /* let the tuner handle touch drag/pinch instead of scrolling */
 }
 .axis {
   flex: 0 0 22px;
@@ -577,4 +578,50 @@ details.advanced[open] > summary::before { content: "▾ "; }
   border: 1px solid var(--border);
   border-top: none;
   border-radius: 0 0 8px 8px;
+}
+
+/* ---- mobile: collapse the sidebar into a slide-in drawer ---- */
+.nav-toggle { display: none; }
+.nav-backdrop { display: none; }
+
+@media (max-width: 760px) {
+  .app { position: relative; }
+
+  /* hamburger to open the drawer (hidden while the drawer is open) */
+  .nav-toggle {
+    display: flex; align-items: center; justify-content: center;
+    position: fixed; top: 0.5rem; left: 0.5rem; z-index: 30;
+    width: 40px; height: 40px;
+    background: rgba(22, 27, 34, 0.92); color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px;
+    font-size: 1.25rem; line-height: 1; cursor: pointer;
+  }
+  .app.nav-open .nav-toggle { display: none; }
+
+  /* the sidebar slides in from the left over the content */
+  .sidebar {
+    position: fixed; top: 0; left: 0; bottom: 0;
+    width: 86vw; max-width: 320px; z-index: 25;
+    transform: translateX(-100%);
+    transition: transform 0.22s ease;
+    box-shadow: 2px 0 14px rgba(0, 0, 0, 0.5);
+  }
+  .app.nav-open .sidebar { transform: translateX(0); }
+
+  .nav-backdrop {
+    display: block; position: fixed; inset: 0; z-index: 20;
+    background: rgba(0, 0, 0, 0.5);
+    opacity: 0; pointer-events: none; transition: opacity 0.22s ease;
+  }
+  .app.nav-open .nav-backdrop { opacity: 1; pointer-events: auto; }
+
+  /* display now owns the full width */
+  .display { padding: 0.4rem; }
+
+  /* the aircraft/vessel list becomes a bottom sheet instead of a side panel */
+  .aircraft-panel {
+    top: auto; bottom: 0.5rem; left: 0.5rem; right: 0.5rem;
+    width: auto; max-height: 42%;
+  }
+  .ap-name { max-width: 40vw; }
 }

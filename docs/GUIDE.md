@@ -24,6 +24,10 @@ and install, see the [README](../README.md).
   **Decode** (DAB · ADS-B · AIS · APRS · ACARS · APT · SSTV · Pager · ISM).
 - **Band label** — under the device status, names the service on the current
   frequency (e.g. “FM broadcast”, “Marine VHF”) so you know what you're looking at.
+- **On phones / narrow screens** the sidebar collapses behind a **☰ menu** button
+  (top-left) so the display gets the full width; tap ☰ to open the controls, then
+  the backdrop or any mode button to close it. The aircraft/vessel list becomes a
+  bottom sheet.
 
 ---
 

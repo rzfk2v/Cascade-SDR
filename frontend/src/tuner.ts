@@ -28,6 +28,13 @@ export class Tuner {
   private panning = false;
   private panStartX = 0;
   private panStartLo = 0;
+  // Touch: track active pointers so two fingers pinch-zoom / pan (mouse uses the
+  // same handlers, so click-tune, drag-select and shift-pan keep working).
+  private pointers = new Map<number, number>(); // pointerId -> canvas fraction
+  private pinchDist0 = 0;
+  private pinchSpan0 = 1;
+  private pinchBand0 = 0;
+  private gestureMulti = false;
 
   constructor(
     private overlay: HTMLCanvasElement,
@@ -35,9 +42,10 @@ export class Tuner {
   ) {
     this.octx = overlay.getContext("2d")!;
     this.actx = axis.getContext("2d")!;
-    overlay.addEventListener("mousedown", (e) => this.onDown(e));
-    overlay.addEventListener("mousemove", (e) => this.onMove(e));
-    window.addEventListener("mouseup", (e) => this.onUp(e));
+    overlay.addEventListener("pointerdown", (e) => this.onPointerDown(e));
+    overlay.addEventListener("pointermove", (e) => this.onPointerMove(e));
+    overlay.addEventListener("pointerup", (e) => this.onPointerUp(e));
+    overlay.addEventListener("pointercancel", (e) => this.onPointerUp(e));
     overlay.addEventListener("wheel", (e) => this.onWheel(e), { passive: false });
   }
 
@@ -81,7 +89,7 @@ export class Tuner {
     const bandFrac = 0.5 + (freqHz - this.centerFreq) / this.sampleRate;
     return (bandFrac - this.viewLo) / (this.viewHi - this.viewLo);
   }
-  private eventFraction(e: MouseEvent): number {
+  private eventFraction(e: { clientX: number }): number {
     const r = this.overlay.getBoundingClientRect();
     return Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
   }
@@ -91,21 +99,40 @@ export class Tuner {
     return this.viewHi - this.viewLo;
   }
 
-  private onDown(e: MouseEvent): void {
+  private onPointerDown(e: PointerEvent): void {
+    this.overlay.setPointerCapture(e.pointerId);
+    const f = this.eventFraction(e);
+    this.pointers.set(e.pointerId, f);
+    if (this.pointers.size === 2) {
+      // second finger down: start a pinch/pan, abandoning any single-finger drag
+      this.dragStart = null;
+      this.panning = false;
+      this.gestureMulti = true;
+      this.beginPinch();
+      return;
+    }
+    if (this.pointers.size > 2) return;
+    this.gestureMulti = false;
     // shift-drag pans the zoom window (only meaningful when zoomed in)
     if (e.shiftKey && this.span() < 0.999) {
       this.panning = true;
-      this.panStartX = this.eventFraction(e);
+      this.panStartX = f;
       this.panStartLo = this.viewLo;
       return;
     }
-    this.dragStart = this.eventFraction(e);
-    this.dragCur = this.dragStart;
+    this.dragStart = f;
+    this.dragCur = f;
   }
-  private onMove(e: MouseEvent): void {
+  private onPointerMove(e: PointerEvent): void {
+    if (!this.pointers.has(e.pointerId)) return;
+    this.pointers.set(e.pointerId, this.eventFraction(e));
+    if (this.pointers.size >= 2) {
+      this.handlePinch();
+      return;
+    }
     if (this.panning) {
       const span = this.span();
-      let lo = this.panStartLo - (this.eventFraction(e) - this.panStartX) * span;
+      let lo = this.panStartLo - (this.pointers.get(e.pointerId)! - this.panStartX) * span;
       lo = Math.min(1 - span, Math.max(0, lo));
       this.viewLo = lo;
       this.viewHi = lo + span;
@@ -115,10 +142,23 @@ export class Tuner {
       return;
     }
     if (this.dragStart == null) return;
-    this.dragCur = this.eventFraction(e);
+    this.dragCur = this.pointers.get(e.pointerId)!;
     this.draw();
   }
-  private onUp(e: MouseEvent): void {
+  private onPointerUp(e: PointerEvent): void {
+    this.pointers.delete(e.pointerId);
+    try {
+      this.overlay.releasePointerCapture(e.pointerId);
+    } catch {
+      /* pointer already released */
+    }
+    if (this.gestureMulti) {
+      // tail of a pinch/pan — don't tune or select; reset once all fingers lift
+      this.dragStart = null;
+      this.panning = false;
+      if (this.pointers.size === 0) this.gestureMulti = false;
+      return;
+    }
     if (this.panning) {
       this.panning = false;
       return;
@@ -130,10 +170,36 @@ export class Tuner {
     const f1 = this.freqAt(start);
     const f2 = this.freqAt(end);
     if (Math.abs(end - start) < 0.004) {
-      this.onTune?.(this.freqAt(end));            // click -> tune
+      this.onTune?.(this.freqAt(end));            // tap -> tune
     } else {
       this.onSelect?.(Math.min(f1, f2), Math.max(f1, f2));  // drag -> select range
     }
+    this.draw();
+  }
+
+  // --- two-finger pinch-zoom + pan (touch) -------------------------------
+  private twoPointers(): [number, number] {
+    const it = this.pointers.values();
+    return [it.next().value as number, it.next().value as number];
+  }
+  private beginPinch(): void {
+    const [a, b] = this.twoPointers();
+    const mid = (a + b) / 2;
+    this.pinchDist0 = Math.max(0.01, Math.abs(a - b));
+    this.pinchSpan0 = this.span();
+    this.pinchBand0 = this.viewLo + mid * this.pinchSpan0; // band frac under midpoint
+  }
+  private handlePinch(): void {
+    const [a, b] = this.twoPointers();
+    const mid = (a + b) / 2;
+    const dist = Math.max(0.01, Math.abs(a - b));
+    const span = Math.min(1, Math.max(0.02, this.pinchSpan0 * (this.pinchDist0 / dist)));
+    let lo = this.pinchBand0 - mid * span; // keep the start band point under the live midpoint
+    lo = Math.min(1 - span, Math.max(0, lo));
+    this.viewLo = lo;
+    this.viewHi = lo + span;
+    this.onViewChange?.(this.viewLo, this.viewHi);
+    this.drawAxis();
     this.draw();
   }
 

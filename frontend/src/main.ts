@@ -1056,11 +1056,20 @@ function highlightMode(mode: string): void {
   });
 }
 
+// --- mobile nav drawer ---------------------------------------------------
+const appEl = document.querySelector(".app")!;
+const closeNav = () => appEl.classList.remove("nav-open");
+document
+  .getElementById("nav-toggle")!
+  .addEventListener("click", () => appEl.classList.toggle("nav-open"));
+document.getElementById("nav-backdrop")!.addEventListener("click", closeNav);
+
 // --- mode tabs -----------------------------------------------------------
 document.getElementById("mode-tabs")!.addEventListener("click", async (e) => {
   const btn = (e.target as HTMLElement).closest("button");
   if (!btn || (btn as HTMLButtonElement).disabled) return;
   const mode = btn.dataset.mode!;
+  closeNav(); // on mobile, reveal the result after picking a mode
   if (mode === "radio" || mode === "replay" || mode === "scanner")
     await audio.init(); // user gesture: unlock audio
   if (mode !== "idle") {
