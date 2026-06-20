@@ -20,6 +20,7 @@ export interface Aircraft {
   type?: string;
   reg?: string;      // registration / tail number (dump1090-fa DB)
   actype?: string;   // ICAO type designator, e.g. "B738"
+  airline?: string;       // operating airline (route lookup)
   origin?: string;        // departure airport code (route lookup)
   origin_name?: string;
   destination?: string;   // arrival airport code (route lookup)
@@ -148,6 +149,7 @@ function popupHtml(ac: Aircraft): string {
   }
   if (ac.speed != null) rows.push(["Speed", `${ac.speed} kt`]);
   if (ac.track != null) rows.push(["Track", `${ac.track}°`]);
+  if (ac.airline) rows.push(["Airline", ac.airline]);
   if (ac.origin) rows.push(["From", ac.origin_name ? `${ac.origin} · ${ac.origin_name}` : ac.origin]);
   if (ac.destination) rows.push(["To", ac.dest_name ? `${ac.destination} · ${ac.dest_name}` : ac.destination]);
   if (ac.ground) rows.push(["State", "on ground"]);
@@ -173,7 +175,18 @@ const HELI_SVG =
   `<rect x="2" y="8.3" width="20" height="1.5" rx="0.75"/>` +     // main rotor
   `<rect x="11.25" y="1" width="1.5" height="16" rx="0.75"/>` +   // main rotor
   `</svg>`;
-const PLANE_SIZE = 30;
+
+// Pick the marker glyph + on-map size for an aircraft. Size scales with the
+// aircraft class so a widebody reads bigger than a regional jet, and the A380
+// (the only "super" category) gets its own oversized icon. We key off the ICAO
+// type designator for the A380, and the ADS-B wake-vortex category otherwise.
+function aircraftMarker(ac: Aircraft): { svg: string; size: number } {
+  if (ac.type === "Rotorcraft") return { svg: HELI_SVG, size: 24 };
+  if ((ac.actype || "").toUpperCase().startsWith("A38"))
+    return { svg: PLANE_SVG, size: 46 };   // A380 — super heavy
+  if (ac.type === "Heavy") return { svg: PLANE_SVG, size: 36 };  // widebody
+  return { svg: PLANE_SVG, size: 26 };     // narrowbody / small / default
+}
 
 export class AdsbMap {
   private map: L.Map | null = null;
@@ -252,19 +265,22 @@ export class AdsbMap {
       this.addTrackPoint(this.aircraftTracks, ac.icao, ac.lat, ac.lon, "#16a3c7");
       const label =
         (ac.flight || ac.icao) + (ac.alt != null ? ` · ${ac.alt} ft` : "");
-      const svg = ac.type === "Rotorcraft" ? HELI_SVG : PLANE_SVG;
+      const { svg, size } = aircraftMarker(ac);
       const icon = L.divIcon({
         className: "plane-icon",
         html:
-          `<div class="plane-rot" style="transform:rotate(${ac.track ?? 0}deg)">${svg}</div>` +
+          `<div class="plane-rot" style="width:${size}px;height:${size}px;transform:rotate(${ac.track ?? 0}deg)">${svg}</div>` +
           `<span class="plane-label">${label}</span>`,
-        iconSize: [PLANE_SIZE, PLANE_SIZE],
-        iconAnchor: [PLANE_SIZE / 2, PLANE_SIZE / 2],
+        iconSize: [size, size],
+        iconAnchor: [size / 2, size / 2],
       });
       let m = this.markers.get(ac.icao);
       if (!m) {
         m = L.marker([ac.lat, ac.lon], { icon }).addTo(this.map);
         m.bindPopup(popupHtml(ac));
+        // Clicking the marker follows it (keeps the map centred on it), the
+        // same as clicking its row in the list.
+        m.on("click", () => this.focus(ac.icao));
         this.markers.set(ac.icao, m);
       } else {
         m.setLatLng([ac.lat, ac.lon]);

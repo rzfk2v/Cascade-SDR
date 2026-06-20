@@ -516,7 +516,7 @@ details.advanced[open] > summary::before { content: "▾ "; }
 #cw-out { word-break: break-word; }
 
 .plane-icon { background: none; border: none; }
-.plane-rot { width: 30px; height: 30px; line-height: 0; }
+.plane-rot { line-height: 0; }
 .ac-svg {
   width: 100%; height: 100%; display: block;
   fill: #16a3c7; stroke: #fff; stroke-width: 0.9; stroke-linejoin: round;

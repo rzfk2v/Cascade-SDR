@@ -148,16 +148,21 @@ Select **ADS-B**: the backend spawns `dump1090`, reads its `aircraft.json` snaps
 (once a second), and plots aircraft on an OpenStreetMap map. Switching to another mode
 kills `dump1090` and hands the dongle back. **Bias-T** (Reception ▸ Advanced) can power a
 1090 MHz LNA — strongly recommended for real range. Gain/PPM are passed to dump1090.
-The **Aircraft** list (sorted by distance from your location) shows a **climb/descent
-arrow** by each altitude — ▲ climbing, ▼ descending, – level. Click a plane or a row
-for full detail (callsign, ICAO, **registration** + **model** when your dump1090 build
-has an aircraft DB, **category** — light/small/large/heavy/rotorcraft, squawk, altitude,
+Planes are drawn as **icons that point their heading**, **sized by class**
+(narrowbody/small · widebody · A380), with a **helicopter icon** for rotorcraft. The
+**Aircraft** list (sorted by distance from your location) shows a **climb/descent
+arrow** by each altitude — ▲ climbing, ▼ descending, – level. **Click a plane or a row
+to follow it** — the map re-centres and tracks it (drag to stop). The popup gives full
+detail (callsign, ICAO, **registration** + **model** when your dump1090 build has an
+aircraft DB, **category** — light/small/large/heavy/rotorcraft, squawk, altitude,
 climb, speed, track). Each aircraft also draws a **track trail** as it moves.
 
 **Route lookup (opt-in):** origin/destination aren't in the ADS-B signal, so the
 **"Look up route"** toggle (off by default) fetches them by callsign from
-[adsbdb.com](https://www.adsbdb.com) and shows **From → To** in the popup. Leaving it
-off keeps ADS-B fully offline; results are cached per callsign.
+[adsbdb.com](https://www.adsbdb.com) and shows the **airline** and **From → To** in the
+popup. Only well-formed airline callsigns are looked up; results are cached per callsign
+and reflect the flight number's *last-known* route (so a stale/return leg is possible).
+Leaving the toggle off keeps ADS-B fully offline.
 
 ### DAB radio (†)
 Select **DAB**, pick a **Band III block** (5A–13F). The backend runs `welle-cli`,

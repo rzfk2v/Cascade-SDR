@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 import shutil
 import tempfile
 import urllib.error
@@ -22,6 +23,12 @@ import urllib.parse
 import urllib.request
 
 from app.modes.base import Mode
+
+# A proper airline callsign is an ICAO 3-letter prefix + flight number (e.g.
+# "BAW123", "SAS1"). We only look those up: registrations and ad-hoc IDs
+# ("N512QS", "SEABC", military tags) have no scheduled route and otherwise
+# produce spurious matches in the route database.
+CALLSIGN_RE = re.compile(r"^[A-Z]{3}\d{1,4}[A-Z]?$")
 
 # Free flight-route database (callsign -> origin/destination airports). Only
 # queried when the user opts in via the "routes" toggle; the route is NOT part
@@ -196,6 +203,8 @@ class AdsbMode(Mode):
                 item["origin_name"] = r["from_name"]
                 item["destination"] = r["to"]
                 item["dest_name"] = r["to_name"]
+                if r.get("airline"):
+                    item["airline"] = r["airline"]
 
     def _schedule_route_lookups(self) -> None:
         """Fire background fetches for callsigns we haven't resolved yet."""
@@ -203,6 +212,8 @@ class AdsbMode(Mode):
             cs = item.get("flight")
             if not cs or cs in self._route_cache or cs in self._route_inflight:
                 continue
+            if not CALLSIGN_RE.match(cs):
+                continue  # not an airline callsign — no scheduled route
             if len(self._route_inflight) >= ROUTE_MAX_INFLIGHT:
                 break
             self._route_inflight.add(cs)
@@ -242,6 +253,7 @@ class AdsbMode(Mode):
             return ""
         o = fr.get("origin") or {}
         d = fr.get("destination") or {}
+        airline = (fr.get("airline") or {}).get("name") or ""
 
         def code(x: dict) -> str:
             return x.get("iata_code") or x.get("icao_code") or "?"
@@ -250,7 +262,7 @@ class AdsbMode(Mode):
             return x.get("municipality") or x.get("name") or ""
 
         return {"from": code(o), "from_name": place(o),
-                "to": code(d), "to_name": place(d)}
+                "to": code(d), "to_name": place(d), "airline": airline}
 
     def snapshot(self) -> list[dict]:
         return [self._latest, {"type": "adsb_config", "routes": self._routes_enabled}]
