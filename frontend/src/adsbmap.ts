@@ -18,8 +18,9 @@ export interface Aircraft {
   squawk?: string;
   ground?: boolean;
   type?: string;
-  reg?: string;      // registration / tail number (dump1090-fa DB)
+  reg?: string;      // registration / tail number (dump1090-fa DB or online)
   actype?: string;   // ICAO type designator, e.g. "B738"
+  owner?: string;    // registered owner/operator (aircraft lookup)
   airline?: string;       // operating airline (route lookup)
   origin?: string;        // departure airport code (route lookup)
   origin_name?: string;
@@ -137,8 +138,9 @@ function popupHtml(ac: Aircraft): string {
   const rows: [string, string][] = [];
   rows.push(["Callsign", ac.flight || "—"]);
   rows.push(["ICAO", ac.icao.toUpperCase()]);
-  if (ac.reg) rows.push(["Registration", ac.reg]);
+  if (ac.reg) rows.push(["Tail #", ac.reg]);
   if (ac.actype) rows.push(["Model", ac.actype]);
+  if (ac.owner) rows.push(["Operator", ac.owner]);
   if (ac.type) rows.push(["Category", ac.type]);
   if (ac.squawk) rows.push(["Squawk", ac.squawk]);
   if (ac.alt != null) rows.push(["Altitude", `${ac.alt.toLocaleString()} ft`]);

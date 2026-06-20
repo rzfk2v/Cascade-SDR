@@ -235,13 +235,15 @@ Plots aircraft from their 1090 MHz transponders on a map.
   following). The popup shows callsign, ICAO, **registration** and **model** (when
   your dump1090 build ships an aircraft database), **category** (light/large/heavy/
   rotorcraft…), squawk, altitude, climb (with the same arrow), speed, track.
-- **Route (origin → destination)** is *not* in the ADS-B signal. Tick **"Look up
-  route"** in the ADS-B controls to fetch it by callsign from **adsbdb.com** — the
-  popup then shows the **airline** and **From / To** airports. It's **off by
-  default**: leaving it off keeps ADS-B fully offline (no internet, nothing leaves
-  your machine). Results are cached per callsign. The route is the *last-known*
-  route for that flight number, so it can occasionally be a stale/return leg —
-  check the airline name if a route looks wrong.
+- **Route, airline and tail number** are *not* in the ADS-B signal. Tick **"Look up
+  route + tail number"** in the ADS-B controls to fetch them from **adsbdb.com** —
+  the route/airline by callsign, and the **registration (tail #) + operator** by
+  ICAO hex (this fills the tail number even when your dump1090 build has no aircraft
+  database). The popup then shows airline, **From / To**, **Tail #** and **Operator**.
+  It's **off by default**: leaving it off keeps ADS-B fully offline (nothing leaves
+  your machine). Results are cached. The route is the *last-known* route for that
+  flight number, so it can occasionally be a stale/return leg — check the airline
+  name if a route looks wrong.
 - Needs a **1090 MHz antenna** for real range; a 1090 LNA on Bias-T helps a lot.
 - See **Map options** below to set your location (for distances) and toggle trails.
 

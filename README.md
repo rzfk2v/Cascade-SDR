@@ -157,12 +157,14 @@ detail (callsign, ICAO, **registration** + **model** when your dump1090 build ha
 aircraft DB, **category** — light/small/large/heavy/rotorcraft, squawk, altitude,
 climb, speed, track). Each aircraft also draws a **track trail** as it moves.
 
-**Route lookup (opt-in):** origin/destination aren't in the ADS-B signal, so the
-**"Look up route"** toggle (off by default) fetches them by callsign from
-[adsbdb.com](https://www.adsbdb.com) and shows the **airline** and **From → To** in the
-popup. Only well-formed airline callsigns are looked up; results are cached per callsign
-and reflect the flight number's *last-known* route (so a stale/return leg is possible).
-Leaving the toggle off keeps ADS-B fully offline.
+**Online lookup (opt-in):** route, airline and tail number aren't in the ADS-B signal,
+so the **"Look up route + tail number"** toggle (off by default) fetches them from
+[adsbdb.com](https://www.adsbdb.com) — the route/airline by callsign and the
+**registration (tail #) + operator** by ICAO hex (the latter fills the tail number when
+your dump1090 build has no aircraft DB). The popup then shows airline, **From → To**,
+tail number and operator. Only well-formed airline callsigns are looked up for routes;
+results are cached and the route reflects the flight number's *last-known* route (so a
+stale/return leg is possible). Leaving the toggle off keeps ADS-B fully offline.
 
 ### DAB radio (†)
 Select **DAB**, pick a **Band III block** (5A–13F). The backend runs `welle-cli`,

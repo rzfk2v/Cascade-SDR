@@ -18,6 +18,7 @@ import os
 import re
 import shutil
 import tempfile
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -34,7 +35,15 @@ CALLSIGN_RE = re.compile(r"^[A-Z]{3}\d{1,4}[A-Z]?$")
 # queried when the user opts in via the "routes" toggle; the route is NOT part
 # of the ADS-B signal, so this is the only way to know where a flight is going.
 ROUTE_API = "https://api.adsbdb.com/v0/callsign/"
+# Aircraft database (ICAO hex -> registration / tail number, type, owner). Used
+# to fill the tail number when the local dump1090 build has no aircraft DB.
+AIRCRAFT_API = "https://api.adsbdb.com/v0/aircraft/"
 ROUTE_MAX_INFLIGHT = 6   # cap concurrent lookups so the 1 s loop never stalls
+# Cache entries expire so the data refreshes on an interval: found results are
+# re-checked rarely, but "no info yet" results are retried often so a plane that
+# had nothing fills in without the user toggling the feature off and on.
+LOOKUP_TTL_FOUND = 1800.0     # 30 min
+LOOKUP_TTL_UNKNOWN = 90.0     # retry missing info every 90 s
 
 # ADS-B emitter categories -> human label
 AC_CATEGORY = {
@@ -56,12 +65,40 @@ class AdsbMode(Mode):
         self._proc: asyncio.subprocess.Process | None = None
         self._jsondir: str | None = None
         self._latest = {"type": "aircraft", "aircraft": [], "count": 0, "positioned": 0}
-        # Route lookups (opt-in): callsign -> route dict, or None once we've
-        # learned the route is unknown (negative-cached to avoid re-querying).
+        # Route lookups (opt-in). Cache maps callsign -> (value, expiry), where
+        # value is a route dict or None (known-unknown). Entries expire (see
+        # LOOKUP_TTL_*) so the info refreshes on an interval.
         self._routes_enabled = False
-        self._route_cache: dict[str, dict | None] = {}
+        self._route_cache: dict[str, tuple[dict | None, float]] = {}
         self._route_inflight: set[str] = set()
         self._route_tasks: set[asyncio.Task] = set()
+        # Aircraft lookups (same opt-in): ICAO hex -> ({reg, actype, owner} | None,
+        # expiry). Only used to fill a missing tail number.
+        self._ac_cache: dict[str, tuple[dict | None, float]] = {}
+        self._ac_inflight: set[str] = set()
+
+    # --- TTL cache helpers (shared by route + aircraft lookups) -------------
+    @staticmethod
+    def _cached(cache: dict, key: str):
+        """The cached value (may be None for known-unknown), ignoring expiry —
+        we keep showing the last-known value until a refresh replaces it."""
+        entry = cache.get(key)
+        return entry[0] if entry else None
+
+    @staticmethod
+    def _fresh(cache: dict, key: str) -> bool:
+        """True if the entry exists and hasn't expired (no re-fetch needed)."""
+        entry = cache.get(key)
+        return entry is not None and time.monotonic() < entry[1]
+
+    @staticmethod
+    def _store(cache: dict, key: str, res) -> None:
+        """Cache a result. res: dict (found) | "" (unknown) | None (transient,
+        not cached so it retries next tick)."""
+        if res is None:
+            return
+        ttl = LOOKUP_TTL_FOUND if res else LOOKUP_TTL_UNKNOWN
+        cache[key] = (res or None, time.monotonic() + ttl)
 
     def configure(self, params: dict) -> None:
         if "routes" in params:
@@ -111,6 +148,8 @@ class AdsbMode(Mode):
                     if self._routes_enabled:
                         self._apply_routes()
                         self._schedule_route_lookups()
+                        self._apply_aircraft()
+                        self._schedule_aircraft_lookups()
                     if not announced:
                         self.manager.emit_json(
                             {"type": "adsb_status", "message": "dump1090 running"}
@@ -197,7 +236,7 @@ class AdsbMode(Mode):
     def _apply_routes(self) -> None:
         """Attach cached origin/destination to the current aircraft snapshot."""
         for item in self._latest["aircraft"]:
-            r = self._route_cache.get(item.get("flight", ""))
+            r = self._cached(self._route_cache, item.get("flight", ""))
             if r:
                 item["origin"] = r["from"]
                 item["origin_name"] = r["from_name"]
@@ -210,7 +249,7 @@ class AdsbMode(Mode):
         """Fire background fetches for callsigns we haven't resolved yet."""
         for item in self._latest["aircraft"]:
             cs = item.get("flight")
-            if not cs or cs in self._route_cache or cs in self._route_inflight:
+            if not cs or cs in self._route_inflight or self._fresh(self._route_cache, cs):
                 continue
             if not CALLSIGN_RE.match(cs):
                 continue  # not an airline callsign — no scheduled route
@@ -225,26 +264,28 @@ class AdsbMode(Mode):
         try:
             loop = asyncio.get_running_loop()
             res = await loop.run_in_executor(None, self._http_get_route, cs)
-            # res: route dict (found), "" (known-unknown), or None (transient
-            # error — leave uncached so we retry on a later tick).
-            if res or res == "":
-                self._route_cache[cs] = res or None
+            self._store(self._route_cache, cs, res)
         finally:
             self._route_inflight.discard(cs)
 
     @staticmethod
-    def _http_get_route(cs: str) -> dict | str | None:
-        url = ROUTE_API + urllib.parse.quote(cs)
+    def _http_get_json(url: str) -> dict | str | None:
+        """GET + parse JSON. dict on success, "" on 4xx (known-unknown,
+        negative-cache it), None on 5xx/timeout (transient — retry later)."""
         try:
             req = urllib.request.Request(url, headers={"User-Agent": "Cascade-SDR"})
             with urllib.request.urlopen(req, timeout=6) as resp:
-                payload = json.load(resp)
+                return json.load(resp)
         except urllib.error.HTTPError as e:
-            # 404 (and other 4xx) = unknown callsign; negative-cache it so we
-            # don't re-query every tick. 5xx/timeouts fall through as transient.
             return "" if 400 <= e.code < 500 else None
         except Exception:
-            return None  # network/timeout — retry later
+            return None
+
+    @classmethod
+    def _http_get_route(cls, cs: str) -> dict | str | None:
+        payload = cls._http_get_json(ROUTE_API + urllib.parse.quote(cs))
+        if not isinstance(payload, dict):
+            return payload  # "" (unknown) or None (transient)
         fr = payload.get("response")
         if not isinstance(fr, dict):
             return ""  # "unknown callsign"
@@ -263,6 +304,57 @@ class AdsbMode(Mode):
 
         return {"from": code(o), "from_name": place(o),
                 "to": code(d), "to_name": place(d), "airline": airline}
+
+    # --- aircraft lookups (opt-in): fill the tail number when missing ------
+    def _apply_aircraft(self) -> None:
+        for item in self._latest["aircraft"]:
+            if item.get("reg"):
+                continue  # already have a tail number from the local DB
+            a = self._cached(self._ac_cache, item["icao"])
+            if a:
+                item["reg"] = a["reg"]
+                if a.get("actype") and not item.get("actype"):
+                    item["actype"] = a["actype"]
+                if a.get("owner"):
+                    item["owner"] = a["owner"]
+
+    def _schedule_aircraft_lookups(self) -> None:
+        for item in self._latest["aircraft"]:
+            hexid = item["icao"]
+            if item.get("reg") or hexid in self._ac_inflight or self._fresh(self._ac_cache, hexid):
+                continue
+            if len(self._ac_inflight) >= ROUTE_MAX_INFLIGHT:
+                break
+            self._ac_inflight.add(hexid)
+            task = asyncio.create_task(self._fetch_aircraft(hexid))
+            self._route_tasks.add(task)
+            task.add_done_callback(self._route_tasks.discard)
+
+    async def _fetch_aircraft(self, hexid: str) -> None:
+        try:
+            loop = asyncio.get_running_loop()
+            res = await loop.run_in_executor(None, self._http_get_aircraft, hexid)
+            self._store(self._ac_cache, hexid, res)
+        finally:
+            self._ac_inflight.discard(hexid)
+
+    @classmethod
+    def _http_get_aircraft(cls, hexid: str) -> dict | str | None:
+        payload = cls._http_get_json(AIRCRAFT_API + urllib.parse.quote(hexid))
+        if not isinstance(payload, dict):
+            return payload
+        ac = payload.get("response")
+        if not isinstance(ac, dict):
+            return ""
+        ac = ac.get("aircraft")
+        if not ac:
+            return ""
+        reg = (ac.get("registration") or "").strip()
+        if not reg:
+            return ""
+        return {"reg": reg,
+                "actype": (ac.get("icao_type") or "").strip(),
+                "owner": (ac.get("registered_owner") or "").strip()}
 
     def snapshot(self) -> list[dict]:
         return [self._latest, {"type": "adsb_config", "routes": self._routes_enabled}]
