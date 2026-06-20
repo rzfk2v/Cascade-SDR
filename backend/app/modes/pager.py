@@ -162,15 +162,21 @@ class PagerMode(Mode):
                 )
                 err = self._watch_stderr(self._proc)
                 out_tail: deque[str] = deque(maxlen=8)
-                self._announce_tuned()
                 assert self._proc.stdout is not None
                 started = time.monotonic()
                 last_emit = 0.0
                 crashed = False
+                announced = False
                 while not self._restart:
                     if self._proc.returncode is not None:
                         crashed = True
                         break
+                    # Only tell the UI it's "running" once rtl_fm has held the
+                    # device for a moment — otherwise a spawn that dies instantly
+                    # (dongle busy) would flash a misleading running status.
+                    if not announced and time.monotonic() - started > 0.4:
+                        announced = True
+                        self._announce_tuned()
                     try:
                         raw = await asyncio.wait_for(self._proc.stdout.readline(), 0.5)
                         if raw:

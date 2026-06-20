@@ -132,6 +132,7 @@ class DeviceManager:
             raise ValueError(f"unknown mode: {name}")
         self._loop = asyncio.get_running_loop()
         async with self._lock:
+            prev = self.mode
             await self._stop_locked()
             self.mode_name = name
             if name == "idle":
@@ -145,6 +146,13 @@ class DeviceManager:
                 self.center_freq = mode.default_center_freq
                 self.sample_rate = mode.default_sample_rate
             self.mode = mode
+            # Claiming the dongle needs the previous holder to have released the USB
+            # device. In-process IQ->IQ reopen (pyrtlsdr) is fine, but any switch
+            # involving an external decoder process (rtl_fm/dump1090/rtl_433/…) —
+            # either leaving one or entering one — needs a moment, or libusb returns
+            # 'usb_claim_interface error -6' (especially on a Pi over USB).
+            if (prev is not None and not prev.owns_device) or not mode.owns_device:
+                await asyncio.sleep(0.8)
             await self._start_locked()
 
     async def start(self) -> None:
@@ -280,11 +288,6 @@ class DeviceManager:
                 await task
             except (asyncio.CancelledError, Exception):
                 pass
-            # The mode's external decoder (rtl_fm/dump1090/rtl_433/…) held the
-            # dongle. Give librtlsdr a moment to release the USB device before the
-            # next mode opens it, otherwise an owns_device mode (e.g. Radio) hits
-            # 'LIBUSB_ERROR_BUSY' — most visible on a Pi over USB.
-            await asyncio.sleep(0.7)
         self._sdr = None
 
     def _apply_settings(self, sdr) -> None:
