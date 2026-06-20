@@ -339,7 +339,8 @@ decoder, no external tool.
 
 - Switch to **SSTV**; it listens on **144.500 MHz** (the 2 m calling frequency,
   NBFM) and decodes any transmission it hears. The **mode is auto-detected** from
-  the VIS header — **Martin M1/M2** and **Scottie S1/S2/DX** are supported.
+  the VIS header — **Martin M1/M2**, **Scottie S1/S2/DX**, **Robot 36/72**, and
+  **PD 50/90/120/160/180** are supported.
 - The picture builds **top-down** over ~1–2 min. **Save PNG** downloads the
   full-resolution image; **Clear** restarts.
 - For **HF SSTV** (e.g. 14.230 MHz USB — needs an HF upconverter for an RTL-SDR),
@@ -347,7 +348,8 @@ decoder, no external tool.
   on — the same decoder runs. Record IQ to decode a transmission again in Replay.
 
 > The tone's instantaneous frequency carries the picture (1500 Hz = black …
-> 2300 Hz = white, 1200 Hz = line sync). Robot36 / PD modes aren't decoded yet.
+> 2300 Hz = white, 1200 Hz = line sync). The YUV modes (Robot, PD) carry luma
+> plus colour-difference channels, converted back to RGB on decode.
 
 ---
 

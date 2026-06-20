@@ -23,7 +23,7 @@ things to try. Status:
 | **APRS** | Packet-radio stations on the map (via `rtl_fm` → `direwolf`) | ✅ working‡ |
 | **ACARS** | Aircraft VHF data messages as a live feed (via `acarsdec`) | ✅ working§ |
 | **APT** | NOAA weather-satellite images at 137 MHz (hand-written decoder) | ✅ working¶ |
-| **SSTV** | Slow-scan TV images — auto-detects Martin / Scottie (hand-written decoder) | ✅ working◇ |
+| **SSTV** | Slow-scan TV images — auto-detects Martin / Scottie / Robot / PD (hand-written decoder) | ✅ working◇ |
 | **Pager** | POCSAG/FLEX pager messages as a live feed (via `multimon-ng`) | ✅ working◆ |
 | **ISM** | 315–915 MHz ISM-band devices — weather stations, TPMS, sensors, remotes (via `rtl_433`) | ✅ working‖ |
 
@@ -271,16 +271,18 @@ image"**, and play the recording back through the decoder.
 ### SSTV (slow-scan TV images) (◇)
 Select **SSTV**: it listens on the 2 m SSTV calling frequency **144.500 MHz**
 (NBFM) and decodes any picture it hears. The **mode is auto-detected** from the
-transmission's VIS header — the common RGB modes **Martin M1/M2** and **Scottie
-S1/S2/DX** are supported. The image builds top-down over ~1–2 min; **Save PNG**
+transmission's VIS header — the RGB modes **Martin M1/M2** and **Scottie
+S1/S2/DX**, plus the YUV modes **Robot 36/72** and **PD 50/90/120/160/180**, are
+supported. The image builds top-down over ~1–2 min; **Save PNG**
 downloads it full-resolution, **Clear** restarts. It's a **hand-written decoder**
 (no external tool): recover the instantaneous tone frequency (1500 Hz black …
-2300 Hz white) → detect VIS → slice each line's R/G/B sweeps → image.
+2300 Hz white) → detect VIS → slice each line's colour sweeps → image (YUV modes
+are converted back to RGB).
 
 For **HF SSTV** (e.g. 14.230 MHz, an HF upconverter required for an RTL-SDR),
 open **Radio**, switch the demod to **USB**, tune the signal, and turn on the
 **SSTV** toggle — the same decoder runs. Record IQ during a transmission to
-decode it again later in Replay. Robot36 / PD modes are not decoded yet.
+decode it again later in Replay.
 
 ### Pager (POCSAG/FLEX) (◆)
 Select **Pager**: the backend pipes `rtl_fm` (NBFM audio) into
