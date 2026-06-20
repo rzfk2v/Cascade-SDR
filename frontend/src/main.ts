@@ -106,6 +106,7 @@ const pagerView = document.getElementById("pager-view")!;
 const pagerLog = document.getElementById("pager-log")!;
 const pagerFeedCount = document.getElementById("pager-feedcount")!;
 const pagerChannel = document.getElementById("pager-channel") as HTMLSelectElement;
+const pagerFreq = document.getElementById("pager-freq") as HTMLInputElement;
 const dabControls = document.getElementById("dab-controls")!;
 const dabChannel = document.getElementById("dab-channel") as HTMLSelectElement;
 const dabStatus = document.getElementById("dab-status")!;
@@ -848,12 +849,25 @@ function renderPager(messages: any[]): void {
 }
 
 function renderPagerChannels(channels: any[], freq: number): void {
-  if (pagerChannel.options.length !== channels.length) {
-    pagerChannel.innerHTML = channels
-      .map((c) => `<option value="${c.freq}">${esc(c.label)}</option>`)
-      .join("");
+  if (pagerChannel.options.length !== channels.length + 1) {
+    pagerChannel.innerHTML =
+      '<option value="">Custom…</option>' +
+      channels
+        .map((c) => `<option value="${c.freq}">${esc(c.label)}</option>`)
+        .join("");
   }
-  if (freq != null) pagerChannel.value = String(freq);
+  setPagerFreqHz(freq);
+}
+
+// Reflect the active pager frequency in both the MHz field and the quick-pick
+// (selecting the matching preset, or "Custom…" when it isn't one).
+function setPagerFreqHz(hz: number): void {
+  if (hz == null || !isFinite(hz)) return;
+  if (document.activeElement !== pagerFreq) pagerFreq.value = (hz / 1e6).toFixed(4);
+  const match = [...pagerChannel.options].find(
+    (o) => o.value && Math.abs(parseFloat(o.value) - hz) < 1,
+  );
+  pagerChannel.value = match ? match.value : "";
 }
 
 // ISM device field name -> friendly label (everything else falls back to the key)
@@ -1059,8 +1073,19 @@ document.getElementById("mode-tabs")!.addEventListener("click", async (e) => {
     sstvRowCount = 0;
     sstvStatus.textContent = "waiting for a transmission…";
   }
-  if (mode === "pager" && pagerChannel.value)
-    sock.send({ cmd: "config", params: { freq: parseFloat(pagerChannel.value) } });
+  if (mode === "pager") {
+    // Carry the frequency over from Radio/Replay (the tuned channel) or
+    // Sweep/Spectrum (the band centre) — handy when you spot a POCSAG burst and
+    // hit Pager. Otherwise keep whatever the MHz field already shows.
+    let hz = NaN;
+    if (currentMode === "radio" || currentMode === "replay") hz = viewTuned;
+    else if (currentMode === "spectrum" || currentMode === "scan") hz = viewCenter;
+    if (!isFinite(hz) || hz <= 0) hz = parseFloat(pagerFreq.value) * 1e6;
+    if (isFinite(hz) && hz > 0) {
+      sock.send({ cmd: "config", params: { freq: Math.round(hz) } });
+      setPagerFreqHz(hz);
+    }
+  }
   if (mode === "dab") sock.send({ cmd: "config", params: { channel: dabChannel.value } });
 });
 
@@ -1427,7 +1452,17 @@ document.getElementById("sstv-clear")!.addEventListener("click", () => {
 
 // --- Pager controls ------------------------------------------------------
 pagerChannel.addEventListener("change", () => {
-  sock.send({ cmd: "config", params: { freq: parseFloat(pagerChannel.value) } });
+  if (!pagerChannel.value) return;     // "Custom…" — leave the typed frequency
+  const hz = parseFloat(pagerChannel.value);
+  sock.send({ cmd: "config", params: { freq: hz } });
+  setPagerFreqHz(hz);
+});
+pagerFreq.addEventListener("change", () => {
+  const mhz = parseFloat(pagerFreq.value);
+  if (!isFinite(mhz)) return;
+  const hz = Math.round(mhz * 1e6);
+  sock.send({ cmd: "config", params: { freq: hz } });
+  setPagerFreqHz(hz);
 });
 
 // live antenna advice as the user types a frequency (before tuning)

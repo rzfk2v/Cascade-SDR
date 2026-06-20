@@ -136,6 +136,8 @@ class PagerMode(Mode):
                                 "message": f"multimon-ng running · {self._label()}"})
 
     async def run(self) -> None:
+        # Send the channel list first so the UI populates even if a tool is missing.
+        self.manager.emit_json(self._config_msg())
         rtl, multimon = self._have_tools()
         if rtl is None or multimon is None:
             missing = "rtl_fm" if rtl is None else "multimon-ng"
@@ -146,7 +148,6 @@ class PagerMode(Mode):
             })
             return
 
-        self.manager.emit_json(self._config_msg())
         retries = 0
         try:
             # (Re)spawn loop: a freq change in configure() breaks the inner loop,
