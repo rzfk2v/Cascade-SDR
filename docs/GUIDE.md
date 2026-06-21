@@ -485,8 +485,10 @@ frequency in the scope. Typical dongles need ~0–60 ppm. It's saved automatical
 - **Nothing on a band** — it's almost always the **antenna**. The stock whip is
   poor at 1090 MHz (ADS-B) and weak at VHF; a band-appropriate antenna transforms
   results.
-- **Audio crackles** — shouldn't, thanks to the jitter buffer; if it does, avoid
-  running heavy apps that starve the browser tab.
+- **Audio crackles** — shouldn't: playback runs on a dedicated audio thread with
+  an adaptive, drift-compensated buffer. If it does, avoid running heavy apps that
+  starve the browser tab. Over plain-HTTP LAN access (the older fallback path) you
+  can deepen the buffer via `localStorage["cascadeAudioBufferS"]` (seconds).
 - **Frequency looks off** — set **PPM** (see Calibration).
 - **ADS-B/AIS/DAB/ISM say a tool is missing** — install `dump1090` /
   `rtl_433` (both `brew install`) or build `AIS-catcher` / `welle-cli` (see the

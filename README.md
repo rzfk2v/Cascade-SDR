@@ -51,7 +51,11 @@ you're selecting channels *within* that band digitally — type a frequency in
 > Radio is one combined view: it's both "browse the band" and "listen." It
 > stays silent until you click a signal, so it doubles as a plain waterfall.
 
-Audio uses a ~120 ms jitter buffer to stay click-free. The device is read on a
+Audio playback uses an adaptive, clock-drift-compensated jitter buffer running on
+a dedicated audio thread (AudioWorklet). It resamples 48 kHz to the sound card's
+rate and continuously trims playback speed (±~0.5%) to hold a small target fill
+(~180 ms), so it never sits starved (the cause of crackle) and absorbs the
+drift between the dongle's clock and the sound card's. The device is read on a
 dedicated thread (kept drained at real time) so DSP never starves the USB stream.
 
 ### Finding signals with Sweep
