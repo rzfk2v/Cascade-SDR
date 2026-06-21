@@ -9,7 +9,28 @@ from __future__ import annotations
 import math
 
 import numpy as np
+from numpy.lib.stride_tricks import sliding_window_view
 from scipy.signal import bilinear, firwin, lfilter, lfilter_zi
+
+
+def _fir_decimate(b_rev: np.ndarray, hist: np.ndarray, x: np.ndarray,
+                  decim: int) -> tuple[np.ndarray, np.ndarray]:
+    """Polyphase FIR low-pass + decimation that only computes the kept samples.
+
+    Equivalent to ``lfilter(b, 1, x)[::decim]`` with state carried across calls,
+    but ~``decim``× cheaper: instead of filtering at the full input rate and then
+    throwing away ``decim-1`` of every ``decim`` outputs, it forms the strided
+    windows for the decimated output positions and dots them with the (reversed)
+    taps in one BLAS call. ``hist`` is the trailing ``numtaps-1`` input samples
+    from the previous call (filter continuity); ``b_rev`` is ``taps[::-1]``.
+    """
+    numtaps = b_rev.size
+    if x.size == 0:
+        return x[:0], hist
+    buf = np.concatenate((hist, x))               # length numtaps-1 + n
+    win = sliding_window_view(buf, numtaps)[::decim]  # rows at m=0,decim,2decim,...
+    y = win @ b_rev
+    return y, buf[-(numtaps - 1):]
 
 
 class PilotPll:
@@ -71,13 +92,19 @@ class ComplexChannelizer:
         self._shift = 0.0
         self._phase = 0.0
         self._numtaps = numtaps
+        # Cached mixing oscillator: e^{-j inc k} for the current block size, so we
+        # don't recompute a transcendental over every input sample each block.
+        self._osc_base: np.ndarray | None = None
+        self._osc_n = 0
+        self._osc_inc = float("nan")
         self._set_taps(cutoff_hz)
 
     def _set_taps(self, cutoff_hz: float) -> None:
         nyq = self.in_rate / 2.0
         cutoff = float(np.clip(cutoff_hz, 1_000.0, nyq * 0.95))
         self._b = firwin(self._numtaps, cutoff / nyq).astype(np.complex128)
-        self._zi = np.zeros(self._numtaps - 1, dtype=np.complex128)
+        self._b_rev = self._b[::-1].copy()
+        self._hist = np.zeros(self._numtaps - 1, dtype=np.complex128)
 
     def set_cutoff(self, cutoff_hz: float) -> None:
         self._set_taps(cutoff_hz)
@@ -91,13 +118,21 @@ class ComplexChannelizer:
 
     def process(self, x: np.ndarray) -> np.ndarray:
         n = x.size
-        k = np.arange(n, dtype=np.float64)
+        if n == 0:
+            return x[:0]
         inc = 2.0 * np.pi * self._shift / self.in_rate
-        osc = np.exp(-1j * (self._phase + inc * k))
+        # Rebuild the base oscillator only when the shift or block size changes;
+        # otherwise just rotate it by the running phase (one scalar exp).
+        if self._osc_base is None or self._osc_n != n or self._osc_inc != inc:
+            k = np.arange(n, dtype=np.float64)
+            self._osc_base = np.exp(-1j * inc * k)
+            self._osc_n = n
+            self._osc_inc = inc
+        osc = self._osc_base * np.exp(-1j * self._phase)
         self._phase = (self._phase + inc * n) % (2.0 * np.pi)
         mixed = x * osc
-        filt, self._zi = lfilter(self._b, 1.0, mixed, zi=self._zi)
-        return filt[:: self.decim]
+        y, self._hist = _fir_decimate(self._b_rev, self._hist, mixed, self.decim)
+        return y
 
 
 class RealDecimator:
@@ -107,18 +142,20 @@ class RealDecimator:
                  numtaps: int = 129) -> None:
         self.in_rate = float(in_rate)
         self.decim = int(decim)
+        self._numtaps = numtaps
         nyq = self.in_rate / 2.0
         cutoff = float(np.clip(cutoff_hz, 500.0, nyq * 0.95))
         self._b = firwin(numtaps, cutoff / nyq)
-        self._zi = np.zeros(numtaps - 1, dtype=np.float64)
+        self._b_rev = self._b[::-1].copy()
+        self._hist = np.zeros(numtaps - 1, dtype=np.float64)
 
     @property
     def out_rate(self) -> float:
         return self.in_rate / self.decim
 
     def process(self, x: np.ndarray) -> np.ndarray:
-        filt, self._zi = lfilter(self._b, 1.0, x, zi=self._zi)
-        return filt[:: self.decim]
+        y, self._hist = _fir_decimate(self._b_rev, self._hist, x, self.decim)
+        return y
 
 
 class FmDiscriminator:
