@@ -1725,7 +1725,9 @@ dabStationsEl.addEventListener("click", async (e) => {
   const btn = (e.target as HTMLElement).closest(".dab-station") as HTMLElement | null;
   if (!btn || !btn.dataset.mp3) return;
   dabPlayingSid = Number(btn.dataset.sid);
-  dabAudio.src = `http://${location.hostname}:${dabPort}${btn.dataset.mp3}`;
+  dabAudio.src = BASE === "/"
+    ? `http://${location.hostname}:${dabPort}${btn.dataset.mp3}`
+    : `${location.origin}${BASE}dab${btn.dataset.mp3}`;
   dabNow.textContent = "▶ " + btn.textContent;
   dabStationsEl.querySelectorAll(".dab-station").forEach((el) =>
     el.classList.toggle("playing", Number((el as HTMLElement).dataset.sid) === dabPlayingSid),
