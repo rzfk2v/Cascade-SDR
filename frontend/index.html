@@ -164,6 +164,21 @@
           <h2>AIS</h2>
           <p id="ais-status" class="status-line">starting…</p>
           <p id="ais-count" class="level-meter"></p>
+          <details class="ais-legend">
+            <summary>Vessel colours</summary>
+            <ul>
+              <li><i style="background:#34a853"></i>Cargo</li>
+              <li><i style="background:#ea4335"></i>Tanker</li>
+              <li><i style="background:#2b7de9"></i>Passenger</li>
+              <li><i style="background:#13b5b5"></i>High-speed</li>
+              <li><i style="background:#00bcd4"></i>Tug / special</li>
+              <li><i style="background:#9b59f0"></i>Sailing</li>
+              <li><i style="background:#d63bd6"></i>Pleasure</li>
+              <li><i style="background:#a0522d"></i>Fishing</li>
+              <li><i style="background:#9aa0a6"></i>Other / unknown</li>
+            </ul>
+            <p class="hint">▲ underway (points to heading) · ● moored / no heading</p>
+          </details>
           <div id="ais-note" class="ais-note" hidden>
             <label>Note · <span id="ais-note-target" class="muted"></span>
               <input id="ais-note-input" type="text" maxlength="120" placeholder="add a note for this vessel…" />

@@ -261,8 +261,13 @@ the nearest one for details.
 Plots vessels from their 162 MHz AIS transmissions.
 
 - Switch to **AIS**; ships appear as markers **sized by the vessel's length** (a
-  dinghy is a dot, a tanker is large) and tagged with a **country flag** from the
-  MMSI. Trails show recent movement.
+  dinghy is a dot, a tanker is large), **colour-coded by ship type** the way
+  MarineTraffic does it (cargo green, tanker red, passenger blue, high-speed teal,
+  sailing/pleasure purple, fishing brown, …), and tagged with a **country flag**
+  from the MMSI. A vessel that's **underway** shows an **arrow pointing to its
+  heading**; one that's **moored** (or hasn't reported a heading) shows a circle.
+  Open **Vessel colours** in the AIS panel for the legend. Trails show recent
+  movement.
 - The **Vessels list** has **sortable columns** — click **Vessel / Spd / Crs / Dist**
   to sort by that column (click again to reverse).
 - **Click** a ship → a full readout: name, MMSI, **flag/country**, IMO, callsign,

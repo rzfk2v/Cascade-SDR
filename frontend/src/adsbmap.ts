@@ -134,6 +134,47 @@ function vesselPopupHtml(v: Vessel): string {
   return `<div class="ac-popup"><b>${v.name || v.mmsi}</b><table>${body}</table></div>`;
 }
 
+// AIS ship-type code → vessel colour, matching MarineTraffic's legend so the
+// map reads the same way (cargo green, tanker red, passenger blue, …). The
+// code is the standard ITU/AIS category (0–99) reported in message type 5.
+export function vesselColor(t?: number): string {
+  if (t == null || t === 0) return "#9aa0a6";       // unspecified — grey
+  if (t >= 60 && t <= 69) return "#2b7de9";         // passenger — blue
+  if (t >= 70 && t <= 79) return "#34a853";         // cargo — green
+  if (t >= 80 && t <= 89) return "#ea4335";         // tanker — red
+  if (t >= 40 && t <= 49) return "#13b5b5";         // high-speed craft — teal
+  if (t === 30) return "#a0522d";                   // fishing — brown
+  if (t === 36) return "#9b59f0";                   // sailing — purple
+  if (t === 37) return "#d63bd6";                   // pleasure craft — magenta
+  if (t >= 31 && t <= 35) return "#00bcd4";         // tug/tow/dredge/military — cyan
+  if (t >= 50 && t <= 59) return "#00bcd4";         // pilot/SAR/tug/special — cyan
+  return "#9aa0a6";                                  // other — grey
+}
+
+// Vessel glyph as inline SVG. A vessel that is underway (has way on and a known
+// orientation) gets a MarineTraffic-style arrow that points NORTH at 0° and so
+// faces its heading once the marker is rotated. A moored/stationary vessel — or
+// one with no heading/course — gets a circle, which carries no false bearing.
+function vesselMarker(v: Vessel): { svg: string; rotates: boolean } {
+  const color = vesselColor(v.ship_type);
+  const dir = v.heading ?? v.course;
+  const underway = dir != null && (v.speed ?? 0) > 0.5;
+  if (underway) {
+    return {
+      svg:
+        `<svg viewBox="0 0 24 24" class="ship-svg">` +
+        `<path d="M12 1 L20 21 L12 16.5 L4 21 Z" style="fill:${color}"/></svg>`,
+      rotates: true,
+    };
+  }
+  return {
+    svg:
+      `<svg viewBox="0 0 24 24" class="ship-svg">` +
+      `<circle cx="12" cy="12" r="6" style="fill:${color}"/></svg>`,
+    rotates: false,
+  };
+}
+
 function popupHtml(ac: Aircraft): string {
   const rows: [string, string][] = [];
   rows.push(["Callsign", ac.flight || "—"]);
@@ -368,12 +409,14 @@ export class AdsbMap {
       this.addTrackPoint(this.vesselTracks, id, v.lat, v.lon, "#1f9d55");
       const dir = v.heading ?? v.course ?? 0;
       const label = v.name || String(v.mmsi);
+      const { svg, rotates } = vesselMarker(v);
       // scale the marker by vessel length so a dinghy looks small and a tanker big
       const size = v.length ? Math.max(13, Math.min(34, 11 + v.length / 6)) : 14;
+      const rot = rotates ? `transform:rotate(${dir}deg)` : "";
       const icon = L.divIcon({
         className: "ship-icon",
         html:
-          `<div class="ship-rot" style="font-size:${size}px;transform:rotate(${dir}deg)">▲</div>` +
+          `<div class="ship-rot" style="width:${size}px;height:${size}px;${rot}">${svg}</div>` +
           `<span class="plane-label">${label}</span>`,
         iconSize: [size, size],
         iconAnchor: [size / 2, size / 2],

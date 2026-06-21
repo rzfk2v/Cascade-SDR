@@ -192,7 +192,11 @@ channels), receives NMEA over UDP, decodes it with `pyais`, and plots vessels on
 the map with a sortable **Vessels** list (name/MMSI, speed, course, distance).
 AIS works with an ordinary VHF/whip antenna if you're near water. Vessel popups
 show the **ship type** (cargo/tanker/passenger/fishing/sailing/…) once a static
-message arrives, and each vessel draws a **track trail** as it moves.
+message arrives, and each vessel draws a **track trail** as it moves. Markers are
+**colour-coded by ship type** (MarineTraffic-style: cargo green, tanker red,
+passenger blue, …) and shaped by motion — an arrow pointing to the vessel's
+heading when underway, a circle when moored. A collapsible colour legend sits in
+the AIS panel.
 
 `AIS-catcher` isn't in Homebrew, so build it from source once:
 
