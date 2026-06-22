@@ -177,12 +177,19 @@ function vesselMarker(v: Vessel): { svg: string; rotates: boolean } {
 
 function popupHtml(ac: Aircraft): string {
   const rows: [string, string][] = [];
+  // Identity — who/what this aircraft is (static).
   rows.push(["Callsign", ac.flight || "—"]);
   rows.push(["ICAO", ac.icao.toUpperCase()]);
   if (ac.reg) rows.push(["Tail #", ac.reg]);
   if (ac.actype) rows.push(["Model", ac.actype]);
-  if (ac.owner) rows.push(["Operator", ac.owner]);
   if (ac.type) rows.push(["Category", ac.type]);
+  // Who flies it — operator runs the airframe, airline is the marketing carrier.
+  if (ac.owner) rows.push(["Operator", ac.owner]);
+  if (ac.airline) rows.push(["Airline", ac.airline]);
+  // Route.
+  if (ac.origin) rows.push(["From", ac.origin_name ? `${ac.origin} · ${ac.origin_name}` : ac.origin]);
+  if (ac.destination) rows.push(["To", ac.dest_name ? `${ac.destination} · ${ac.dest_name}` : ac.destination]);
+  // Live telemetry — changes second to second.
   if (ac.squawk) rows.push(["Squawk", ac.squawk]);
   if (ac.alt != null) rows.push(["Altitude", `${ac.alt.toLocaleString()} ft`]);
   if (ac.vert_rate != null) {
@@ -192,9 +199,6 @@ function popupHtml(ac: Aircraft): string {
   }
   if (ac.speed != null) rows.push(["Speed", `${ac.speed} kt`]);
   if (ac.track != null) rows.push(["Track", `${ac.track}°`]);
-  if (ac.airline) rows.push(["Airline", ac.airline]);
-  if (ac.origin) rows.push(["From", ac.origin_name ? `${ac.origin} · ${ac.origin_name}` : ac.origin]);
-  if (ac.destination) rows.push(["To", ac.dest_name ? `${ac.destination} · ${ac.dest_name}` : ac.destination]);
   if (ac.ground) rows.push(["State", "on ground"]);
   if (ac.age != null) rows.push(["Seen", `${ac.age}s ago`]);
   const body = rows
