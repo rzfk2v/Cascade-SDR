@@ -158,7 +158,10 @@ function syncFreqField(): void {
   if (document.activeElement === freqInput) return; // don't clobber mid-edit
   const radio = currentMode === "radio";
   freqLabel.textContent = radio ? "Frequency (MHz)" : "Center (MHz)";
-  freqInput.value = ((radio ? viewTuned : viewCenter) / 1e6).toString();
+  // Round to 10 Hz and trim trailing zeros: a pixel click maps to an exact
+  // fractional frequency, which otherwise shows as "118.20640677966101".
+  const mhz = (radio ? viewTuned : viewCenter) / 1e6;
+  freqInput.value = (+mhz.toFixed(5)).toString();
 }
 const rateInput = document.getElementById("rate") as HTMLInputElement;
 const gainAuto = document.getElementById("gain-auto") as HTMLInputElement;
