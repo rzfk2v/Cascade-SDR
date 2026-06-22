@@ -148,6 +148,18 @@ const connText = document.getElementById("conn-text")!;
 const statusLine = document.getElementById("status-line")!;
 const tunedLine = document.getElementById("tuned-line")!;
 const freqInput = document.getElementById("freq") as HTMLInputElement;
+const freqLabel = document.getElementById("freq-label")!;
+
+// The Tuning field shows what you're hearing. In Radio mode that's the tuned
+// channel (which click-to-tune moves without re-centring the dongle); in the
+// Spectrum view it's the dongle's centre frequency. Keep it in sync from one
+// place so clicking and typing always agree.
+function syncFreqField(): void {
+  if (document.activeElement === freqInput) return; // don't clobber mid-edit
+  const radio = currentMode === "radio";
+  freqLabel.textContent = radio ? "Frequency (MHz)" : "Center (MHz)";
+  freqInput.value = ((radio ? viewTuned : viewCenter) / 1e6).toString();
+}
 const rateInput = document.getElementById("rate") as HTMLInputElement;
 const gainAuto = document.getElementById("gain-auto") as HTMLInputElement;
 const gainSlider = document.getElementById("gain") as HTMLInputElement;
@@ -322,11 +334,13 @@ sock.onJson((msg) => {
       viewCenter = msg.center_freq;
       viewRate = msg.sample_rate;
       updateBandInfo();
+      syncFreqField();
       tuner.setBand(msg.center_freq, msg.sample_rate);
       break;
     case "radio_config":
       viewTuned = msg.tuned_freq;
       updateBandInfo();
+      syncFreqField();
       tuner.setTuned(msg.tuned_freq);
       tuner.setBandwidth(msg.bandwidth);
       demodSel.value = msg.demod;
@@ -505,8 +519,8 @@ function renderStatus(s: any): void {
     `${dev} · ${run} · ${(s.center_freq / 1e6).toFixed(3)} MHz · ` +
     `${(s.sample_rate / 1e6).toFixed(2)} MS/s`;
   // don't clobber a value the user is mid-edit (these now tune on change)
-  if (document.activeElement !== freqInput)
-    freqInput.value = (s.center_freq / 1e6).toString();
+  viewCenter = s.center_freq;
+  syncFreqField();
   if (document.activeElement !== rateInput)
     rateInput.value = (s.sample_rate / 1e6).toString();
 }
@@ -1142,6 +1156,10 @@ tuner.onTune = async (freqHz) => {
     sock.send({ cmd: "config", params: { tuned_freq: freqHz } });
     tuner.setTuned(freqHz);
   }
+  // Reflect the new channel in the Tuning field straight away, rather than
+  // waiting for the backend's radio_config echo.
+  viewTuned = freqHz;
+  syncFreqField();
 };
 tuner.onSelect = (loHz, hiHz) => {
   if (currentMode === "radio" || currentMode === "replay") {
@@ -1623,6 +1641,8 @@ async function recallBookmark(b: Bookmark): Promise<void> {
   sock.send({ cmd: "tune", center_freq: hz });
   sock.send({ cmd: "config", params: { tuned_freq: hz } });
   tuner.setTuned(hz);
+  viewTuned = hz;
+  syncFreqField();
 }
 
 restoreSettings();

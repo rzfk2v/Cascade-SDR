@@ -38,7 +38,7 @@ The sidebar shows only the panels that apply to the current mode.
 ### Tuning (Radio view)
 | Control | What it does |
 |---|---|
-| **Center (MHz)** | Type a frequency and press **Enter** to go there: it re-centers the band **and** tunes/listens to that frequency (the channel cursor follows). Range 24–1766 MHz (R820T). Click elsewhere in the waterfall afterwards to listen off-centre. |
+| **Center / Frequency (MHz)** | Type a frequency and press **Enter** to go there: it re-centers the band **and** tunes/listens to that frequency (the channel cursor follows). Range 24–1766 MHz (R820T). Click elsewhere in the waterfall afterwards to listen off-centre — in Radio mode the field is labelled **Frequency** and tracks the channel you're listening to (so it updates when you click around), while in the Spectrum view it's labelled **Center** and shows the dongle's centre. |
 | **Sample rate (MS/s)** | Capture bandwidth, up to 2.4. Lower = less CPU/USB, narrower view. |
 | **◀ block / block ▶** | Jump the captured band down/up by one capture width (~2.4 MHz) to walk across the spectrum looking for signals. |
 
