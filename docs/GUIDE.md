@@ -443,6 +443,34 @@ the evening) and watch your neighbourhood's weather sensors and car TPMS appear.
 
 ---
 
+## Frequency directory
+
+- A **built-in, click-to-tune reference** of known channels, so you can see *what*
+  a frequency is for instead of guessing. Click any row to jump there (it switches
+  to **Radio** with a sensible demodulator — AM for airband, NFM for marine/PMR, …).
+- Grouped into **Marine VHF** (full ITU channel table, ship-station frequencies),
+  **Airband** (Stockholm Arlanda & Bromma tower/ground/ATIS/approach + 121.5 guard),
+  **Ham · APRS · satellites** (calling frequencies, APRS, ISS, sat segments),
+  **Weather sat · ISM** (NOAA/Meteor APT, 433/868 devices), and **PMR446**.
+- **Search** by name or MHz to filter across every category at once.
+
+> **These are the author's lists.** The marine, ham, weather-sat, ISM and PMR446
+> entries are standard international (ITU / IARU Region-1) plans that apply anywhere
+> in Europe, but the **airband list is specific to Stockholm** (Arlanda & Bromma) —
+> it won't match your local airports. Replace it with your own:
+>
+> - **Import my own list** — load a `CSV` (`name,mhz,demod`) or `JSON`
+>   (`[{"name","mhz","demod"}]`) file. Demod is optional (nfm/wfm/am/usb/lsb). It's
+>   saved in your browser and shown as **My list** at the top; **Clear my list**
+>   removes it.
+> - Untick **Show built-in lists** to hide the bundled (Stockholm/Region-1) channels
+>   and use *only* your imported list.
+> - To change the bundled defaults permanently, edit `frontend/src/frequencies.ts`
+>   and rebuild.
+>
+> Channels that map to a decoder (AIS, APRS, APT, ISM) are tagged — switch to that
+> mode to actually decode them.
+
 ## Bookmarks & persistence
 
 - **Bookmarks** — save the current frequency (+demod) with a name; click to recall,

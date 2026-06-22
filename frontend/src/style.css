@@ -159,6 +159,36 @@ details.advanced[open] > summary::before { content: "▾ "; }
 }
 .bm-row button.del:hover { color: var(--err); }
 .bm-empty { color: var(--muted); font-size: 0.75rem; }
+
+/* frequency directory */
+#freq-directory > #dir-search { width: 100%; margin-bottom: 0.4rem; }
+.dir-list { display: flex; flex-direction: column; gap: 0.15rem; max-height: 280px; overflow-y: auto; }
+.dir-cat {
+  color: var(--muted); font-size: 0.66rem; text-transform: uppercase;
+  letter-spacing: 0.05em; margin: 0.45rem 0 0.1rem; position: sticky; top: 0;
+  background: var(--panel);
+}
+.dir-cat:first-child { margin-top: 0; }
+.dir-list .dir-row {
+  display: grid; grid-template-columns: 1fr auto; align-items: baseline;
+  gap: 0.2rem 0.5rem; text-align: left; background: var(--bg); color: var(--text);
+  border: 1px solid var(--border); border-radius: 6px; padding: 0.28rem 0.5rem;
+  cursor: pointer; font-size: 0.78rem; width: 100%;
+}
+.dir-list .dir-row:hover { border-color: var(--accent); }
+.dir-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dir-freq { font-family: ui-monospace, Menlo, monospace; font-size: 0.74rem; color: var(--muted); white-space: nowrap; }
+.dir-freq i { font-style: normal; font-size: 0.62rem; opacity: 0.7; }
+.dir-note { grid-column: 1 / -1; color: var(--muted); font-size: 0.66rem; line-height: 1.2; }
+.dir-import { margin-top: 0.5rem; }
+.dir-import > summary { cursor: pointer; color: var(--muted); font-size: 0.74rem; }
+.dir-import input[type="file"] { font-size: 0.72rem; max-width: 100%; }
+.dir-import .dir-builtin-toggle { margin-top: 0.4rem; font-size: 0.76rem; cursor: pointer; }
+#dir-import-clear {
+  margin-top: 0.3rem; font-size: 0.72rem; background: var(--bg); color: var(--text);
+  border: 1px solid var(--border); border-radius: 6px; padding: 0.2rem 0.5rem; cursor: pointer;
+}
+#dir-import-clear:hover { border-color: var(--err); color: var(--err); }
 .status-line { font-size: 0.72rem; color: var(--muted); margin: 0.1rem 0 0; }
 .status-line.err { color: var(--err); }
 .band-info { font-size: 0.78rem; color: var(--accent); margin: 0.1rem 0 0; }

@@ -134,6 +134,14 @@ weather satellites). It updates as you type a Center frequency.
   waterfall, **Peak hold** on the spectrum scope — peaks linger then fade over
   ~1–2 s so brief/bursty signals flash and are easy to spot — and **Averaging**
   (2–16×) to smooth the scope's noise floor so weak, steady carriers stand out.
+- **Frequency directory**: a built-in, searchable, click-to-tune reference of known
+  channels (full ITU **Marine VHF** table, Stockholm **airband**, **ham/APRS/sat**
+  calling frequencies, **weather-sat/ISM**, **PMR446**). Click a row to jump there
+  in Radio mode with the right demod. The bundled lists are the author's: marine /
+  ham / weather-sat / ISM / PMR446 are standard Region-1 plans, but the **airband
+  list is Stockholm-specific**. **Import** your own `CSV`/`JSON` list (shown as *My
+  list*), optionally untick *Show built-in lists* to use only yours, or edit
+  [`frontend/src/frequencies.ts`](frontend/src/frequencies.ts) to change the defaults.
 - **Bookmarks**: save the current frequency (+ demod) with a name; click to recall,
   × to delete.
 - **Settings persist** across reloads (gain, PPM, bias-T, demod, volume, squelch,

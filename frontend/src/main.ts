@@ -22,6 +22,7 @@ import {
   type Bookmark,
 } from "./storage";
 import { bandAt, bandsInSpan } from "./bands";
+import { FREQ_DIRECTORY, type FreqEntry, type DirDemod } from "./frequencies";
 import { antennaText } from "./antenna";
 import { WavRecorder, downloadBlob } from "./recorder";
 import { AptImage } from "./aptimage";
@@ -1626,6 +1627,140 @@ async function recallBookmark(b: Bookmark): Promise<void> {
 
 restoreSettings();
 renderBookmarks();
+
+// --- frequency directory -------------------------------------------------
+// A built-in, click-to-tune reference (see frequencies.ts) plus an optional
+// user list imported from CSV/JSON and persisted in localStorage.
+const DIR_KEY = "freq-dir-custom";
+const dirSearch = document.getElementById("dir-search") as HTMLInputElement;
+const dirList = document.getElementById("dir-list")!;
+const dirImportFile = document.getElementById("dir-import-file") as HTMLInputElement;
+const dirImportClear = document.getElementById("dir-import-clear") as HTMLButtonElement;
+const dirImportStatus = document.getElementById("dir-import-status")!;
+const dirShowBuiltin = document.getElementById("dir-show-builtin") as HTMLInputElement;
+const DIR_BUILTIN_KEY = "freq-dir-show-builtin";
+dirShowBuiltin.checked = localStorage.getItem(DIR_BUILTIN_KEY) !== "0";
+
+function loadCustomFreqs(): FreqEntry[] {
+  try {
+    return JSON.parse(localStorage.getItem(DIR_KEY) || "[]");
+  } catch {
+    return [];
+  }
+}
+let customFreqs: FreqEntry[] = loadCustomFreqs();
+
+// Flat [category, entry] pairs so a search can filter across everything at once.
+// With a personal list imported, the built-in (Stockholm/Region-1) lists can be
+// hidden so the directory shows only the user's own channels.
+function dirCategories(): { name: string; entries: FreqEntry[] }[] {
+  const showBuiltin = dirShowBuiltin.checked || !customFreqs.length;
+  const cats = showBuiltin
+    ? FREQ_DIRECTORY.map((c) => ({ name: c.name, entries: c.entries }))
+    : [];
+  if (customFreqs.length) cats.unshift({ name: "My list", entries: customFreqs });
+  return cats;
+}
+
+function renderDirectory(): void {
+  const q = dirSearch.value.trim().toLowerCase();
+  let html = "";
+  let shown = 0;
+  for (const cat of dirCategories()) {
+    const hits = cat.entries.filter(
+      (e) => !q || e.name.toLowerCase().includes(q) || e.mhz.toFixed(4).includes(q),
+    );
+    if (!hits.length) continue;
+    html += `<div class="dir-cat">${cat.name}</div>`;
+    for (const e of hits) {
+      shown++;
+      const idx = cat.entries.indexOf(e);
+      const note = e.note ? `<span class="dir-note">${e.note}</span>` : "";
+      html +=
+        `<button class="dir-row" data-cat="${cat.name}" data-i="${idx}">` +
+        `<span class="dir-name">${e.name}</span>` +
+        `<span class="dir-freq">${e.mhz.toFixed(4).replace(/0+$/, "").replace(/\.$/, "")} <i>${e.demod.toUpperCase()}</i></span>` +
+        note +
+        `</button>`;
+    }
+  }
+  const hasCustom = customFreqs.length > 0;
+  dirImportClear.hidden = !hasCustom;
+  (dirShowBuiltin.closest("label") as HTMLElement).hidden = !hasCustom;
+  dirList.innerHTML = shown ? html : '<div class="bm-empty">No matches.</div>';
+}
+
+dirSearch.addEventListener("input", renderDirectory);
+
+dirShowBuiltin.addEventListener("change", () => {
+  localStorage.setItem(DIR_BUILTIN_KEY, dirShowBuiltin.checked ? "1" : "0");
+  renderDirectory();
+});
+
+dirList.addEventListener("click", async (e) => {
+  const btn = (e.target as HTMLElement).closest(".dir-row") as HTMLElement | null;
+  if (!btn) return;
+  const cat = dirCategories().find((c) => c.name === btn.dataset.cat);
+  const entry = cat?.entries[parseInt(btn.dataset.i!, 10)];
+  if (!entry) return;
+  await recallBookmark({ name: entry.name, mhz: entry.mhz, demod: entry.demod });
+});
+
+// Parse an imported list. JSON: array of {name, mhz, demod?}. CSV: name,mhz,demod
+// with an optional header row; mhz may be given in MHz.
+function parseImported(text: string, isJson: boolean): FreqEntry[] {
+  const valid: DirDemod[] = ["wfm", "nfm", "am", "usb", "lsb"];
+  const coerce = (name: any, mhz: any, demod: any): FreqEntry | null => {
+    const f = parseFloat(mhz);
+    if (!name || !isFinite(f)) return null;
+    const d = String(demod || "nfm").toLowerCase() as DirDemod;
+    return { name: String(name).trim(), mhz: f, demod: valid.includes(d) ? d : "nfm" };
+  };
+  const out: FreqEntry[] = [];
+  if (isJson) {
+    const arr = JSON.parse(text);
+    if (!Array.isArray(arr)) throw new Error("expected a JSON array");
+    for (const r of arr) {
+      const e = coerce(r.name, r.mhz ?? r.freq, r.demod);
+      if (e) out.push(e);
+    }
+  } else {
+    for (const line of text.split(/\r?\n/)) {
+      const cols = line.split(",");
+      if (cols.length < 2) continue;
+      if (/mhz|freq/i.test(cols[1]) && /name/i.test(cols[0])) continue; // header
+      const e = coerce(cols[0], cols[1], cols[2]);
+      if (e) out.push(e);
+    }
+  }
+  return out;
+}
+
+dirImportFile.addEventListener("change", async () => {
+  const file = dirImportFile.files?.[0];
+  if (!file) return;
+  try {
+    const text = await file.text();
+    const entries = parseImported(text, /\.json$/i.test(file.name) || text.trim().startsWith("["));
+    if (!entries.length) throw new Error("no usable rows found");
+    customFreqs = entries;
+    localStorage.setItem(DIR_KEY, JSON.stringify(customFreqs));
+    dirImportStatus.textContent = `Imported ${entries.length} entr${entries.length === 1 ? "y" : "ies"}.`;
+    renderDirectory();
+  } catch (err) {
+    dirImportStatus.textContent = `Import failed: ${(err as Error).message}`;
+  }
+  dirImportFile.value = "";
+});
+
+dirImportClear.addEventListener("click", () => {
+  customFreqs = [];
+  localStorage.removeItem(DIR_KEY);
+  dirImportStatus.textContent = "";
+  renderDirectory();
+});
+
+renderDirectory();
 
 // --- IQ recording --------------------------------------------------------
 const recIqBtn = document.getElementById("rec-iq") as HTMLButtonElement;

@@ -338,6 +338,21 @@
           <div id="rec-list" class="bm-list"></div>
         </section>
 
+        <section class="group" id="freq-directory">
+          <h2>Frequency directory</h2>
+          <input id="dir-search" type="text" placeholder="search name or MHz…" />
+          <div id="dir-list" class="dir-list"></div>
+          <details class="dir-import">
+            <summary>Import my own list</summary>
+            <p class="hint">CSV (<code>name,mhz,demod</code>) or JSON
+              (<code>[{"name","mhz","demod"}]</code>). Demod optional (nfm/wfm/am/usb/lsb).</p>
+            <input id="dir-import-file" type="file" accept=".csv,.json,text/csv,application/json" />
+            <label class="check dir-builtin-toggle"><input id="dir-show-builtin" type="checkbox" checked /> Show built-in lists</label>
+            <button id="dir-import-clear" hidden>Clear my list</button>
+            <p id="dir-import-status" class="hint"></p>
+          </details>
+        </section>
+
         <section class="group" id="bookmarks">
           <h2>Bookmarks</h2>
           <div class="bm-add">
