@@ -80,6 +80,8 @@ let noteMmsi: string | null = null;
 const aprsControls = document.getElementById("aprs-controls")!;
 const aprsStatus = document.getElementById("aprs-status")!;
 const aprsCount = document.getElementById("aprs-count")!;
+const aprsLog = document.getElementById("aprs-log")!;
+const aprsFeedCount = document.getElementById("aprs-feedcount")!;
 const acarsControls = document.getElementById("acars-controls")!;
 const acarsStatus = document.getElementById("acars-status")!;
 const acarsCount = document.getElementById("acars-count")!;
@@ -413,6 +415,9 @@ sock.onJson((msg) => {
       adsbMap.updateStations(msg.stations);
       aprsCount.textContent = `${msg.positioned} shown · ${msg.count} tracked`;
       renderStationList(msg.stations);
+      break;
+    case "aprs_packets":
+      renderAprsPackets(msg.packets || []);
       break;
     case "acars_status":
       acarsStatus.textContent = msg.message;
@@ -855,6 +860,30 @@ function renderAcars(messages: any[]): void {
       const body = m.text ? `<div class="body">${esc(m.text)}</div>` : "";
       return `<div class="acars-row"><div class="meta"><span class="time">${time}</span> ` +
         `${esc(id)}${esc(tail)}${label}${freq}</div>${body}</div>`;
+    })
+    .join("");
+}
+
+// APRS packet feed — newest first. Shows the friendly text (message / status /
+// weather / comment); falls back to the raw TNC2 packet when there's no text.
+function renderAprsPackets(packets: any[]): void {
+  aprsFeedCount.textContent = packets.length ? `(${packets.length})` : "";
+  if (!packets.length) {
+    aprsLog.innerHTML =
+      '<div class="acars-empty">No packets yet. APRS beacons are infrequent — give it time.</div>';
+    return;
+  }
+  aprsLog.innerHTML = packets
+    .slice()
+    .reverse()
+    .map((p) => {
+      const time = new Date((p.t || 0) * 1000).toLocaleTimeString();
+      const to = p.to ? ` → ${esc(p.to)}` : "";
+      const type = p.type ? `<span class="aprs-ptype">${esc(p.type)}</span>` : "";
+      const text = p.text ? esc(p.text) : p.raw ? `<span class="muted">${esc(p.raw)}</span>` : "";
+      const body = text ? `<div class="aprs-ptext">${text}</div>` : "";
+      return `<div class="aprs-prow"><div class="meta"><span class="time">${time}</span> ` +
+        `<b>${esc(p.from || "?")}</b>${to} ${type}</div>${body}</div>`;
     })
     .join("");
 }

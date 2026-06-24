@@ -194,9 +194,14 @@
           <h2>APRS</h2>
           <p id="aprs-status" class="status-line">starting…</p>
           <p id="aprs-count" class="level-meter"></p>
+          <details class="aprs-packets" open>
+            <summary>Packets <span id="aprs-feedcount" class="muted"></span></summary>
+            <div id="aprs-log" class="aprs-log"></div>
+          </details>
           <p class="hint">144.800 MHz packet (EU). Needs <b>direwolf</b> installed
             (<code>brew install direwolf</code>). Plots stations heard direct or via
-            digipeaters; beacons are infrequent, so give it time.</p>
+            digipeaters; beacons are infrequent, so give it time. The packet feed
+            shows each message/status/position as it's received.</p>
         </section>
 
         <section class="group" id="apt-controls" hidden>

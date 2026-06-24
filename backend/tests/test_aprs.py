@@ -43,6 +43,39 @@ def test_pipeline_to_stations():
           f"(SA0BXI-9 @ {sa['lat']},{sa['lon']})")
 
 
+def test_packet_feed():
+    m = AprsMode(manager=_FakeMgr())
+    # a position-with-comment, a status, and an addressed message
+    lines = [
+        "[0.1] SA0BXI-9>APDR16,WIDE1-1:!5912.34N/01803.56E>Hello from Sweden",
+        "SM7ABC>APRS,TCPIP*:>Net control tonight 1900",          # status
+        "SA0ABC>APRS::SM7XYZ   :Hello there{1",                  # message -> SM7XYZ
+    ]
+    for line in lines:
+        m._on_line(line)
+    pkts = m._packets_msg()["packets"]
+    assert len(pkts) == 3, pkts
+    by_from = {p["from"]: p for p in pkts}
+    assert by_from["SA0BXI-9"]["text"] == "Hello from Sweden"
+    assert by_from["SM7ABC"]["type"] == "status"
+    msg = by_from["SA0ABC"]
+    assert msg["type"] == "message" and msg["to"] == "SM7XYZ"
+    assert msg["text"] == "Hello there"
+    assert all(p.get("raw") for p in pkts)  # raw TNC2 retained for each row
+    print(f"✓ packet feed: {len(pkts)} packets, message routed to {msg['to']}")
+
+
+def test_packet_feed_dedupes_digipeats():
+    m = AprsMode(manager=_FakeMgr())
+    line = "[0.1] SA0BXI-9>APDR16,WIDE1-1:!5912.34N/01803.56E>beep"
+    m._on_line(line)
+    m._on_line(line)  # same packet again (e.g. via a second digipeater) within 5 s
+    assert len(m._packets_msg()["packets"]) == 1, "exact repeat should be skipped"
+    # the station is still tracked
+    assert "SA0BXI-9" in {s["call"] for s in m._stations_msg(_now(m))["stations"]}
+    print("✓ packet feed: exact digipeat repeat collapsed")
+
+
 class _FakeMgr:
     center_freq = 144_800_000.0
     sample_rate = 2_400_000.0
@@ -59,4 +92,6 @@ def _now(m):
 if __name__ == "__main__":
     test_extract_tnc2()
     test_pipeline_to_stations()
+    test_packet_feed()
+    test_packet_feed_dedupes_digipeats()
     print("all APRS tests passed")

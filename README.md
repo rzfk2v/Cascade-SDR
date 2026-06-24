@@ -20,7 +20,7 @@ things to try. Status:
 | **DAB** | DAB/DAB+ digital radio — ensemble station list + playback (via `welle-cli`) | ✅ working† |
 | **ADS-B** | Aircraft on a Leaflet map (via `dump1090`) | ✅ working* |
 | **AIS** | Ships on a Leaflet map (via `AIS-catcher`) | ✅ working** |
-| **APRS** | Packet-radio stations on the map (via `rtl_fm` → `direwolf`) | ✅ working‡ |
+| **APRS** | Packet-radio stations on the map + live packet feed (via `rtl_fm` → `direwolf`) | ✅ working‡ |
 | **ACARS** | Aircraft VHF data messages as a live feed (via `acarsdec`) | ✅ working§ |
 | **APT** | NOAA weather-satellite images at 137 MHz (hand-written decoder) | ✅ working¶ |
 | **SSTV** | Slow-scan TV images — auto-detects Martin / Scottie / Robot / PD (hand-written decoder) | ✅ working◇ |
@@ -226,6 +226,9 @@ Select **APRS**: the backend pipes `rtl_fm` (NBFM audio at 144.800 MHz, the EU
 APRS frequency) into [`direwolf`](https://github.com/wb2osz/direwolf) (the standard
 soundcard TNC), parses the decoded TNC2 packets with `aprslib`, and plots stations
 on the map with a **Stations** list (callsign, info, distance) and a track trail.
+A **Packets feed** in the APRS panel also shows each decoded packet as it arrives
+— messages (with recipient), status, weather and position comments, newest first —
+so you can read the actual traffic, not just the aggregated map.
 Works with an ordinary VHF/whip antenna, but beacons are infrequent (minutes
 apart) so give it time. Install direwolf once:
 

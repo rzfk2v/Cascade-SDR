@@ -352,6 +352,22 @@ details.advanced[open] > summary::before { content: "▾ "; }
 .acars-row .body { color: var(--text); white-space: pre-wrap; word-break: break-word; margin-top: 0.1rem; }
 .acars-empty { color: var(--muted); font-size: 0.85rem; }
 
+/* APRS packet feed (sidebar) */
+.aprs-packets > summary { cursor: pointer; color: var(--muted); font-size: 0.78rem; }
+.aprs-log {
+  max-height: 240px; overflow-y: auto; margin-top: 0.35rem;
+  display: flex; flex-direction: column; gap: 0.3rem;
+  font-family: ui-monospace, Menlo, monospace; font-size: 0.72rem;
+}
+.aprs-prow { border-bottom: 1px solid var(--border); padding-bottom: 0.25rem; }
+.aprs-prow .meta { color: var(--accent); }
+.aprs-prow .meta .time { color: var(--muted); margin-right: 0.15rem; }
+.aprs-ptype {
+  color: var(--muted); border: 1px solid var(--border); border-radius: 4px;
+  padding: 0 0.25rem; font-size: 0.64rem; text-transform: uppercase;
+}
+.aprs-ptext { color: var(--text); white-space: pre-wrap; word-break: break-word; margin-top: 0.1rem; }
+
 .ism-log {
   flex: 1 1 auto;
   overflow-y: auto;

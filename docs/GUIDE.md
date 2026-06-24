@@ -295,6 +295,11 @@ Plots amateur **APRS** stations heard on **144.800 MHz** (EU). Needs
 - Switch to **APRS**; stations appear as dots with their **callsign** and a trail;
   the **Stations list** is sorted by distance.
 - **Click** a station → callsign, packet type, speed/course, altitude, comment.
+- A **Packets** feed in the APRS panel shows each decoded packet as it's received
+  — **messages** (with their recipient), **status**, **weather**, and position
+  **comments** — newest first, with the raw packet as a fallback. This is the
+  place to actually *read* APRS traffic, as opposed to the aggregated map. (Note:
+  most RF traffic is position/weather beacons; addressed messages are uncommon.)
 - Reception is direct or via **digipeaters**, so you can hear stations from
   surprisingly far. Beacons are infrequent (minutes apart) — leave it running.
 - North America uses **144.390 MHz** — set the Center frequency accordingly.

@@ -52,6 +52,11 @@ class AprsMode(Mode):
     def __init__(self, manager) -> None:
         super().__init__(manager)
         self.stations: dict[str, dict] = {}
+        # Rolling feed of recently received packets (newest last), so the UI can
+        # show the actual traffic — messages, status, weather, comments — as it
+        # arrives, not just an aggregated station map.
+        self.packets: deque[dict] = deque(maxlen=120)
+        self._last_raw: tuple[str, float] = ("", 0.0)
         self._proc: asyncio.subprocess.Process | None = None
 
     @staticmethod
@@ -154,6 +159,57 @@ class AprsMode(Mode):
         pt = d.get("packet_type") or d.get("format")
         if pt:
             s["kind"] = str(pt)
+        # Add to the packet feed, skipping an exact repeat of the last packet
+        # within 5 s (the same beacon arriving via several digipeater paths).
+        wall = time.monotonic()
+        if not (pkt == self._last_raw[0] and wall - self._last_raw[1] < 5.0):
+            self.packets.append(self._packet_row(d, pkt))
+        self._last_raw = (pkt, wall)
+
+    @staticmethod
+    def _wx_summary(w: dict) -> str:
+        bits = []
+        try:
+            if w.get("temperature") is not None:
+                bits.append(f"{float(w['temperature']):.0f}°C")
+            if w.get("wind_speed") is not None:
+                bits.append(f"wind {float(w['wind_speed']):.0f} m/s")
+            if w.get("humidity") is not None:
+                bits.append(f"{int(w['humidity'])}% RH")
+            if w.get("pressure") is not None:
+                bits.append(f"{float(w['pressure']):.0f} hPa")
+            if w.get("rain_1h") is not None:
+                bits.append(f"rain {w['rain_1h']} mm/h")
+        except Exception:
+            pass
+        return ", ".join(bits)
+
+    def _packet_row(self, d: dict, raw: str) -> dict:
+        """Build one feed row: a friendly type + text, plus the raw TNC2 packet."""
+        kind = (d.get("format") or d.get("packet_type") or "packet").lower()
+        to: str | None = None
+        text = ""
+        if d.get("message_text") is not None:
+            kind = "message"
+            to = (d.get("addresse") or "").strip() or None
+            text = d.get("message_text") or ""
+        elif d.get("status"):
+            kind = "status"
+            text = d.get("status") or ""
+        elif d.get("weather"):
+            kind = "weather"
+            text = self._wx_summary(d["weather"]) or (d.get("comment") or "")
+        elif d.get("comment"):
+            if d.get("latitude") is not None:
+                kind = "position"
+            text = d.get("comment") or ""
+        elif d.get("latitude") is not None:
+            kind = "position"
+        row = {"t": time.time(), "from": d.get("from"), "type": kind,
+               "text": text, "raw": raw}
+        if to:
+            row["to"] = to
+        return row
 
     def _prune(self, now: float) -> None:
         for k in [k for k, v in self.stations.items() if now - v["t"] > STALE_SECONDS]:
@@ -172,8 +228,13 @@ class AprsMode(Mode):
         return {"type": "stations", "stations": out,
                 "count": len(out), "positioned": positioned}
 
+    def _packets_msg(self) -> dict:
+        return {"type": "aprs_packets", "packets": list(self.packets),
+                "count": len(self.packets)}
+
     def _emit(self, now: float) -> None:
         self.manager.emit_json(self._stations_msg(now))
+        self.manager.emit_json(self._packets_msg())
 
     def snapshot(self) -> list[dict]:
-        return [self._stations_msg(time.monotonic())]
+        return [self._stations_msg(time.monotonic()), self._packets_msg()]
