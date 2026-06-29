@@ -95,9 +95,9 @@ you click a signal. (This is the old Waterfall and Radio modes merged into one.)
   great for catching brief bursts), and **Averaging** (2–16×) which smooths the
   scope trace so a weak, steady carrier stops dancing in the noise and stands out.
 - **Reading the scope**: the left edge has a **dB scale** (a line every 10 dB) so you
-  can read signal strength at a glance. A dashed red **noise-floor line** marks the
-  grass between carriers (with a `noise ≈ … dB` readout), and the **service name**
-  for the tuned band (e.g. *70 cm ham*, *Airband*) is printed faintly across it.
+  can read signal strength at a glance. A red **noise-floor strip** marks the grass
+  between carriers (with a `noise ≈ … dB` readout), and the **service name** for the
+  tuned band (e.g. *2 m ham*, *Airband*) runs along the bottom, above the waterfall.
 
 **Try:** tune Center to **100 MHz**, watch FM stations as bright wide blobs, and
 click one to listen. Scroll to zoom into a crowded patch. For a faint constant

@@ -179,17 +179,6 @@ export class SpectrumScope {
       ctx.fillRect(0, top, this.w, 1);
       ctx.fillRect(0, top + bandH - 1, this.w, 1);
 
-      // service name, centred in the strip
-      if (this.bandLabel) {
-        ctx.font = "600 13px -apple-system, system-ui, sans-serif";
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillStyle = "rgba(255,236,232,0.95)";
-        ctx.fillText(this.bandLabel.toUpperCase(), this.w / 2, top + bandH / 2);
-        ctx.textAlign = "left";
-        ctx.textBaseline = "alphabetic";
-      }
-
       // dB readout, right-aligned just above the strip
       const nf = `noise ≈ ${Math.round(this.noiseDb as number)} dB`;
       ctx.font = "10px -apple-system, system-ui, sans-serif";
@@ -198,13 +187,6 @@ export class SpectrumScope {
       ctx.fillRect(this.w - tw - 8, top - 13, tw + 6, 12);
       ctx.fillStyle = "rgba(248,81,73,0.9)";
       ctx.fillText(nf, this.w - tw - 5, top - 4);
-    } else if (this.bandLabel) {
-      // no noise estimate yet — still show the band name along the bottom
-      ctx.font = "600 13px -apple-system, system-ui, sans-serif";
-      ctx.textAlign = "center";
-      ctx.fillStyle = "rgba(248,81,73,0.7)";
-      ctx.fillText(this.bandLabel.toUpperCase(), this.w / 2, this.h - 8);
-      ctx.textAlign = "left";
     }
 
     const vspan = this.viewHi - this.viewLo;
@@ -247,5 +229,21 @@ export class SpectrumScope {
     ctx.closePath();
     ctx.fillStyle = "rgba(77,208,225,0.08)";
     ctx.fill();
+
+    // service/band name along the bottom of the spectrum, just above the
+    // waterfall, with a dark backing so it reads over the trace fill.
+    if (this.bandLabel) {
+      const label = this.bandLabel.toUpperCase();
+      ctx.font = "600 13px -apple-system, system-ui, sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "bottom";
+      const tw = ctx.measureText(label).width;
+      ctx.fillStyle = "rgba(8,12,18,0.6)";
+      ctx.fillRect((this.w - tw) / 2 - 6, this.h - 18, tw + 12, 16);
+      ctx.fillStyle = "rgba(255,236,232,0.95)";
+      ctx.fillText(label, this.w / 2, this.h - 3);
+      ctx.textAlign = "left";
+      ctx.textBaseline = "alphabetic";
+    }
   }
 }
