@@ -162,36 +162,48 @@ export class SpectrumScope {
       ctx.fillText(txt, 5, y - 2);
     }
 
-    // noise-floor baseline + readout
-    if (this.noiseDb !== null && this.noiseDb > this.floor && this.noiseDb < this.ceil) {
-      const yn = this.yOf(this.noiseDb);
-      ctx.strokeStyle = "rgba(248,81,73,0.35)";
-      ctx.lineWidth = 1;
-      ctx.setLineDash([4, 4]);
-      ctx.beginPath();
-      ctx.moveTo(0, yn);
-      ctx.lineTo(this.w, yn);
-      ctx.stroke();
-      ctx.setLineDash([]);
-      const nf = `noise ≈ ${Math.round(this.noiseDb)} dB`;
+    // Noise-floor strip (SDR#-style): a solid red band sitting on the noise
+    // floor with the service name written across it and a dB readout at the
+    // right. The live trace is drawn afterwards so it rides over the strip.
+    const haveNoise =
+      this.noiseDb !== null && this.noiseDb > this.floor && this.noiseDb < this.ceil;
+    if (haveNoise) {
+      const yn = this.yOf(this.noiseDb as number);
+      const bandH = 20;
+      const top = Math.min(this.h - bandH, yn - bandH * 0.5);
+      // strip
+      ctx.fillStyle = "rgba(196,42,38,0.55)";
+      ctx.fillRect(0, top, this.w, bandH);
+      // top/bottom edge to read as a defined band
+      ctx.fillStyle = "rgba(248,81,73,0.85)";
+      ctx.fillRect(0, top, this.w, 1);
+      ctx.fillRect(0, top + bandH - 1, this.w, 1);
+
+      // service name, centred in the strip
+      if (this.bandLabel) {
+        ctx.font = "600 13px -apple-system, system-ui, sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillStyle = "rgba(255,236,232,0.95)";
+        ctx.fillText(this.bandLabel.toUpperCase(), this.w / 2, top + bandH / 2);
+        ctx.textAlign = "left";
+        ctx.textBaseline = "alphabetic";
+      }
+
+      // dB readout, right-aligned just above the strip
+      const nf = `noise ≈ ${Math.round(this.noiseDb as number)} dB`;
       ctx.font = "10px -apple-system, system-ui, sans-serif";
       const tw = ctx.measureText(nf).width;
-      ctx.fillStyle = "rgba(8,12,18,0.65)";
-      ctx.fillRect(this.w - tw - 8, yn - 12, tw + 6, 12);
-      ctx.fillStyle = "rgba(248,81,73,0.85)";
-      ctx.fillText(nf, this.w - tw - 5, yn - 3);
-    }
-
-    // band/service name, centred along the noise floor (SDR#-style)
-    if (this.bandLabel) {
-      const yb =
-        this.noiseDb !== null && this.noiseDb > this.floor && this.noiseDb < this.ceil
-          ? this.yOf(this.noiseDb) - 6
-          : this.h - 8;
-      ctx.font = "600 12px -apple-system, system-ui, sans-serif";
+      ctx.fillStyle = "rgba(8,12,18,0.6)";
+      ctx.fillRect(this.w - tw - 8, top - 13, tw + 6, 12);
+      ctx.fillStyle = "rgba(248,81,73,0.9)";
+      ctx.fillText(nf, this.w - tw - 5, top - 4);
+    } else if (this.bandLabel) {
+      // no noise estimate yet — still show the band name along the bottom
+      ctx.font = "600 13px -apple-system, system-ui, sans-serif";
       ctx.textAlign = "center";
-      ctx.fillStyle = "rgba(248,81,73,0.55)";
-      ctx.fillText(this.bandLabel, this.w / 2, yb);
+      ctx.fillStyle = "rgba(248,81,73,0.7)";
+      ctx.fillText(this.bandLabel.toUpperCase(), this.w / 2, this.h - 8);
       ctx.textAlign = "left";
     }
 
