@@ -261,6 +261,8 @@ function updateBandInfo(): void {
     label = names.length ? `Band: ${names.slice(0, 4).join(" · ")}` : "";
   }
   bandInfo.textContent = label;
+  // mirror the service name onto the spectrum's noise floor (drop "Band: ")
+  scope.setBandLabel(label.replace(/^Band:\s*/, ""));
   const fMHz =
     (currentMode === "radio" || currentMode === "replay" ? viewTuned : viewCenter) / 1e6;
   antennaInfo.textContent = antennaText(fMHz);

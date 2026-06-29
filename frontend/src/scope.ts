@@ -18,6 +18,8 @@ export class SpectrumScope {
   private lastPeakTime = 0;
   private viewLo = 0; // visible fraction of the FFT (display zoom)
   private viewHi = 1;
+  private bandLabel = ""; // service/band name drawn on the noise floor
+  private noiseDb: number | null = null; // smoothed noise-floor estimate (dB)
 
   constructor(private canvas: HTMLCanvasElement) {
     this.ctx = canvas.getContext("2d")!;
@@ -38,6 +40,7 @@ export class SpectrumScope {
     this.disp = null;
     this.avg = null;
     this.peak = null;
+    this.noiseDb = null;
     this.ctx.clearRect(0, 0, this.w, this.h);
   }
 
@@ -55,6 +58,13 @@ export class SpectrumScope {
   setView(lo: number, hi: number): void {
     this.viewLo = lo;
     this.viewHi = hi;
+    this.draw();
+  }
+
+  // Service/band name shown faintly along the noise floor (SDR#-style).
+  setBandLabel(text: string): void {
+    if (text === this.bandLabel) return;
+    this.bandLabel = text;
     this.draw();
   }
 
@@ -104,6 +114,19 @@ export class SpectrumScope {
     const a = 0.05;
     this.floor += a * (mn - 5 - this.floor);
     this.ceil += a * (mx + 8 - this.ceil);
+
+    // robust noise-floor estimate: the ~30th percentile of the (downsampled)
+    // bins sits in the grass between carriers. Smoothed so the readout/baseline
+    // doesn't jitter frame-to-frame.
+    const n = row.length;
+    const stride = Math.max(1, (n / 512) | 0);
+    const samp: number[] = [];
+    for (let i = 0; i < n; i += stride) samp.push(row[i]);
+    samp.sort((x, y) => x - y);
+    const nf = samp[(samp.length * 0.3) | 0];
+    if (isFinite(nf)) {
+      this.noiseDb = this.noiseDb === null ? nf : this.noiseDb + 0.1 * (nf - this.noiseDb);
+    }
   }
 
   private yOf(db: number): number {
@@ -116,20 +139,60 @@ export class SpectrumScope {
     const ctx = this.ctx;
     ctx.clearRect(0, 0, this.w, this.h);
 
-    // dB grid (horizontal lines every ~20 dB)
-    ctx.strokeStyle = "rgba(255,255,255,0.06)";
-    ctx.lineWidth = 1;
-    ctx.fillStyle = "#5b6470";
+    // dB grid: a line every 10 dB (minor) with brighter labels every 10 dB so
+    // the noise level is easy to read off. Major lines every 20 dB stand out.
     ctx.font = "10px -apple-system, system-ui, sans-serif";
-    const step = 20;
+    ctx.textBaseline = "alphabetic";
+    const step = 10;
     const start = Math.ceil(this.floor / step) * step;
     for (let db = start; db < this.ceil; db += step) {
       const y = this.yOf(db);
+      const major = db % 20 === 0;
+      ctx.strokeStyle = major ? "rgba(255,255,255,0.10)" : "rgba(255,255,255,0.05)";
+      ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(0, y);
       ctx.lineTo(this.w, y);
       ctx.stroke();
-      ctx.fillText(`${db}`, 2, y - 2);
+      // label with a dark backing so it reads over the trace/fill
+      const txt = `${db}`;
+      ctx.fillStyle = "rgba(8,12,18,0.65)";
+      ctx.fillRect(2, y - 11, ctx.measureText(txt).width + 6, 12);
+      ctx.fillStyle = major ? "#aeb8c4" : "#7d8896";
+      ctx.fillText(txt, 5, y - 2);
+    }
+
+    // noise-floor baseline + readout
+    if (this.noiseDb !== null && this.noiseDb > this.floor && this.noiseDb < this.ceil) {
+      const yn = this.yOf(this.noiseDb);
+      ctx.strokeStyle = "rgba(248,81,73,0.35)";
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.moveTo(0, yn);
+      ctx.lineTo(this.w, yn);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      const nf = `noise ≈ ${Math.round(this.noiseDb)} dB`;
+      ctx.font = "10px -apple-system, system-ui, sans-serif";
+      const tw = ctx.measureText(nf).width;
+      ctx.fillStyle = "rgba(8,12,18,0.65)";
+      ctx.fillRect(this.w - tw - 8, yn - 12, tw + 6, 12);
+      ctx.fillStyle = "rgba(248,81,73,0.85)";
+      ctx.fillText(nf, this.w - tw - 5, yn - 3);
+    }
+
+    // band/service name, centred along the noise floor (SDR#-style)
+    if (this.bandLabel) {
+      const yb =
+        this.noiseDb !== null && this.noiseDb > this.floor && this.noiseDb < this.ceil
+          ? this.yOf(this.noiseDb) - 6
+          : this.h - 8;
+      ctx.font = "600 12px -apple-system, system-ui, sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillStyle = "rgba(248,81,73,0.55)";
+      ctx.fillText(this.bandLabel, this.w / 2, yb);
+      ctx.textAlign = "left";
     }
 
     const vspan = this.viewHi - this.viewLo;
