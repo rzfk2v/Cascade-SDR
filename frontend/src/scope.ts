@@ -61,7 +61,7 @@ export class SpectrumScope {
     this.draw();
   }
 
-  // Service/band name shown faintly along the noise floor (SDR#-style).
+  // Service/band name shown in a strip at the bottom of the spectrum.
   setBandLabel(text: string): void {
     if (text === this.bandLabel) return;
     this.bandLabel = text;
@@ -162,31 +162,30 @@ export class SpectrumScope {
       ctx.fillText(txt, 5, y - 2);
     }
 
-    // Noise-floor strip (SDR#-style): a solid red band sitting on the noise
-    // floor with the service name written across it and a dB readout at the
-    // right. The live trace is drawn afterwards so it rides over the strip.
+    // Noise-floor marker: a thin dashed line on the noise floor with a dB
+    // readout at the right, so the noise level is easy to read off.
     const haveNoise =
       this.noiseDb !== null && this.noiseDb > this.floor && this.noiseDb < this.ceil;
     if (haveNoise) {
       const yn = this.yOf(this.noiseDb as number);
-      const bandH = 20;
-      const top = Math.min(this.h - bandH, yn - bandH * 0.5);
-      // strip
-      ctx.fillStyle = "rgba(196,42,38,0.55)";
-      ctx.fillRect(0, top, this.w, bandH);
-      // top/bottom edge to read as a defined band
-      ctx.fillStyle = "rgba(248,81,73,0.85)";
-      ctx.fillRect(0, top, this.w, 1);
-      ctx.fillRect(0, top + bandH - 1, this.w, 1);
+      // thin dashed line marking the noise floor
+      ctx.strokeStyle = "rgba(248,81,73,0.4)";
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.moveTo(0, yn);
+      ctx.lineTo(this.w, yn);
+      ctx.stroke();
+      ctx.setLineDash([]);
 
-      // dB readout, right-aligned just above the strip
+      // dB readout, right-aligned just above the line
       const nf = `noise ≈ ${Math.round(this.noiseDb as number)} dB`;
       ctx.font = "10px -apple-system, system-ui, sans-serif";
       const tw = ctx.measureText(nf).width;
       ctx.fillStyle = "rgba(8,12,18,0.6)";
-      ctx.fillRect(this.w - tw - 8, top - 13, tw + 6, 12);
+      ctx.fillRect(this.w - tw - 8, yn - 13, tw + 6, 12);
       ctx.fillStyle = "rgba(248,81,73,0.9)";
-      ctx.fillText(nf, this.w - tw - 5, top - 4);
+      ctx.fillText(nf, this.w - tw - 5, yn - 4);
     }
 
     const vspan = this.viewHi - this.viewLo;
@@ -230,18 +229,21 @@ export class SpectrumScope {
     ctx.fillStyle = "rgba(77,208,225,0.08)";
     ctx.fill();
 
-    // service/band name along the bottom of the spectrum, just above the
-    // waterfall, with a dark backing so it reads over the trace fill.
+    // service/band name in a full-width red strip along the bottom of the
+    // spectrum, just above the waterfall.
     if (this.bandLabel) {
       const label = this.bandLabel.toUpperCase();
+      const barH = 18;
+      const top = this.h - barH;
+      ctx.fillStyle = "rgba(196,42,38,0.6)";
+      ctx.fillRect(0, top, this.w, barH);
+      ctx.fillStyle = "rgba(248,81,73,0.9)";
+      ctx.fillRect(0, top, this.w, 1);
       ctx.font = "600 13px -apple-system, system-ui, sans-serif";
       ctx.textAlign = "center";
-      ctx.textBaseline = "bottom";
-      const tw = ctx.measureText(label).width;
-      ctx.fillStyle = "rgba(8,12,18,0.6)";
-      ctx.fillRect((this.w - tw) / 2 - 6, this.h - 18, tw + 12, 16);
-      ctx.fillStyle = "rgba(255,236,232,0.95)";
-      ctx.fillText(label, this.w / 2, this.h - 3);
+      ctx.textBaseline = "middle";
+      ctx.fillStyle = "rgba(255,238,234,0.97)";
+      ctx.fillText(label, this.w / 2, top + barH / 2 + 1);
       ctx.textAlign = "left";
       ctx.textBaseline = "alphabetic";
     }
