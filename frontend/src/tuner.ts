@@ -10,6 +10,9 @@ export class Tuner {
   tuned = 100e6;
   bandwidth = 200e3;
   active = false; // show the cursor (radio mode)
+  // Backing stores are devicePixelRatio-scaled (set by layoutCanvases); drawing
+  // stays in CSS px via a canvas transform so lines/text render crisp on HiDPI.
+  dpr = 1;
 
   // Display zoom: the visible window as a fraction [viewLo, viewHi] of the
   // captured band. (0,1) = whole band; narrower = zoomed in. Pure display — the
@@ -222,8 +225,9 @@ export class Tuner {
 
   // --- rendering ---------------------------------------------------------
   draw(): void {
-    const w = this.overlay.width;
-    const h = this.overlay.height;
+    const w = this.overlay.width / this.dpr;
+    const h = this.overlay.height / this.dpr;
+    this.octx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     this.octx.clearRect(0, 0, w, h);
 
     // live drag selection
@@ -251,8 +255,9 @@ export class Tuner {
   }
 
   drawAxis(): void {
-    const w = this.axis.width;
-    const h = this.axis.height;
+    const w = this.axis.width / this.dpr;
+    const h = this.axis.height / this.dpr;
+    this.actx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     this.actx.clearRect(0, 0, w, h);
     this.actx.fillStyle = "#8b949e";
     this.actx.font = "11px -apple-system, system-ui, sans-serif";

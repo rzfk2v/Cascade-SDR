@@ -241,10 +241,14 @@ class StereoDecoder:
         mpx_rms = float(np.sqrt(np.mean(mpx * mpx))) + 1e-12
         frac = self._pll.pilot_rms / mpx_rms
         # pilot is ~9% of the MPX on a stereo station; near zero on mono
-        if frac < 0.03:
-            return np.zeros(mpx.size // self._sdec.decim), frac
-        ref = np.cos(2.0 * phase)                   # 38 kHz = 2× pilot, phase-correct
-        diff = mpx * ref * 2.0                       # synchronous DSB-SC detect of L−R
+        if frac < 0.02:
+            # No pilot -> the PLL is unlocked and the 38 kHz reference is noise:
+            # suppress the detected diff, but keep feeding the decimator so its
+            # filter state stays continuous when the pilot (re)appears.
+            diff = np.zeros_like(mpx)
+        else:
+            ref = np.cos(2.0 * phase)               # 38 kHz = 2× pilot, phase-correct
+            diff = mpx * ref * 2.0                   # synchronous DSB-SC detect of L−R
         return self._sdec.process(diff), frac
 
 

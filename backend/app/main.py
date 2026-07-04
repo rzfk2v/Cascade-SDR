@@ -105,9 +105,11 @@ async def delete_recording(name: str) -> dict:
 async def ws_endpoint(ws: WebSocket) -> None:
     await ws.accept()
     await hub.register(ws)
-    await ws.send_json(manager.status())
+    # Per-client sends go through the hub queue: the sender task is the only
+    # writer on the socket, so these can't interleave with broadcast frames.
+    await hub.send_json(ws, manager.status())
     for snap in manager.mode_snapshot():  # sync a reconnecting client's UI
-        await ws.send_json(snap)
+        await hub.send_json(ws, snap)
     try:
         while True:
             msg = await ws.receive_json()
@@ -124,9 +126,9 @@ async def handle_command(ws: WebSocket, msg: dict) -> None:
     cmd = msg.get("cmd")
     try:
         if cmd == "ping":
-            await ws.send_json({"type": "pong"})
+            await hub.send_json(ws, {"type": "pong"})
         elif cmd == "status":
-            await ws.send_json(manager.status())
+            await hub.send_json(ws, manager.status())
         elif cmd == "set_mode":
             await manager.set_mode(msg["mode"], MODE_REGISTRY)
         elif cmd == "start":
@@ -155,9 +157,9 @@ async def handle_command(ws: WebSocket, msg: dict) -> None:
                     {"type": "rec_status", "recording": False, "stopped": name}
                 )
         else:
-            await ws.send_json({"type": "error", "message": f"unknown cmd: {cmd}"})
+            await hub.send_json(ws, {"type": "error", "message": f"unknown cmd: {cmd}"})
     except Exception as exc:
-        await ws.send_json({"type": "error", "message": str(exc)})
+        await hub.send_json(ws, {"type": "error", "message": str(exc)})
 
 
 # --- IQ recordings download (mounted before the catch-all frontend) ---------

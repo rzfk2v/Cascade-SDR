@@ -4,7 +4,7 @@
 
 export class SpectrumScope {
   private ctx: CanvasRenderingContext2D;
-  private w: number;
+  private w: number; // logical (CSS px) size; backing store is w*dpr
   private h: number;
   private floor = -90;
   private ceil = -10;
@@ -27,11 +27,14 @@ export class SpectrumScope {
     this.h = canvas.height;
   }
 
-  resize(w: number, h: number): void {
-    this.canvas.width = w;
-    this.canvas.height = h;
+  // Size in CSS px; the backing store is scaled by `dpr` (crisp on HiDPI) and
+  // a canvas transform keeps all drawing code working in CSS px.
+  resize(w: number, h: number, dpr = 1): void {
+    this.canvas.width = Math.round(w * dpr);
+    this.canvas.height = Math.round(h * dpr);
     this.w = w;
     this.h = h;
+    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     this.draw();
   }
 
@@ -129,6 +132,18 @@ export class SpectrumScope {
     }
   }
 
+  // Max over the FFT bins that pixel column x covers, so narrow signals stay
+  // visible when there are more bins than pixels (nearest-bin sampling skips
+  // bins and makes narrow carriers flicker or vanish).
+  private binMax(arr: Float32Array, x: number, vspan: number): number {
+    const n = arr.length;
+    const b0 = Math.min(n - 1, ((this.viewLo + (x / this.w) * vspan) * n) | 0);
+    const b1 = Math.min(n, Math.max(b0 + 1, ((this.viewLo + ((x + 1) / this.w) * vspan) * n) | 0));
+    let v = arr[b0];
+    for (let b = b0 + 1; b < b1; b++) if (arr[b] > v) v = arr[b];
+    return v;
+  }
+
   private yOf(db: number): number {
     const span = Math.max(1, this.ceil - this.floor);
     const t = (db - this.floor) / span; // 0 bottom .. 1 top
@@ -192,12 +207,9 @@ export class SpectrumScope {
 
     // peak-hold trace (behind the live trace)
     if (this.peak) {
-      const pn = this.peak.length;
       ctx.beginPath();
       for (let x = 0; x < this.w; x++) {
-        const frac = this.viewLo + (x / this.w) * vspan;
-        const bin = Math.min(pn - 1, (frac * pn) | 0);
-        const y = this.yOf(this.peak[bin]);
+        const y = this.yOf(this.binMax(this.peak, x, vspan));
         if (x === 0) ctx.moveTo(x, y);
         else ctx.lineTo(x, y);
       }
@@ -210,12 +222,9 @@ export class SpectrumScope {
     if (!trace) return;
 
     // trace
-    const n = trace.length;
     ctx.beginPath();
     for (let x = 0; x < this.w; x++) {
-      const frac = this.viewLo + (x / this.w) * vspan;
-      const bin = Math.min(n - 1, (frac * n) | 0);
-      const y = this.yOf(trace[bin]);
+      const y = this.yOf(this.binMax(trace, x, vspan));
       if (x === 0) ctx.moveTo(x, y);
       else ctx.lineTo(x, y);
     }

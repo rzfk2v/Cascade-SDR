@@ -17,8 +17,13 @@
 // and keeps latency low. The ScriptProcessor fallback only runs over plain-HTTP
 // (a LAN IP) and on the main thread, where network jitter + TCP retransmit
 // stalls need a much deeper cushion to stay glitch-free.
+//
+// The watermark bounds latency: after a network stall the missed audio arrives
+// in one TCP burst and would otherwise sit in the queue forever as added lag
+// (producer and consumer run at the same rate, so a backlog never drains on
+// its own). Above the watermark the player trims back down near the prebuffer.
 const WORKLET_PREBUFFER_S = 0.20;
-const WORKLET_MAXBUFFER_S = 3.0;
+const WORKLET_WATERMARK_S = 0.75;
 // Plain-HTTP LAN clients see bursty WiFi delivery. The fallback uses a short
 // initial prebuffer (0.5 s) before starting play; after any gap/underrun it
 // outputs silence seamlessly and resumes the moment data returns — no
@@ -42,7 +47,8 @@ export class AudioPlayer {
   private available = 0;                  // total unread interleaved samples
   private playing = false;                // false => buffering
   private prebuffer = 0;
-  private maxbuffer = 0;
+  private watermark = 0;                  // queue depth that triggers a trim
+  private trimto = 0;                     // trim the queue back down to this
 
   constructor(sampleRate = 48000) {
     this.rate = sampleRate;
@@ -59,12 +65,12 @@ export class AudioPlayer {
 
     if (this.ctx.audioWorklet) {
       try {
-        await this.ctx.audioWorklet.addModule("/pcm-worklet.js?v=2");
+        await this.ctx.audioWorklet.addModule("/pcm-worklet.js?v=3");
         this.node = new AudioWorkletNode(this.ctx, "pcm-player", {
           outputChannelCount: [2],
           processorOptions: {
             prebuffer: WORKLET_PREBUFFER_S,
-            maxbuffer: WORKLET_MAXBUFFER_S,
+            watermark: WORKLET_WATERMARK_S,
           },
         });
         this.node.connect(this.ctx.destination);
@@ -84,7 +90,10 @@ export class AudioPlayer {
     const sr = this.ctx!.sampleRate;
     const pre = fallbackPrebufferS();
     this.prebuffer = Math.floor(sr * pre) * 2;   // ×2 for the two channels
-    this.maxbuffer = Math.floor(sr * 5.0) * 2;   // 5 s ceiling absorbs WiFi bursts
+    // deeper watermark than the worklet: plain-HTTP LAN WiFi is burstier, but a
+    // post-stall backlog still gets trimmed so latency doesn't ratchet upward
+    this.watermark = Math.floor(sr * (pre + 1.0)) * 2;
+    this.trimto = this.prebuffer + Math.floor(sr * 0.25) * 2;
     // 0 input channels (we synthesise), 2 output channels. 4096 keeps callbacks
     // sparse so the main thread's waterfall drawing doesn't starve playback.
     this.script = this.ctx!.createScriptProcessor(4096, 0, 2);
@@ -145,10 +154,12 @@ export class AudioPlayer {
     // ScriptProcessor fallback: enqueue and bound latency (mirrors the worklet).
     this.buffers.push(f32);
     this.available += f32.length;
-    while (this.available > this.maxbuffer && this.buffers.length > 1) {
-      const dropped = this.buffers.shift()!;
-      this.available -= dropped.length - this.readIndex;
-      this.readIndex = 0;
+    if (this.available > this.watermark) {
+      while (this.available > this.trimto && this.buffers.length > 1) {
+        const dropped = this.buffers.shift()!;
+        this.available -= dropped.length - this.readIndex;
+        this.readIndex = 0;
+      }
     }
   }
 

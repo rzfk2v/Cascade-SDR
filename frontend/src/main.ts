@@ -1947,16 +1947,20 @@ function fit(c: HTMLCanvasElement): { w: number; h: number } {
 }
 
 function layoutCanvases(): void {
+  // Back the canvases at device-pixel resolution so traces/text are crisp on
+  // HiDPI displays (CSS keeps the layout size; renderers apply the DPR).
+  const dpr = Math.max(1, window.devicePixelRatio || 1);
   const s = fit(scopeCanvas);
-  scope.resize(s.w, s.h);
+  scope.resize(s.w, s.h, dpr);
   const wf = fit(wfCanvas);
-  waterfall.resize(wf.w, wf.h);
+  waterfall.resize(Math.round(wf.w * dpr), Math.round(wf.h * dpr), dpr);
   const ov = fit(overlayCanvas);
-  overlayCanvas.width = ov.w;
-  overlayCanvas.height = ov.h;
+  overlayCanvas.width = Math.round(ov.w * dpr);
+  overlayCanvas.height = Math.round(ov.h * dpr);
   const ax = fit(axisCanvas);
-  axisCanvas.width = ax.w;
-  axisCanvas.height = ax.h;
+  axisCanvas.width = Math.round(ax.w * dpr);
+  axisCanvas.height = Math.round(ax.h * dpr);
+  tuner.dpr = dpr;
   tuner.drawAxis();
   tuner.draw();
   if (!aptView.hidden) {

@@ -51,7 +51,8 @@ you're selecting channels *within* that band digitally — type a frequency in
 > Radio is one combined view: it's both "browse the band" and "listen." It
 > stays silent until you click a signal, so it doubles as a plain waterfall.
 
-Audio uses a ~120 ms jitter buffer to stay click-free. The device is read on a
+Audio uses a ~200 ms jitter buffer to stay click-free, and trims any backlog left
+over after a network stall so latency stays bounded. The device is read on a
 dedicated thread (kept drained at real time) so DSP never starves the USB stream.
 
 ### Finding signals with Sweep

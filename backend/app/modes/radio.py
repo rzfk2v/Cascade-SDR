@@ -44,6 +44,13 @@ CW_ENV_RATE = 1000  # envelope rate for the Morse decoder
 
 AUDIO_RATE = 48_000
 IF_DECIM = 10          # 2.4 MS/s -> 240 kHz IF
+GATE_RAMP = 240        # squelch open/close ramp, ~5 ms @ 48 kHz (no click)
+
+# FM stereo pilot hysteresis (pilot RMS as a fraction of the MPX): enter stereo
+# above ON, leave below OFF — a station hovering at one threshold would
+# otherwise flap stereo<->mono every ~21 ms block.
+PILOT_ON = 0.04
+PILOT_OFF = 0.02
 
 # Per-demodulator defaults: channel bandwidth (Hz), audio low-pass (Hz),
 # FM deviation (Hz, FM only). Picked when the user switches demod.
@@ -87,6 +94,7 @@ class RadioMode(Mode):
         self._rds_thread: threading.Thread | None = None
         self.stereo_enabled = True   # decode FM stereo (L−R from 38 kHz) on WFM
         self._stereo: StereoDecoder | None = None
+        self._stereo_on = False      # pilot-lock state (with hysteresis)
         self._deemph_l: DeEmphasis | None = None
         self._deemph_r: DeEmphasis | None = None
         self.apt_enabled = False     # decode NOAA APT image (137 MHz weather sats)
@@ -99,6 +107,8 @@ class RadioMode(Mode):
         self._user_tuned = False     # has the client picked a channel yet?
         self._last_band = (0.0, 0.0)  # detect Center/rate changes to follow the band
         self._last_level_emit = 0.0
+        self._gate = 1.0             # smoothed squelch gate (1 open, 0 closed)
+        self._vol_prev = self.volume  # last applied volume (glides on change)
         # DSP chain (built in on_start / on rebuild)
         self._chan: ComplexChannelizer | None = None
         self._disc = FmDiscriminator()
@@ -261,6 +271,7 @@ class RadioMode(Mode):
         self._stop_rds_worker()
         self._rds = None
         self._stereo = None
+        self._stereo_on = False
         self._apt = None
         self._sstv = None
         self._deemph_l = self._deemph_r = None
@@ -380,16 +391,23 @@ class RadioMode(Mode):
             # SSTV: decode the image tone straight from the FM audio (pre-deemphasis)
             self._feed_sstv(mono, self._audio_decim.out_rate)
             # Stereo: recover L−R from the 38 kHz subcarrier (only when a pilot is
-            # present), otherwise fall back to mono (L = R).
+            # present), otherwise fall back to mono (L = R). The mono fallback
+            # still goes through the same L/R de-emphasis pair so the filter
+            # state stays continuous across stereo<->mono transitions (no click).
             if (self.demod == "wfm" and self.stereo_enabled
                     and self._stereo is not None):
                 diff, frac = self._stereo.process(disc)
-                if frac >= 0.03:
-                    left, right = mono + diff, mono - diff
-                    if self._deemph_l is not None:
-                        left = self._deemph_l.process(left)
-                        right = self._deemph_r.process(right)
-                    audio_lr = (left, right)
+                if frac >= PILOT_ON:
+                    self._stereo_on = True
+                elif frac < PILOT_OFF:
+                    self._stereo_on = False
+                if not self._stereo_on:
+                    diff = np.zeros_like(diff)
+                left, right = mono + diff, mono - diff
+                if self._deemph_l is not None:
+                    left = self._deemph_l.process(left)
+                    right = self._deemph_r.process(right)
+                audio_lr = (left, right)
             if audio_lr is None:
                 audio = self._deemph.process(mono) if self._deemph is not None else mono
         elif self.demod == "am":
@@ -412,17 +430,34 @@ class RadioMode(Mode):
             self._last_level_emit = now
             self.manager.emit_json({
                 "type": "radio_level", "db": round(level_db, 1),
-                "open": not squelched, "stereo": audio_lr is not None,
+                "open": not squelched, "stereo": self._stereo_on,
             })
 
         # 4) scale to int16 and emit as interleaved stereo (mono -> L = R), so the
-        #    player has one consistent format. Silence when squelched.
+        #    player has one consistent format. Silence when squelched — gated by a
+        #    short ramp, and volume changes glide across the block, so neither
+        #    steps the waveform mid-stream (audible click).
         left, right = audio_lr if audio_lr is not None else (audio, audio)
-        if squelched:
-            left = np.zeros_like(left)
-            right = np.zeros_like(right)
-        l = np.clip(left * self.volume, -1.0, 1.0)
-        r = np.clip(right * self.volume, -1.0, 1.0)
+        n_out = left.size
+        if n_out == 0:
+            return
+        gate = 0.0 if squelched else 1.0
+        g = np.empty(n_out)
+        if gate != self._gate:
+            k = min(n_out, GATE_RAMP)
+            g[:k] = np.linspace(self._gate, gate, k, endpoint=False)
+            g[k:] = gate
+            self._gate = gate
+        else:
+            g.fill(gate)
+        vol = self.volume
+        if vol != self._vol_prev:
+            g *= np.linspace(self._vol_prev, vol, n_out)
+            self._vol_prev = vol
+        else:
+            g *= vol
+        l = np.clip(left * g, -1.0, 1.0)
+        r = np.clip(right * g, -1.0, 1.0)
         inter = np.empty(l.size * 2, dtype="<i2")
         inter[0::2] = (l * 32767).astype("<i2")
         inter[1::2] = (r * 32767).astype("<i2")
