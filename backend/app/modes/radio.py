@@ -87,12 +87,12 @@ class RadioMode(Mode):
         self.volume = 0.7
         self.squelch_db = -80.0      # channel-power gate; -80 = effectively open
         self.deemph_us = 50.0        # FM de-emphasis: 50 µs (EU) / 75 µs (Americas)
-        self.rds_enabled = True      # decode RDS (station name/radiotext) on WFM
+        self.rds_enabled = False     # decode RDS (station name/radiotext) on WFM; off by default
         self._rds: RdsDemod | None = None
         self._rds_dirty = False      # tuned to a new station -> reset RDS
         self._rds_queue: queue.Queue | None = None
         self._rds_thread: threading.Thread | None = None
-        self.stereo_enabled = True   # decode FM stereo (L−R from 38 kHz) on WFM
+        self.stereo_enabled = False  # decode FM stereo (L−R from 38 kHz) on WFM; off by default (mono is cleaner on weak signals)
         self._stereo: StereoDecoder | None = None
         self._stereo_on = False      # pilot-lock state (with hysteresis)
         self._deemph_l: DeEmphasis | None = None

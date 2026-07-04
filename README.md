@@ -100,10 +100,10 @@ Radio supports **WFM** (broadcast), **NFM** (narrow — ham/marine/PMR voice),
 **AM** (carrier-normalised), **USB/LSB** (SSB, with AGC), and **CW** (Morse —
 plays the tone and **decodes it to text** in an overlay; best on clean signals,
 self-calibrates after a character or so). Switching demod sets a sensible default
-bandwidth you can then fine-tune. For WFM, **FM stereo** (on by default — decodes
-the 38 kHz L−R subcarrier when a 19 kHz pilot is present, falling back to mono
-otherwise; a "◖◗ stereo" indicator shows when locked), an **FM de-emphasis**
-selector picks 50 µs (Europe) or 75 µs (Americas/Korea), and **RDS** decoding (on by default)
+bandwidth you can then fine-tune. For WFM, **FM stereo** (off by default — enable it
+to decode the 38 kHz L−R subcarrier when a 19 kHz pilot is present, falling back to
+mono otherwise; a "◖◗ stereo" indicator shows when locked), an **FM de-emphasis**
+selector picks 50 µs (Europe) or 75 µs (Americas/Korea), and **RDS** decoding (off by default)
 shows the **station name, radiotext, PI code and program type** from the 57 kHz
 data subcarrier — hand-written decoder (pilot PLL → coherent BPSK → biphase /
 differential → block-syndrome sync → group parsing), no external tool.

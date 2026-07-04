@@ -189,15 +189,15 @@ After you click a signal in the Radio (or Replay) view, pick a **Demod**:
 | **CW** | Morse — plays the tone **and decodes it to text** (see below). |
 
 - Switching demod sets a sensible **bandwidth** you can fine-tune.
-- **FM stereo** (WFM): on by default. Broadcast FM plays in stereo when the
-  station sends a pilot; a **◖◗ stereo** mark appears on the level meter when
-  locked. Weak/noisy signals are noisier in stereo — turn it off for mono if so.
+- **FM stereo** (WFM): off by default (mono is cleaner and less noisy on all but
+  strong signals). Turn it on and broadcast FM plays in stereo when the station
+  sends a pilot; a **◖◗ stereo** mark appears on the level meter when locked.
 - **FM de-emphasis** (WFM): leave at **50 µs** in Europe; switch to **75 µs** for
   North America/Korea. Wrong setting makes broadcast FM sound dull or harsh.
-- **RDS** (WFM): on by default — within a few seconds of tuning a broadcast FM
-  station you'll see its **name**, scrolling **radiotext** (song/show), **PI**
-  code and **program type** (e.g. "Pop music"). Needs a clean signal; weak/multipath
-  stations decode slowly or not at all. Toggle it off to save a little CPU.
+- **RDS** (WFM): off by default — turn it on and, within a few seconds of tuning a
+  broadcast FM station, you'll see its **name**, scrolling **radiotext** (song/show),
+  **PI** code and **program type** (e.g. "Pop music"). Needs a clean signal;
+  weak/multipath stations decode slowly or not at all.
 - **Volume**, and **Squelch** — raise it until the hiss on an empty channel cuts
   out; the **level meter** shows the channel strength and ▶ (open) / 🔇 (muted).
 - **Record audio** → saves what you hear to a **WAV**.
