@@ -25,7 +25,7 @@ from app.dsp.blocks import ComplexChannelizer, FmDiscriminator, RealDecimator
 from app.dsp.fft import Spectrum
 from app.hub import FrameTag
 from app.modes.base import Mode
-from app.modes.radio import AUDIO_RATE, DEMODS, IF_DECIM
+from app.modes.radio import AUDIO_RATE, DEMODS, GATE_RAMP, IF_DECIM
 from app.modes.scanner_presets import (
     PRESET_LABELS, PRESETS, channels_from_client, load_custom, save_custom,
 )
@@ -291,12 +291,21 @@ class ScannerMode(Mode):
         rt.start()
         last_active = time.monotonic()
         last_state = 0.0
+        gate = 1.0     # squelch gate: the channel was active when we parked
         try:
             while not stop_event.is_set() and not self._dirty:
                 try:
                     x = q.get(timeout=0.5)
                 except _queue.Empty:
                     continue
+                # squelch check first (same block), so the audio below is muted
+                # the moment the carrier drops — we keep listening through the
+                # hold period, but silently, not blasting discriminator static.
+                row = self._spectrum.row(x)
+                floor = float(np.median(row))
+                lvl = self._channel_level(row, freqs, ch, floor)
+                ch["_level"], ch["_active"] = lvl, lvl >= self.squelch_margin
+
                 bb = chan.process(x)
                 if ch["demod"] == "am":
                     env = adec.process(np.abs(bb))
@@ -304,12 +313,17 @@ class ScannerMode(Mode):
                     audio = (env - carrier) / carrier if carrier > 1e-6 else env * 0.0
                 else:
                     audio = adec.process(disc.process(bb) * (if_rate / (2.0 * math.pi * dev)))
+                target = 1.0 if ch["_active"] else 0.0
+                if target != gate and audio.size:
+                    k = min(audio.size, GATE_RAMP)   # ~5 ms ramp, no click
+                    env_g = np.empty(audio.size)
+                    env_g[:k] = np.linspace(gate, target, k, endpoint=False)
+                    env_g[k:] = target
+                    audio = audio * env_g
+                    gate = target
+                elif gate == 0.0:
+                    audio = np.zeros_like(audio)
                 self._emit_audio(audio)
-
-                row = self._spectrum.row(x)
-                floor = float(np.median(row))
-                lvl = self._channel_level(row, freqs, ch, floor)
-                ch["_level"], ch["_active"] = lvl, lvl >= self.squelch_margin
                 now = time.monotonic()
 
                 if prio is not None:                     # pre-empt to the priority channel

@@ -5,6 +5,7 @@
 
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import { esc } from "./html";
 
 export interface Aircraft {
   icao: string;
@@ -97,27 +98,29 @@ export interface Station {
 }
 
 function stationPopupHtml(s: Station): string {
+  // Over-the-air strings (callsign, comment, ...) must be escaped — anyone in
+  // RF range chooses those bytes. Same applies in the other popup builders.
   const rows: [string, string][] = [];
-  rows.push(["Station", s.call]);
-  if (s.kind) rows.push(["Type", s.kind]);
+  rows.push(["Station", esc(s.call)]);
+  if (s.kind) rows.push(["Type", esc(s.kind)]);
   if (s.speed != null) rows.push(["Speed", `${s.speed} km/h`]);
   if (s.course != null) rows.push(["Course", `${s.course}°`]);
   if (s.altitude != null) rows.push(["Altitude", `${Math.round(s.altitude)} m`]);
-  if (s.comment) rows.push(["Comment", s.comment]);
+  if (s.comment) rows.push(["Comment", esc(s.comment)]);
   if (s.age != null) rows.push(["Seen", `${s.age}s ago`]);
   const body = rows.map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join("");
-  return `<div class="ac-popup"><b>${s.call}</b><table>${body}</table></div>`;
+  return `<div class="ac-popup"><b>${esc(s.call)}</b><table>${body}</table></div>`;
 }
 
 function vesselPopupHtml(v: Vessel): string {
   const rows: [string, string][] = [];
-  rows.push(["Name", v.name || "—"]);
+  rows.push(["Name", v.name ? esc(v.name) : "—"]);
   rows.push(["MMSI", String(v.mmsi)]);
   if (v.imo) rows.push(["IMO", String(v.imo)]);
   if (v.country) rows.push(["Flag", `${flagEmoji(v.country)} ${countryName(v.country)}`]);
-  if (v.callsign) rows.push(["Callsign", v.callsign]);
-  if (v.type) rows.push(["Type", v.type]);
-  if (v.status) rows.push(["Status", v.status]);
+  if (v.callsign) rows.push(["Callsign", esc(v.callsign)]);
+  if (v.type) rows.push(["Type", esc(v.type)]);
+  if (v.status) rows.push(["Status", esc(v.status)]);
   if (v.length != null && v.width != null)
     rows.push(["Size", `${v.length} × ${v.width} m`]);
   else if (v.length != null) rows.push(["Length", `${v.length} m`]);
@@ -126,12 +129,12 @@ function vesselPopupHtml(v: Vessel): string {
   if (v.course != null) rows.push(["Course", `${v.course}°`]);
   if (v.heading != null) rows.push(["Heading", `${v.heading}°`]);
   if (v.turn != null) rows.push(["Rate of turn", `${v.turn}°/min`]);
-  if (v.dest) rows.push(["Destination", v.dest]);
-  if (v.eta) rows.push(["ETA", v.eta]);
-  if (v.comment) rows.push(["Note", v.comment]);
+  if (v.dest) rows.push(["Destination", esc(v.dest)]);
+  if (v.eta) rows.push(["ETA", esc(v.eta)]);
+  if (v.comment) rows.push(["Note", esc(v.comment)]);
   if (v.age != null) rows.push(["Seen", `${v.age}s ago`]);
   const body = rows.map(([k, val]) => `<tr><td>${k}</td><td>${val}</td></tr>`).join("");
-  return `<div class="ac-popup"><b>${v.name || v.mmsi}</b><table>${body}</table></div>`;
+  return `<div class="ac-popup"><b>${v.name ? esc(v.name) : v.mmsi}</b><table>${body}</table></div>`;
 }
 
 // AIS ship-type code → vessel colour, matching MarineTraffic's legend so the
@@ -178,19 +181,19 @@ function vesselMarker(v: Vessel): { svg: string; rotates: boolean } {
 function popupHtml(ac: Aircraft): string {
   const rows: [string, string][] = [];
   // Identity — who/what this aircraft is (static).
-  rows.push(["Callsign", ac.flight || "—"]);
-  rows.push(["ICAO", ac.icao.toUpperCase()]);
-  if (ac.reg) rows.push(["Tail #", ac.reg]);
-  if (ac.actype) rows.push(["Model", ac.actype]);
-  if (ac.type) rows.push(["Category", ac.type]);
+  rows.push(["Callsign", ac.flight ? esc(ac.flight) : "—"]);
+  rows.push(["ICAO", esc(ac.icao.toUpperCase())]);
+  if (ac.reg) rows.push(["Tail #", esc(ac.reg)]);
+  if (ac.actype) rows.push(["Model", esc(ac.actype)]);
+  if (ac.type) rows.push(["Category", esc(ac.type)]);
   // Who flies it — operator runs the airframe, airline is the marketing carrier.
-  if (ac.owner) rows.push(["Operator", ac.owner]);
-  if (ac.airline) rows.push(["Airline", ac.airline]);
+  if (ac.owner) rows.push(["Operator", esc(ac.owner)]);
+  if (ac.airline) rows.push(["Airline", esc(ac.airline)]);
   // Route.
-  if (ac.origin) rows.push(["From", ac.origin_name ? `${ac.origin} · ${ac.origin_name}` : ac.origin]);
-  if (ac.destination) rows.push(["To", ac.dest_name ? `${ac.destination} · ${ac.dest_name}` : ac.destination]);
+  if (ac.origin) rows.push(["From", esc(ac.origin_name ? `${ac.origin} · ${ac.origin_name}` : ac.origin)]);
+  if (ac.destination) rows.push(["To", esc(ac.dest_name ? `${ac.destination} · ${ac.dest_name}` : ac.destination)]);
   // Live telemetry — changes second to second.
-  if (ac.squawk) rows.push(["Squawk", ac.squawk]);
+  if (ac.squawk) rows.push(["Squawk", esc(ac.squawk)]);
   if (ac.alt != null) rows.push(["Altitude", `${ac.alt.toLocaleString()} ft`]);
   if (ac.vert_rate != null) {
     const vs = vsArrow(ac.vert_rate);
@@ -204,7 +207,7 @@ function popupHtml(ac: Aircraft): string {
   const body = rows
     .map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`)
     .join("");
-  return `<div class="ac-popup"><b>${ac.flight || ac.icao.toUpperCase()}</b><table>${body}</table></div>`;
+  return `<div class="ac-popup"><b>${esc(ac.flight || ac.icao.toUpperCase())}</b><table>${body}</table></div>`;
 }
 
 // Marker glyphs drawn as inline SVG (instead of the ✈ text character, whose
@@ -311,7 +314,7 @@ export class AdsbMap {
       seen.add(ac.icao);
       this.addTrackPoint(this.aircraftTracks, ac.icao, ac.lat, ac.lon, "#16a3c7");
       const label =
-        (ac.flight || ac.icao) + (ac.alt != null ? ` · ${ac.alt} ft` : "");
+        esc(ac.flight || ac.icao) + (ac.alt != null ? ` · ${ac.alt} ft` : "");
       const { svg, size } = aircraftMarker(ac);
       const icon = L.divIcon({
         className: "plane-icon",
@@ -412,7 +415,7 @@ export class AdsbMap {
       seen.add(id);
       this.addTrackPoint(this.vesselTracks, id, v.lat, v.lon, "#1f9d55");
       const dir = v.heading ?? v.course ?? 0;
-      const label = v.name || String(v.mmsi);
+      const label = esc(v.name || String(v.mmsi));
       const { svg, rotates } = vesselMarker(v);
       // scale the marker by vessel length so a dinghy looks small and a tanker big
       const size = v.length ? Math.max(13, Math.min(34, 11 + v.length / 6)) : 14;
@@ -474,7 +477,7 @@ export class AdsbMap {
         className: "station-icon",
         html:
           `<div class="station-dot"></div>` +
-          `<span class="plane-label">${s.call}</span>`,
+          `<span class="plane-label">${esc(s.call)}</span>`,
         iconSize: [12, 12],
         iconAnchor: [6, 6],
       });

@@ -27,6 +27,7 @@ import { antennaText } from "./antenna";
 import { WavRecorder, downloadBlob } from "./recorder";
 import { AptImage } from "./aptimage";
 import { SstvImage } from "./sstvimage";
+import { esc } from "./html";
 
 const BASE = import.meta.env.BASE_URL || "/";
 const sock = new SdrSocket();
@@ -699,7 +700,7 @@ function renderAircraftList(list: Aircraft[]): void {
   apCount.textContent = `(${list.length})`;
   apBody.innerHTML = rows
     .map(({ ac, dist }) => {
-      const name = ac.flight || ac.icao.toUpperCase();
+      const name = esc(ac.flight || ac.icao.toUpperCase());
       const vs = vsArrow(ac.vert_rate);
       const arrow = vs.arrow
         ? ` <span class="vs ${vs.cls}" title="${vs.label}">${vs.arrow}</span>`
@@ -709,7 +710,7 @@ function renderAircraftList(list: Aircraft[]): void {
       const trk = ac.track != null ? `${ac.track}°` : "—";
       const d = dist != null ? `${dist.toFixed(0)} km` : "—";
       const cls = ac.lat != null ? "" : ' class="no-pos"';
-      return `<tr data-icao="${ac.icao}"${cls}><td>${name}</td><td>${alt}</td><td>${spd}</td><td>${trk}</td><td>${d}</td></tr>`;
+      return `<tr data-icao="${esc(ac.icao)}"${cls}><td>${name}</td><td>${alt}</td><td>${spd}</td><td>${trk}</td><td>${d}</td></tr>`;
     })
     .join("");
 }
@@ -767,9 +768,9 @@ function renderVesselList(list: Vessel[]): void {
     .map(({ v, dist }) => {
       const flag = v.country ? flagEmoji(v.country) + " " : "";
       const name = v.name || String(v.mmsi);
-      const title = esc(name).replace(/"/g, "&quot;");
+      const title = esc(name);
       const note = v.comment
-        ? ` <span class="note-tag" title="${esc(v.comment).replace(/"/g, "&quot;")}">📝</span>`
+        ? ` <span class="note-tag" title="${esc(v.comment)}">📝</span>`
         : "";
       const spd = v.speed != null ? `${v.speed}` : "—";
       const crs = v.course != null ? `${v.course}°` : "—";
@@ -792,10 +793,10 @@ function renderStationList(list: Station[]): void {
   apCount.textContent = `(${list.length})`;
   apBody.innerHTML = rows
     .map(({ s, dist }) => {
-      const info = (s.comment || s.kind || "").slice(0, 22) || "—";
+      const info = esc((s.comment || s.kind || "").slice(0, 22) || "—");
       const d = dist != null ? `${dist.toFixed(0)} km` : "—";
       const cls = s.lat != null ? "" : ' class="no-pos"';
-      return `<tr data-call="${s.call}"${cls}><td>${s.call}</td><td>${info}</td><td>${d}</td></tr>`;
+      return `<tr data-call="${esc(s.call)}"${cls}><td>${esc(s.call)}</td><td>${info}</td><td>${d}</td></tr>`;
     })
     .join("");
 }
@@ -840,10 +841,6 @@ apHead.addEventListener("click", (e) => {
   else vesselSort = { key, dir: VESSEL_DEFAULT_DIR[key] };
   renderVesselList(lastVessels);
 });
-
-function esc(s: string): string {
-  return s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]!));
-}
 
 function renderAcars(messages: any[]): void {
   acarsFeedCount.textContent = `(${messages.length})`;
@@ -1905,7 +1902,7 @@ function renderDab(msg: any): void {
     .map(
       (s) =>
         `<button class="dab-station${s.sid === dabPlayingSid ? " playing" : ""}" ` +
-        `data-sid="${s.sid}" data-mp3="${s.mp3 || ""}">${s.label}</button>`,
+        `data-sid="${esc(String(s.sid))}" data-mp3="${esc(s.mp3 || "")}">${esc(s.label)}</button>`,
     )
     .join("");
 }

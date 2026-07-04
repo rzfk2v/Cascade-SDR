@@ -21,6 +21,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import queue
 import threading
 import time
 from pathlib import Path
@@ -77,9 +78,13 @@ class DeviceManager:
         self._sdr = None
         # subprocess-mode task
         self._task: Optional[asyncio.Task] = None
-        # IQ recording (written from the reader thread)
+        # IQ recording. The reader thread only *enqueues* blocks; a dedicated
+        # writer thread converts + writes them. Writing inline on the reader
+        # would let one slow write (NFS hiccup, SD-card GC pause) block
+        # read_samples, overflow the USB buffer, and drop samples everywhere.
         self._recording = False
-        self._rec_file = None
+        self._rec_queue: Optional[queue.Queue] = None
+        self._rec_thread: Optional[threading.Thread] = None
         self._rec_path: Optional[Path] = None
         self._rec_lock = threading.Lock()
 
@@ -220,33 +225,75 @@ class DeviceManager:
         name = (f"iq_{time.strftime('%Y%m%d-%H%M%S')}_"
                 f"{int(self.center_freq)}Hz_{int(self.sample_rate)}sps.cu8")
         with self._rec_lock:
-            self._rec_file = open(RECORDINGS_DIR / name, "wb")
+            f = open(RECORDINGS_DIR / name, "wb")
             self._rec_path = RECORDINGS_DIR / name
+            # ~64 blocks ≈ 1.4 s of backlog absorbs a write stall without
+            # touching the reader; beyond that _write_iq drops blocks.
+            self._rec_queue = queue.Queue(maxsize=64)
+            self._rec_thread = threading.Thread(
+                target=self._rec_writer, args=(f, self._rec_queue),
+                daemon=True, name="iq-writer")
+            self._rec_thread.start()
             self._recording = True
         return {"ok": True, "name": name}
 
     def record_stop(self) -> Optional[str]:
         with self._rec_lock:
             self._recording = False
-            if self._rec_file is not None:
-                try:
-                    self._rec_file.close()
-                except Exception:
-                    pass
-            self._rec_file = None
+            q, t = self._rec_queue, self._rec_thread
+            self._rec_queue = None
+            self._rec_thread = None
             name = self._rec_path.name if self._rec_path else None
             self._rec_path = None
+        if q is not None:
+            try:
+                q.put_nowait(None)          # sentinel: flush backlog, then exit
+            except queue.Full:
+                # writer wedged/dead — make room for the sentinel
+                while True:
+                    try:
+                        q.get_nowait()
+                    except queue.Empty:
+                        break
+                try:
+                    q.put_nowait(None)
+                except queue.Full:
+                    pass
+        if t is not None:
+            t.join(timeout=3.0)
         return name
 
     def _write_iq(self, block: "np.ndarray") -> None:
-        with self._rec_lock:
-            if not self._recording or self._rec_file is None:
-                return
-            iq = np.empty(block.size * 2, dtype=np.uint8)
-            iq[0::2] = np.clip(block.real * 127.5 + 127.5, 0, 255).astype(np.uint8)
-            iq[1::2] = np.clip(block.imag * 127.5 + 127.5, 0, 255).astype(np.uint8)
+        """Called on the reader thread: hand the block to the writer, never block.
+
+        If the writer has stalled (slow NFS/SD), dropping a block loses a slice
+        of the *recording*; blocking here would overflow the USB buffer and
+        corrupt the live stream *and* the recording both.
+        """
+        q = self._rec_queue
+        if not self._recording or q is None:
+            return
+        try:
+            q.put_nowait(block)
+        except queue.Full:
+            pass
+
+    @staticmethod
+    def _rec_writer(f, q: "queue.Queue") -> None:
+        try:
+            while True:
+                block = q.get()
+                if block is None:
+                    break
+                iq = np.empty(block.size * 2, dtype=np.uint8)
+                iq[0::2] = np.clip(block.real * 127.5 + 127.5, 0, 255).astype(np.uint8)
+                iq[1::2] = np.clip(block.imag * 127.5 + 127.5, 0, 255).astype(np.uint8)
+                f.write(iq.tobytes())
+        except Exception:
+            log.exception("IQ writer error (recording truncated)")
+        finally:
             try:
-                self._rec_file.write(iq.tobytes())
+                f.close()
             except Exception:
                 pass
 
