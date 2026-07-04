@@ -75,6 +75,8 @@ you edit/reorder/add channels (NFM or AM) and **save your own presets** (persist
 on the backend; built-ins can't be overwritten). Marine VHF needs a VHF/marine
 antenna; Ch 16 is the easiest to test with.
 
+![Scanner — a Marine VHF preset cycling channels, each with a live signal bar, parked on an active channel with a Priority channel set and squelch (dB over noise) control](docs/scanner.png)
+
 ### Replay a recording
 Select **Replay** and click a saved `.cu8` capture: it streams the file back
 through the same Radio view and demodulators (looping at the end), so you can
@@ -174,6 +176,8 @@ your dump1090 build has no aircraft DB). The popup then shows airline, **From �
 tail number and operator. Only well-formed airline callsigns are looked up for routes;
 results are cached and the route reflects the flight number's *last-known* route (so a
 stale/return leg is possible). Leaving the toggle off keeps ADS-B fully offline.
+
+![ADS-B — aircraft on an OpenStreetMap map as heading-pointed icons sized by class, a distance-sorted Aircraft list with climb/descent arrows, and a popup with full detail (callsign, ICAO, tail #, model, operator, altitude, climb, speed, track)](docs/ads-b.png)
 
 ### DAB radio (†)
 Select **DAB**, pick a **Band III block** (5A–13F). The backend runs `welle-cli`,
