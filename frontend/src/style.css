@@ -446,7 +446,10 @@ details.advanced[open] > summary::before { content: "▾ "; }
   overflow: hidden;
 }
 .dab-head { display: flex; align-items: baseline; justify-content: space-between; }
-#dab-ens-name { font-size: 1.05rem; font-weight: 600; }
+#dab-ens-name { font-size: 1.05rem; font-weight: 600; white-space: nowrap; }
+/* now-playing (station — DLS): give long artist/song text the header's spare
+   width and let it wrap instead of clipping */
+#dab-now { flex: 1 1 auto; min-width: 0; margin-left: 1rem; text-align: right; }
 .dab-stations {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));

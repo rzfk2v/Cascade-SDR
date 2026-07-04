@@ -117,6 +117,11 @@ class DabMode(Mode):
             if not is_audio:
                 continue
             sid = s.get("sid")
+            if isinstance(sid, str):
+                try:
+                    sid = int(sid, 0)   # welle-cli may report "0xE241"-style SIDs
+                except ValueError:
+                    sid = None
             mp3 = s.get("url_mp3")
             if not mp3 and sid is not None:
                 mp3 = f"/mp3/{sid & 0xFFFF:04x}"

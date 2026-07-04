@@ -126,7 +126,9 @@ const dabEnsName = document.getElementById("dab-ens-name")!;
 const dabNow = document.getElementById("dab-now")!;
 const dabStationsEl = document.getElementById("dab-stations")!;
 const dabAudio = document.getElementById("dab-audio") as HTMLAudioElement;
-let dabPlayingSid: number | null = null;
+// Compared as a *string* everywhere: welle-cli may report SIDs as ints or hex
+// strings ("0xe241"), and a strict number === string never matches.
+let dabPlayingSid: string | null = null;
 
 // populate Band III blocks (5A..12D, 13A..13F)
 (() => {
@@ -1899,18 +1901,22 @@ function renderDab(msg: any): void {
     return;
   }
   dabStationsEl.innerHTML = services
-    .map(
-      (s) =>
-        `<button class="dab-station${s.sid === dabPlayingSid ? " playing" : ""}" ` +
+    .map((s) => {
+      const playing = String(s.sid) === dabPlayingSid;
+      // DLS only on the playing tile: welle-cli keeps a service's *last* decoded
+      // label after you switch away, so showing it elsewhere displays a stale
+      // "now playing" for a station nobody is listening to.
+      const dls = playing && s.dls ? `<span class="dab-dls">${esc(s.dls)}</span>` : "";
+      return (
+        `<button class="dab-station${playing ? " playing" : ""}" ` +
         `data-sid="${esc(String(s.sid))}" data-mp3="${esc(s.mp3 || "")}" ` +
-        `data-label="${esc(s.label)}">${esc(s.label)}` +
-        (s.dls ? `<span class="dab-dls">${esc(s.dls)}</span>` : "") +
-        `</button>`,
-    )
+        `data-label="${esc(s.label)}">${esc(s.label)}${dls}</button>`
+      );
+    })
     .join("");
   // Live "now playing" (DLS) for the station being streamed — welle-cli decodes
   // the dynamic label for the service it's serving, refreshed with each poll.
-  const cur = services.find((s) => s.sid === dabPlayingSid);
+  const cur = services.find((s) => String(s.sid) === dabPlayingSid);
   if (cur) {
     dabNow.textContent = `▶ ${cur.label}` + (cur.dls ? ` — ${cur.dls}` : "");
   }
@@ -1919,13 +1925,13 @@ function renderDab(msg: any): void {
 dabStationsEl.addEventListener("click", async (e) => {
   const btn = (e.target as HTMLElement).closest(".dab-station") as HTMLElement | null;
   if (!btn || !btn.dataset.mp3) return;
-  dabPlayingSid = Number(btn.dataset.sid);
+  dabPlayingSid = btn.dataset.sid || null;
   dabAudio.src = BASE === "/"
     ? `http://${location.hostname}:${dabPort}${btn.dataset.mp3}`
     : `${location.origin}${BASE}dab${btn.dataset.mp3}`;
   dabNow.textContent = "▶ " + (btn.dataset.label || btn.textContent);
   dabStationsEl.querySelectorAll(".dab-station").forEach((el) =>
-    el.classList.toggle("playing", Number((el as HTMLElement).dataset.sid) === dabPlayingSid),
+    el.classList.toggle("playing", (el as HTMLElement).dataset.sid === dabPlayingSid),
   );
   try {
     await dabAudio.play();
