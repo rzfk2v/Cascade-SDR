@@ -466,6 +466,16 @@ details.advanced[open] > summary::before { content: "▾ "; }
 }
 .dab-station:hover { border-color: var(--accent); }
 .dab-station.playing { background: var(--accent); color: #fff; border-color: var(--accent); }
+.dab-dls {
+  display: block;
+  margin-top: 2px;
+  font-size: 0.72rem;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dab-station.playing .dab-dls { color: rgba(255, 255, 255, 0.85); }
 .dab-empty { color: var(--muted); font-size: 0.85rem; }
 
 .scanner-view {

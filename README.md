@@ -179,7 +179,9 @@ stale/return leg is possible). Leaving the toggle off keeps ADS-B fully offline.
 Select **DAB**, pick a **Band III block** (5A–13F). The backend runs `welle-cli`,
 which tunes the block and decodes the **ensemble**; the station list appears on the
 right — click a station to play it (the browser streams it from welle-cli). One
-block carries many stations. Switching modes stops welle-cli and frees the dongle.
+block carries many stations. The playing station shows its **now-playing text**
+(DLS — song/programme info, DAB's RDS-radiotext equivalent), updating live.
+Switching modes stops welle-cli and frees the dongle.
 
 `welle-cli` isn't in Homebrew, so build it once:
 

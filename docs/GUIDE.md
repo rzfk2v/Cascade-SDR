@@ -222,6 +222,8 @@ Digital DAB/DAB+ in Band III (~174–240 MHz).
 - Pick a **Block** (5A–13F). **Stockholm: 12A, 12C, 12D** (12C = Sveriges Radio).
 - The **ensemble's stations** appear on the right — **click one to play it**.
 - One block carries many stations; switching block re-tunes the decoder.
+- The playing station shows its **now-playing text** (DLS — song/programme info,
+  DAB's version of RDS radiotext) next to ▶ and on its tile, updating live.
 
 **Try:** block **12C** in the Stockholm area → P1–P4, Barn SR, etc.
 

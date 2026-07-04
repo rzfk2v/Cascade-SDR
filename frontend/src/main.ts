@@ -1902,9 +1902,18 @@ function renderDab(msg: any): void {
     .map(
       (s) =>
         `<button class="dab-station${s.sid === dabPlayingSid ? " playing" : ""}" ` +
-        `data-sid="${esc(String(s.sid))}" data-mp3="${esc(s.mp3 || "")}">${esc(s.label)}</button>`,
+        `data-sid="${esc(String(s.sid))}" data-mp3="${esc(s.mp3 || "")}" ` +
+        `data-label="${esc(s.label)}">${esc(s.label)}` +
+        (s.dls ? `<span class="dab-dls">${esc(s.dls)}</span>` : "") +
+        `</button>`,
     )
     .join("");
+  // Live "now playing" (DLS) for the station being streamed — welle-cli decodes
+  // the dynamic label for the service it's serving, refreshed with each poll.
+  const cur = services.find((s) => s.sid === dabPlayingSid);
+  if (cur) {
+    dabNow.textContent = `▶ ${cur.label}` + (cur.dls ? ` — ${cur.dls}` : "");
+  }
 }
 
 dabStationsEl.addEventListener("click", async (e) => {
@@ -1914,7 +1923,7 @@ dabStationsEl.addEventListener("click", async (e) => {
   dabAudio.src = BASE === "/"
     ? `http://${location.hostname}:${dabPort}${btn.dataset.mp3}`
     : `${location.origin}${BASE}dab${btn.dataset.mp3}`;
-  dabNow.textContent = "▶ " + btn.textContent;
+  dabNow.textContent = "▶ " + (btn.dataset.label || btn.textContent);
   dabStationsEl.querySelectorAll(".dab-station").forEach((el) =>
     el.classList.toggle("playing", Number((el as HTMLElement).dataset.sid) === dabPlayingSid),
   );

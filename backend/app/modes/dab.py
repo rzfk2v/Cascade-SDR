@@ -120,7 +120,14 @@ class DabMode(Mode):
             mp3 = s.get("url_mp3")
             if not mp3 and sid is not None:
                 mp3 = f"/mp3/{sid & 0xFFFF:04x}"
-            services.append({"sid": sid, "label": label, "mp3": mp3})
+            # DLS ("dynamic label": now playing / programme info). welle-cli only
+            # decodes it for services it is actually decoding, i.e. the one being
+            # streamed — the rest stay empty until played.
+            dls = ""
+            dl = s.get("dls")
+            if isinstance(dl, dict):
+                dls = (dl.get("label") or "").strip()
+            services.append({"sid": sid, "label": label, "mp3": mp3, "dls": dls})
         ens = ""
         el = data.get("ensemble", {}).get("label")
         if isinstance(el, dict):
