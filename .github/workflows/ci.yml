@@ -1,0 +1,90 @@
+# CI: backend test suite + a fresh-install smoke test.
+#
+# The smoke test builds the frontend and serves it from the backend exactly the
+# way a new user runs it (single process, http://host:8000) — asserting the
+# page, its hashed assets, the API and the WebSocket all resolve. This is the
+# class of bug that only shows up on someone else's machine (e.g. the /sdr/
+# base-path 404s), caught before it ships.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  backend-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install backend dependencies
+        run: pip install -r backend/requirements.txt pytest
+      - name: Run the test suite
+        working-directory: backend
+        run: python -m pytest tests/ -q
+
+  fresh-install-smoke:
+    name: build frontend, serve from backend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Build the frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+      - name: Install backend dependencies
+        run: pip install -r backend/requirements.txt
+      - name: Serve the built frontend from the backend and smoke-test it
+        working-directory: backend
+        run: |
+          uvicorn app.main:app --port 8000 &
+          for i in $(seq 1 20); do
+            curl -sf -o /dev/null http://127.0.0.1:8000/api/status && break
+            sleep 0.5
+          done
+
+          # The page must load with *relative* asset paths (no baked-in prefix
+          # like /sdr/ — that only works behind a matching reverse proxy).
+          curl -sf http://127.0.0.1:8000/ -o /tmp/index.html
+          grep -q '"\./assets/' /tmp/index.html
+          if grep -q '"/sdr/' /tmp/index.html; then
+            echo "index.html contains an absolute /sdr/ path — breaks direct :8000 access" >&2
+            exit 1
+          fi
+
+          # Every referenced hashed asset must actually be served.
+          for asset in $(grep -oE 'assets/[A-Za-z0-9._-]+' /tmp/index.html | sort -u); do
+            echo "checking $asset"
+            curl -sf -o /dev/null "http://127.0.0.1:8000/$asset"
+          done
+
+          # The WebSocket must connect and deliver the initial status message.
+          python - <<'EOF'
+          import asyncio, json
+          import websockets
+
+          async def t():
+              async with websockets.connect("ws://127.0.0.1:8000/ws") as ws:
+                  msg = json.loads(await asyncio.wait_for(ws.recv(), 10))
+                  assert msg.get("type") == "status", msg
+                  print("ws OK:", msg["mode"], "device_present:", msg["device_present"])
+
+          asyncio.run(t())
+          EOF

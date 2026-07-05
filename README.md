@@ -1,5 +1,7 @@
 # Cascade SDR
 
+[![CI](https://github.com/rzfk2v/Cascade-SDR/actions/workflows/ci.yml/badge.svg)](https://github.com/rzfk2v/Cascade-SDR/actions/workflows/ci.yml)
+
 A cross-platform receiver app **for RTL-SDR dongles** (RTL2832U + R820T/R820T2,
 ~24–1766 MHz). It is **RTL-SDR specific** — other SDRs (Airspy, HackRF, SDRplay,
 …) are not supported. A small **Python backend** owns the dongle and does the
