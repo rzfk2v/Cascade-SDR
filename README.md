@@ -155,8 +155,10 @@ weather satellites). It updates as you type a Center frequency.
   contrast, peak-hold, sweep range, receiver location, bookmarks) via localStorage.
 
 ### Layout
-Controls live in the left sidebar; the spectrum scope + waterfall fill the rest of
-the window and resize with it.
+The live controls (frequency, demod, volume, squelch, gain, level meter) sit in a
+**control bar** above the display, always visible; setup panels and lists live in
+the left sidebar. The spectrum scope + waterfall fill the rest of the window and
+resize with it.
 
 ### ADS-B (aircraft map)
 Select **ADS-B**: the backend spawns `dump1090`, reads its `aircraft.json` snapshot

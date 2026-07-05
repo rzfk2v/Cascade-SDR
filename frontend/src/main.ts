@@ -193,6 +193,13 @@ const bwInput = document.getElementById("bw") as HTMLInputElement;
 const volInput = document.getElementById("vol") as HTMLInputElement;
 const sqlInput = document.getElementById("sql") as HTMLInputElement;
 const levelMeter = document.getElementById("level-meter")!;
+// control bar (live controls above the view)
+const controlBar = document.getElementById("control-bar")!;
+const cbFreq = document.getElementById("cb-freq")!;
+const cbDemod = document.getElementById("cb-demod")!;
+const cbVol = document.getElementById("cb-vol")!;
+const cbSql = document.getElementById("cb-sql")!;
+const cbMeter = document.getElementById("cb-meter")!;
 const cwText = document.getElementById("cw-text")!;
 const cwOut = document.getElementById("cw-out")!;
 const scanControls = document.getElementById("scan-controls")!;
@@ -346,6 +353,18 @@ sock.onJson((msg) => {
       receptionControls.hidden = msg.mode === "idle";
       // IQ capture needs a fixed-tuned IQ mode (not scan/replay/decoders).
       recordingControls.hidden = !["spectrum", "radio", "apt", "sstv"].includes(msg.mode);
+      // Control bar: live controls above the view. Item visibility mirrors the
+      // old sidebar rules — audio controls for the listening modes, frequency
+      // for free-tune modes, gain whenever the dongle is in use.
+      {
+        const audio = msg.mode === "radio" || msg.mode === "replay";
+        controlBar.hidden = msg.mode === "idle";
+        cbFreq.hidden = !["spectrum", "radio"].includes(msg.mode);
+        cbDemod.hidden = !audio;
+        cbVol.hidden = !audio;
+        cbSql.hidden = !audio;
+        cbMeter.hidden = !audio;
+      }
       showView(msg.mode);
       break;
     case "spectrum_config":

@@ -15,7 +15,12 @@ and install, see the [README](../README.md).
 
 ## The screen
 
-- **Left sidebar** — all controls. The panels shown change with the mode.
+- **Control bar** (top of the display) — the live controls you touch while
+  listening: **Frequency**, **Demod**, **Volume**, **Squelch**, **Gain** and the
+  **level meter**. Always visible — no scrolling. Only the items that apply to
+  the current mode are shown (decoder modes keep just Gain).
+- **Left sidebar** — setup and lists: mode tabs, per-mode panels, the frequency
+  directory and bookmarks. The panels shown change with the mode.
 - **Right display** — the spectrum **scope** (top) + scrolling **waterfall**
   (below) with a **frequency axis**; in ADS-B/AIS/APRS it becomes a **map**, in DAB
   a **station list**, in ACARS / ISM / Pager a feed, in APT / SSTV an image.
@@ -31,14 +36,15 @@ and install, see the [README](../README.md).
 
 ---
 
-## Controls (sidebar panels)
+## Controls
 
-The sidebar shows only the panels that apply to the current mode.
+The live controls sit in the **control bar** above the display; the sidebar
+shows only the setup panels that apply to the current mode.
 
-### Tuning (Radio view)
+### Tuning (control bar + Tuning panel)
 | Control | What it does |
 |---|---|
-| **Center / Frequency (MHz)** | Type a frequency and press **Enter** to go there: it re-centers the band **and** tunes/listens to that frequency (the channel cursor follows). Range 24–1766 MHz (R820T). Click elsewhere in the waterfall afterwards to listen off-centre — in Radio mode the field is labelled **Frequency** and tracks the channel you're listening to (so it updates when you click around), while in the Spectrum view it's labelled **Center** and shows the dongle's centre. |
+| **Center / Frequency (MHz)** *(control bar)* | Type a frequency and press **Enter** to go there: it re-centers the band **and** tunes/listens to that frequency (the channel cursor follows). Range 24–1766 MHz (R820T). Click elsewhere in the waterfall afterwards to listen off-centre — in Radio mode the field is labelled **Frequency** and tracks the channel you're listening to (so it updates when you click around), while in the Spectrum view it's labelled **Center** and shows the dongle's centre. |
 | **Sample rate (MS/s)** | Capture bandwidth, up to 2.4. Lower = less CPU/USB, narrower view. |
 | **◀ block / block ▶** | Jump the captured band down/up by one capture width (~2.4 MHz) to walk across the spectrum looking for signals. |
 
@@ -49,11 +55,12 @@ Decoder modes (ADS-B/AIS/APRS/ACARS/DAB/SSTV/Pager) tune themselves, so they hid
 ### Reception (all live modes)
 | Control | What it does |
 |---|---|
-| **Auto gain** / **Gain** | Auto lets the tuner ride gain; uncheck for a manual slider. More gain digs out weak signals but can overload near strong ones. For broadcast FM, a manual *high* gain often gives the cleanest audio and best RDS lock. |
-| **Advanced ▸ PPM correction** | Corrects the dongle's crystal error so the displayed frequency is accurate. See *Calibration* below. |
-| **Advanced ▸ Bias-T (5 V)** | Feeds 5 V up the coax to power an inline LNA/antenna. **Only enable if you have a powered device** — don't feed a plain antenna. |
+| **Auto gain** / **Gain** *(control bar)* | Auto lets the tuner ride gain; uncheck for a manual slider. More gain digs out weak signals but can overload near strong ones. For broadcast FM, a manual *high* gain often gives the cleanest audio and best RDS lock. |
+| **Advanced ▸ PPM correction** *(Reception panel)* | Corrects the dongle's crystal error so the displayed frequency is accurate. See *Calibration* below. |
+| **Advanced ▸ Bias-T (5 V)** *(Reception panel)* | Feeds 5 V up the coax to power an inline LNA/antenna. **Only enable if you have a powered device** — don't feed a plain antenna. |
 
-PPM and Bias-T sit under a collapsible **Advanced** disclosure — they're usually set once.
+PPM and Bias-T sit under a collapsible **Advanced** disclosure in the sidebar —
+they're usually set once.
 
 ### Recording (Radio / APT / SSTV)
 **Record IQ** captures the raw stream to a `.cu8` file (see *Recording* below).
@@ -186,7 +193,9 @@ stations — same recording, any station, any time.
 
 ## Demodulators (the Radio controls)
 
-After you click a signal in the Radio (or Replay) view, pick a **Demod**:
+After you click a signal in the Radio (or Replay) view, pick a **Demod** in the
+control bar (Demod, Volume, Squelch and the level meter all live there; the
+sidebar's Radio panel keeps bandwidth, de-emphasis, stereo/RDS and recording):
 
 | Demod | Use for |
 |---|---|

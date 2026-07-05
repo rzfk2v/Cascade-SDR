@@ -53,8 +53,6 @@
         <!-- Tuning: only meaningful in the free-tune spectrum view -->
         <section class="group" id="tuning-controls" hidden>
           <h2>Tuning</h2>
-          <label><span id="freq-label">Center (MHz)</span><input id="freq" type="number" step="0.1" min="24" max="1766" value="100.0" /></label>
-          <p class="hint">Press Enter to tune · range ≈ 24–1766 MHz (R820T)</p>
           <div class="bm-add">
             <button id="block-prev" title="Step the band down one capture width">◀ block</button>
             <button id="block-next" title="Step the band up one capture width">block ▶</button>
@@ -312,16 +310,6 @@
 
         <section class="group" id="radio-controls" hidden>
           <h2>Radio</h2>
-          <label>Demod
-            <select id="demod">
-              <option value="wfm">WFM (broadcast)</option>
-              <option value="nfm">NFM (narrow)</option>
-              <option value="am">AM</option>
-              <option value="usb">USB</option>
-              <option value="lsb">LSB</option>
-              <option value="cw">CW (Morse)</option>
-            </select>
-          </label>
           <label>Bandwidth (kHz)<input id="bw" type="number" step="5" value="200" /></label>
           <label>FM de-emphasis
             <select id="deemph">
@@ -336,21 +324,14 @@
             <div id="rds-rt" class="rds-rt"></div>
             <div id="rds-meta" class="muted"></div>
           </div>
-          <label>Volume<input id="vol" type="range" min="0" max="1.5" step="0.05" value="0.7" /></label>
-          <label>Squelch (dB)<input id="sql" type="range" min="-80" max="5" step="1" value="-80" /></label>
-          <p id="level-meter" class="level-meter"></p>
           <button id="rec-audio">● Record audio</button>
           <p id="rec-audio-status" class="status-line"></p>
           <p id="tuned-line" class="status-line"></p>
         </section>
 
-        <!-- Reception: gain affects every mode; crystal/Bias-T tucked away -->
+        <!-- Reception: gain lives in the control bar; crystal/Bias-T tucked away -->
         <section class="group" id="reception-controls" hidden>
           <h2>Reception</h2>
-          <label class="check"><input id="gain-auto" type="checkbox" checked /> Auto gain</label>
-          <label>Gain<input id="gain" type="range" min="0" max="0" step="1" value="0" disabled />
-            <span id="gain-val" class="muted">auto</span>
-          </label>
           <details class="advanced">
             <summary>Advanced</summary>
             <label>PPM correction<input id="ppm" type="number" step="1" value="0" />
@@ -406,8 +387,46 @@
       </aside>
 
       <section class="display">
-        <button id="zoom-out" class="zoom-out" title="Zoom out (×2)" hidden>⤢ Zoom out</button>
+        <!-- Live controls, always visible above the active view. Only the
+             items that apply to the current mode are shown; elements keep
+             their historical ids — the JS binds by id. -->
+        <div id="control-bar" class="control-bar" hidden>
+          <div class="cb-item" id="cb-freq">
+            <span class="cb-label" id="freq-label">Center (MHz)</span>
+            <input id="freq" type="number" step="0.1" min="24" max="1766" value="100.0"
+                   title="Press Enter to tune · range ≈ 24–1766 MHz (R820T)" />
+          </div>
+          <div class="cb-item" id="cb-demod">
+            <span class="cb-label">Demod</span>
+            <select id="demod">
+              <option value="wfm">WFM</option>
+              <option value="nfm">NFM</option>
+              <option value="am">AM</option>
+              <option value="usb">USB</option>
+              <option value="lsb">LSB</option>
+              <option value="cw">CW</option>
+            </select>
+          </div>
+          <div class="cb-item" id="cb-vol">
+            <span class="cb-label">Vol</span>
+            <input id="vol" type="range" min="0" max="1.5" step="0.05" value="0.7" />
+          </div>
+          <div class="cb-item" id="cb-sql">
+            <span class="cb-label">Squelch</span>
+            <input id="sql" type="range" min="-80" max="5" step="1" value="-80" />
+          </div>
+          <div class="cb-item" id="cb-gain">
+            <span class="cb-label">Gain</span>
+            <label class="cb-check"><input id="gain-auto" type="checkbox" checked /> auto</label>
+            <input id="gain" type="range" min="0" max="0" step="1" value="0" disabled />
+            <span id="gain-val" class="muted">auto</span>
+          </div>
+          <div class="cb-item cb-meter" id="cb-meter">
+            <p id="level-meter" class="level-meter"></p>
+          </div>
+        </div>
         <div class="fft-view" id="fft-view">
+          <button id="zoom-out" class="zoom-out" title="Zoom out (×2)" hidden>⤢ Zoom out</button>
           <div class="wf-wrap">
             <canvas id="scope" class="scope"></canvas>
             <canvas id="waterfall"></canvas>

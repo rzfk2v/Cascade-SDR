@@ -209,6 +209,39 @@ details.advanced[open] > summary::before { content: "▾ "; }
   padding: 0.6rem;
   gap: 0;
 }
+/* ---- control bar: live controls above the active view ---- */
+.control-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem 1.1rem;
+  padding: 0.4rem 0.65rem;
+  margin-bottom: 0.6rem;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  flex: 0 0 auto;
+}
+.cb-item { display: flex; align-items: center; gap: 0.45rem; min-width: 0; }
+.cb-label { color: var(--muted); font-size: 0.72rem; white-space: nowrap; }
+.control-bar input, .control-bar select {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 0.25rem 0.45rem;
+  font-size: 0.85rem;
+}
+.control-bar input[type="range"] { width: 110px; padding: 0; border: none; background: none; }
+.control-bar input[type="number"] { width: 6.4rem; }
+.cb-check {
+  display: flex; align-items: center; gap: 0.25rem;
+  color: var(--text); font-size: 0.78rem; white-space: nowrap;
+}
+.cb-check input[type="checkbox"] { width: auto; }
+#cb-gain #gain-val { font-size: 0.75rem; min-width: 3rem; }
+.cb-meter .level-meter { white-space: nowrap; }
+
 .zoom-out {
   position: absolute;
   top: 1rem;
@@ -224,6 +257,7 @@ details.advanced[open] > summary::before { content: "▾ "; }
 }
 .zoom-out:hover { border-color: var(--accent); }
 .fft-view {
+  position: relative;
   flex: 1 1 auto;
   min-height: 0;
   display: flex;
@@ -696,6 +730,9 @@ details.advanced[open] > summary::before { content: "▾ "; }
     font-size: 1.25rem; line-height: 1; cursor: pointer;
   }
   .app.nav-open .nav-toggle { display: none; }
+
+  /* clear the fixed ☰ button so it doesn't sit on the control bar */
+  .control-bar { margin-left: 46px; }
 
   /* the sidebar slides in from the left over the content */
   .sidebar {
