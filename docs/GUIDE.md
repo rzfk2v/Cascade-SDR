@@ -140,6 +140,14 @@ quiet — like a marine/PMR scanner.
 - **Priority** — pick a channel (e.g. Marine **Ch 16**) and the scanner jumps to it
   the moment it's active, even while parked on another channel, then returns to
   normal scanning when it goes quiet. "Off" disables it.
+- **Search a range** (*beta*) — instead of a channel list, sweep a whole
+  frequency range: enter **from / to** (MHz), pick a **step** (5–100 kHz, e.g.
+  25 kHz for marine/airband, 12.5 kHz for PMR) and a **demod** (NFM/AM), then
+  **Search**. Every step across the range becomes a slot in the grid, and the
+  scanner parks on any slot that breaks squelch — same hold/priority behaviour
+  as a preset. Notes: a signal *between* grid steps lands on the nearest slot;
+  very wide ranges are clamped to 800 slots (narrow the range or coarsen the
+  step); picking a preset ends the search.
 - **Customize channels** — expand it to build your own list: edit a channel's
   label / frequency / demod (NFM or AM), reorder with **↑ ↓**, remove with **×**,
   **+ Add channel**, then **Save** under a name. Saved presets appear under

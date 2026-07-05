@@ -550,6 +550,23 @@ details.advanced[open] > summary::before { content: "▾ "; }
 }
 .sc-edit-row button:hover { color: var(--text); background: var(--border); }
 .scanner-del { color: var(--err, #e66); font-size: 0.8rem; margin-top: 0.3rem; }
+/* range search (beta) */
+.beta-tag {
+  display: inline-block;
+  margin-left: 0.3rem;
+  padding: 0 0.35rem 0.05rem;
+  border-radius: 8px;
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  background: #8250df;
+  color: #fff;
+  vertical-align: 1px;
+}
+.range-row { display: flex; align-items: center; gap: 0.35rem; margin: 0.4rem 0; }
+.range-row input[type="number"] { width: 5.4rem; }
+.range-row button { flex: 1 1 auto; }
 
 .cw-text {
   position: absolute;

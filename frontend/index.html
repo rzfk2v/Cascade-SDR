@@ -106,6 +106,37 @@
           <label>Squelch (dB over noise)<input id="scanner-sql" type="range" min="3" max="30" step="1" value="8" /></label>
           <label>Volume<input id="scanner-vol" type="range" min="0" max="1.5" step="0.05" value="0.7" /></label>
           <p id="scanner-status" class="status-line">scanning…</p>
+          <details id="scanner-range" class="scanner-edit">
+            <summary>Search a range <span class="beta-tag">beta</span></summary>
+            <div class="range-row">
+              <input id="range-start" type="number" min="24" max="1766" step="0.001" value="156" title="from (MHz)" />
+              <span class="muted">–</span>
+              <input id="range-stop" type="number" min="24" max="1766" step="0.001" value="157.5" title="to (MHz)" />
+              <span class="muted">MHz</span>
+            </div>
+            <div class="range-row">
+              <select id="range-step" title="step">
+                <option value="5">5 kHz</option>
+                <option value="6.25">6.25 kHz</option>
+                <option value="8.33">8.33 kHz</option>
+                <option value="10">10 kHz</option>
+                <option value="12.5">12.5 kHz</option>
+                <option value="25" selected>25 kHz</option>
+                <option value="50">50 kHz</option>
+                <option value="100">100 kHz</option>
+              </select>
+              <select id="range-demod" title="demod">
+                <option value="nfm">NFM</option>
+                <option value="am">AM</option>
+              </select>
+              <button id="range-go" type="button">Search</button>
+            </div>
+            <p id="range-note" class="hint"></p>
+            <p class="hint">Sweeps every step across the range and <b>parks on any
+              transmission</b>, like the channel scanner but without a channel
+              list. Signals between grid steps land on the nearest slot. Picking
+              a preset above ends the search.</p>
+          </details>
           <details id="scanner-edit" class="scanner-edit">
             <summary>Customize channels</summary>
             <div id="scanner-edit-list" class="scanner-edit-list"></div>

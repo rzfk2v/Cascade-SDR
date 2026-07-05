@@ -72,7 +72,11 @@ noise)** by eye — lower it if wanted calls don't stop, raise it if it stops on
 noise. Set a **Priority** channel (e.g. Marine Ch 16) and the scanner pre-empts to
 it whenever it's active, even while parked elsewhere. **Customize channels** lets
 you edit/reorder/add channels (NFM or AM) and **save your own presets** (persisted
-on the backend; built-ins can't be overwritten). Marine VHF needs a VHF/marine
+on the backend; built-ins can't be overwritten). **Search a range** (*beta*) sweeps
+a whole frequency span instead of a channel list — enter from/to MHz, a step
+(5–100 kHz) and NFM/AM, and every step becomes a scanned slot; it parks on
+whatever breaks squelch (off-grid signals land on the nearest slot; very wide
+ranges are clamped to 800 slots). Marine VHF needs a VHF/marine
 antenna; Ch 16 is the easiest to test with.
 
 ![Scanner — a Marine VHF preset cycling channels, each with a live signal bar, parked on an active channel with a Priority channel set and squelch (dB over noise) control](docs/scanner.png)

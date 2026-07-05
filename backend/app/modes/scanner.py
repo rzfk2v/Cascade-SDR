@@ -27,7 +27,8 @@ from app.hub import FrameTag
 from app.modes.base import Mode
 from app.modes.radio import AUDIO_RATE, DEMODS, GATE_RAMP, IF_DECIM
 from app.modes.scanner_presets import (
-    PRESET_LABELS, PRESETS, channels_from_client, load_custom, save_custom,
+    PRESET_LABELS, PRESETS, RANGE_PRESET, channels_from_client,
+    channels_from_range, load_custom, save_custom,
 )
 
 FFT_SIZE = 1024
@@ -51,6 +52,8 @@ class ScannerMode(Mode):
         self.hold = 3.0             # s of silence before resuming the scan
         self.volume = 0.7
         self.priority = ""          # channel label to watch + pre-empt to (or "")
+        self.range_cfg: dict | None = None   # active range search (beta), or None
+        self._range_channels: list[dict] = []  # slots synthesized from range_cfg
         self._custom = load_custom()   # user-saved presets {name: [channels]}
         self._spectrum = Spectrum(FFT_SIZE)
         self._dirty = True          # rebuild channel/block layout in the worker
@@ -60,7 +63,9 @@ class ScannerMode(Mode):
 
     # --- config -------------------------------------------------------------
     def _channels_for(self, preset: str) -> list[dict] | None:
-        """Channel list for a preset name (built-in or user custom)."""
+        """Channel list for a preset name (built-in, user custom, or range)."""
+        if preset == RANGE_PRESET:
+            return self._range_channels or None
         if preset in PRESETS:
             return PRESETS[preset]
         return self._custom.get(preset)
@@ -71,10 +76,22 @@ class ScannerMode(Mode):
         if isinstance(save, dict) and isinstance(save.get("name"), str):
             name = save["name"].strip()[:24]
             chans = channels_from_client(save.get("channels"))
-            if name and name not in PRESETS and chans:   # don't shadow built-ins
+            if (name and name not in PRESETS and name != RANGE_PRESET
+                    and chans):   # don't shadow built-ins or the range sentinel
                 self._custom[name] = chans
                 save_custom(self._custom)
                 self.preset = name
+                self._dirty = True
+
+        # Range search (beta): synthesize a channel grid from start/stop/step
+        # and scan it like any preset — park on whatever breaks squelch.
+        rng = params.get("range")
+        if isinstance(rng, dict):
+            chans, cfg = channels_from_range(rng)
+            if chans:
+                self._range_channels = chans
+                self.range_cfg = cfg
+                self.preset = RANGE_PRESET
                 self._dirty = True
 
         delete = params.get("delete_preset")
@@ -87,6 +104,9 @@ class ScannerMode(Mode):
 
         if self._channels_for(params.get("preset")) is not None:
             self.preset = params["preset"]
+            if self.preset != RANGE_PRESET:   # picking a preset ends a range search
+                self.range_cfg = None
+                self._range_channels = []
             self._dirty = True
         if params.get("squelch") is not None:
             self.squelch_margin = float(np.clip(params["squelch"], 0.0, 40.0))
@@ -140,6 +160,7 @@ class ScannerMode(Mode):
             "squelch": self.squelch_margin,
             "hold": self.hold,
             "priority": self.priority,
+            "range": self.range_cfg,          # active range search (beta), or None
             "channels": [
                 {"label": c["label"], "mhz": round(c["freq"] / 1e6, 4),
                  "demod": c["demod"]}

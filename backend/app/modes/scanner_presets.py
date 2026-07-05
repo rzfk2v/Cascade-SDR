@@ -21,6 +21,11 @@ _AM = {"demod": "am", "bw": 8_000}
 # Bandwidth (Hz) inferred from a channel's demod for user-defined channels.
 _DEMOD_BW = {"nfm": 12_500, "am": 8_000}
 
+# Range search (beta): the preset id used while sweeping a frequency range, and
+# the cap on synthesized slots (bounds the scanner-state traffic and grid size).
+RANGE_PRESET = "__range__"
+MAX_RANGE_SLOTS = 800
+
 # User-saved custom presets live here (gitignored, like the AIS/ISM caches).
 # ``SCANNER_CACHE_PATH`` overrides the location (handy for tests / other disks).
 CUSTOM_PATH = Path(os.environ.get("SCANNER_CACHE_PATH")
@@ -99,6 +104,40 @@ def channels_from_client(items) -> list[dict]:
             continue
         out.append(make_channel(d.get("label", "?"), mhz, d.get("demod", "nfm")))
     return out
+
+
+def channels_from_range(d: dict) -> tuple[list[dict], dict | None]:
+    """Synthesize a channel grid from a range spec (search/sweep scanner, beta).
+
+    ``d`` is ``{start_mhz, stop_mhz, step_khz, demod}`` from the client. Returns
+    ``(channels, cfg)`` where ``cfg`` echoes the validated range (with the stop
+    clamped if the slot cap kicked in) for the UI, or ``([], None)`` if invalid.
+    """
+    try:
+        start = float(d.get("start_mhz"))
+        stop = float(d.get("stop_mhz"))
+        step = float(d.get("step_khz", 12.5))
+    except (TypeError, ValueError):
+        return [], None
+    demod = d.get("demod") if d.get("demod") in _DEMOD_BW else "nfm"
+    start = max(24.0, min(1766.0, start))
+    stop = max(24.0, min(1766.0, stop))
+    if stop <= start or not (1.0 <= step <= 1000.0):
+        return [], None
+    n = int(round((stop - start) * 1000.0 / step)) + 1
+    clamped = n > MAX_RANGE_SLOTS
+    if clamped:
+        n = MAX_RANGE_SLOTS
+        stop = start + (n - 1) * step / 1000.0
+    chans: list[dict] = []
+    for i in range(n):
+        mhz = start + i * step / 1000.0
+        label = f"{mhz:.4f}".rstrip("0").rstrip(".")
+        chans.append({"label": label[:12], "freq": mhz * 1e6,
+                      "demod": demod, "bw": _DEMOD_BW[demod]})
+    cfg = {"start_mhz": round(start, 4), "stop_mhz": round(stop, 4),
+           "step_khz": step, "demod": demod, "slots": n, "clamped": clamped}
+    return chans, cfg
 
 
 def load_custom() -> dict[str, list[dict]]:

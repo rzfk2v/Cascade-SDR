@@ -213,6 +213,14 @@ const scannerDel = document.getElementById("scanner-del")!;
 const scannerView = document.getElementById("scanner-view")!;
 const scannerNow = document.getElementById("scanner-now")!;
 const scannerGrid = document.getElementById("scanner-grid")!;
+// range search (beta)
+const rangeStart = document.getElementById("range-start") as HTMLInputElement;
+const rangeStop = document.getElementById("range-stop") as HTMLInputElement;
+const rangeStep = document.getElementById("range-step") as HTMLSelectElement;
+const rangeDemod = document.getElementById("range-demod") as HTMLSelectElement;
+const rangeGo = document.getElementById("range-go")!;
+const rangeNote = document.getElementById("range-note")!;
+const RANGE_PRESET = "__range__";
 type ScanChan = { label: string; mhz: number; demod: string };
 let scannerChannels: ScanChan[] = [];
 let editChannels: ScanChan[] = [];   // working copy for the channel editor
@@ -468,14 +476,18 @@ sock.onJson((msg) => {
       if (typeof msg.squelch === "number" && document.activeElement !== scannerSql)
         scannerSql.value = String(msg.squelch);
       renderScannerPrio(msg.priority || "");
+      renderRangeNote(msg.range);
       // Reload the editor's working copy only when the preset actually changes,
-      // so a squelch/priority push doesn't wipe edits in progress.
+      // so a squelch/priority push doesn't wipe edits in progress. A range
+      // search (beta) isn't editable — leave the editor on its previous list.
       if (msg.preset !== scannerPresetId) {
         scannerPresetId = msg.preset;
-        editChannels = scannerChannels.map((c) => ({ ...c }));
-        scannerName.value = msg.builtin ? "" : msg.preset;
-        scannerDel.hidden = !!msg.builtin;
-        renderScannerEditor();
+        if (msg.preset !== RANGE_PRESET) {
+          editChannels = scannerChannels.map((c) => ({ ...c }));
+          scannerName.value = msg.builtin ? "" : msg.preset;
+          scannerDel.hidden = !!msg.builtin;
+          renderScannerEditor();
+        }
       }
       renderScannerGrid();
       break;
@@ -1299,7 +1311,8 @@ function sendScannerPrefs(): void {
     },
   });
 }
-// Preset dropdown, split into Built-in / Custom groups.
+// Preset dropdown, split into Built-in / Custom groups (+ a transient entry
+// while a range search is active, so the dropdown reflects the current state).
 function renderScannerPresets(presets: any[], current: string): void {
   const grp = (builtin: boolean) => presets
     .filter((p) => !!p.builtin === builtin)
@@ -1308,8 +1321,23 @@ function renderScannerPresets(presets: any[], current: string): void {
   const custom = grp(false);
   scannerPreset.innerHTML =
     `<optgroup label="Built-in">${grp(true)}</optgroup>` +
-    (custom ? `<optgroup label="Custom">${custom}</optgroup>` : "");
+    (custom ? `<optgroup label="Custom">${custom}</optgroup>` : "") +
+    (current === RANGE_PRESET
+      ? `<optgroup label="Search"><option value="${RANGE_PRESET}">Range search (beta)</option></optgroup>`
+      : "");
   scannerPreset.value = current;
+}
+
+// Status line under the range-search box (beta).
+function renderRangeNote(range: any): void {
+  if (!range) {
+    rangeNote.textContent = "";
+    return;
+  }
+  rangeNote.textContent =
+    `searching ${range.start_mhz}–${range.stop_mhz} MHz · ` +
+    `${range.slots} slots @ ${range.step_khz} kHz` +
+    (range.clamped ? " (range clamped to the slot cap)" : "");
 }
 // Priority dropdown = Off + the current preset's channels.
 function renderScannerPrio(current: string): void {
@@ -1413,6 +1441,25 @@ function updateScannerState(msg: any): void {
 scannerPreset.addEventListener("change", () =>
   sock.send({ cmd: "config", params: { preset: scannerPreset.value } }),
 );
+rangeGo.addEventListener("click", () => {
+  const start = parseFloat(rangeStart.value);
+  const stop = parseFloat(rangeStop.value);
+  if (!isFinite(start) || !isFinite(stop) || stop <= start) {
+    rangeNote.textContent = "enter a valid range (from < to)";
+    return;
+  }
+  sock.send({
+    cmd: "config",
+    params: {
+      range: {
+        start_mhz: start,
+        stop_mhz: stop,
+        step_khz: parseFloat(rangeStep.value),
+        demod: rangeDemod.value,
+      },
+    },
+  });
+});
 scannerSql.addEventListener("input", () =>
   sock.send({ cmd: "config", params: { squelch: parseFloat(scannerSql.value) } }),
 );
@@ -1577,6 +1624,7 @@ const persistValues: Record<string, HTMLInputElement | HTMLSelectElement> = {
   ppm: ppmInput, demod: demodSel, vol: volInput, sql: sqlInput,
   scanStart, scanStop, wfFloor, wfCeil, rxLoc, deemph: deemphSel, averaging,
   scannerSql, scannerVol, scannerPrio,
+  rangeStart, rangeStop, rangeStep, rangeDemod,
 };
 const persistChecks: Record<string, HTMLInputElement> = {
   gainAuto, biasTee, wfAuto, peakHold, rdsOn, stereoOn, showTracks,
