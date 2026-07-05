@@ -741,9 +741,10 @@ WebSocket upgrade for real-time data:
 sudo nginx -t && sudo systemctl reload nginx
 ```
 
-The production frontend build sets `base="/sdr/"` automatically, so all asset
-and WebSocket paths work under the subpath. No backend changes needed — nginx
-strips the `/sdr` prefix before forwarding.
+The frontend build is **path-relative** and derives its WebSocket/API prefix
+from the page URL at runtime, so the *same* build works served directly by the
+backend (`http://<host>:8000`) **and** behind the `/sdr/` subpath — no build
+flags, no backend changes. Nginx strips the `/sdr` prefix before forwarding.
 
 > **Security:** Cascade SDR has **no authentication**. Keep it on your trusted LAN,
 > or reach it over a VPN / SSH tunnel (`ssh -L 8000:localhost:8000 pi@<pi-ip>`).

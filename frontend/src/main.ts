@@ -1,7 +1,7 @@
 // App shell: wires the WebSocket, mode tabs, tuning controls, waterfall,
 // tuning overlay, and audio.
 
-import { SdrSocket, FrameTag } from "./ws";
+import { SdrSocket, FrameTag, appBase } from "./ws";
 import { Waterfall } from "./waterfall";
 import { SpectrumScope } from "./scope";
 import { Tuner } from "./tuner";
@@ -29,7 +29,9 @@ import { AptImage } from "./aptimage";
 import { SstvImage } from "./sstvimage";
 import { esc } from "./html";
 
-const BASE = import.meta.env.BASE_URL || "/";
+// Path prefix the app is served under ("/" direct, "/sdr/" behind a proxy) —
+// runtime-derived so the same build works in both places.
+const BASE = appBase();
 const sock = new SdrSocket();
 const waterfall = new Waterfall(
   document.getElementById("waterfall") as HTMLCanvasElement,

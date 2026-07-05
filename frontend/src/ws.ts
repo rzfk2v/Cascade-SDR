@@ -13,6 +13,15 @@ export const FrameTag = {
 type JsonHandler = (msg: any) => void;
 type BinaryHandler = (tag: number, payload: DataView) => void;
 
+// The path prefix the app is served under: "/" when the backend serves it
+// directly (http://host:8000), "/sdr/" behind a reverse-proxy subpath.
+// Derived at runtime from the page URL — the build is path-relative, so one
+// build works anywhere. A trailing filename (e.g. /index.html) is dropped.
+export function appBase(): string {
+  const p = location.pathname;
+  return p.endsWith("/") ? p : p.replace(/[^/]*$/, "");
+}
+
 export class SdrSocket {
   private ws: WebSocket | null = null;
   private url: string;
@@ -22,8 +31,7 @@ export class SdrSocket {
 
   constructor(path = "ws") {
     const proto = location.protocol === "https:" ? "wss" : "ws";
-    const base = import.meta.env.BASE_URL || "/";
-    this.url = `${proto}://${location.host}${base}${path}`;
+    this.url = `${proto}://${location.host}${appBase()}${path}`;
   }
 
   connect(): void {

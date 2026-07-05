@@ -2,10 +2,12 @@ import { defineConfig } from "vite";
 
 // During dev, the Vite server (5173) proxies API + WebSocket to the FastAPI
 // backend (8000) so the browser talks to a single origin.
-// Production builds set base="/sdr/" so the app can sit behind an nginx
-// location block at /sdr on a shared domain (e.g. cascade.engfors.net/sdr).
+// Production builds use a *relative* base, so one build works served directly
+// by the backend (http://host:8000) AND behind any reverse-proxy subpath
+// (e.g. an nginx location block at /sdr) — the runtime WS/API paths are
+// derived from location.pathname (see ws.ts appBase()).
 export default defineConfig({
-  base: process.env.NODE_ENV === "production" ? "/sdr/" : "/",
+  base: "./",
   server: {
     port: 5173,
     proxy: {
