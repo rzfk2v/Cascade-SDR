@@ -37,6 +37,13 @@ DETECT_BLOCK = 16_384   # samples FFT'd to look for activity
 PARK_BLOCK = 51_200     # samples per parked read (multiple of 50 -> clean decim)
 SETTLE = 4_096          # samples discarded after a retune (PLL relock)
 
+# The dongle shows a false carrier at its own tune frequency (the DC spike), a
+# few FFT bins wide. Bins this close to the block centre never count towards a
+# channel's level, so the spike can't break squelch.
+DC_GUARD_BINS = 2
+_DC_KEEP = np.ones(FFT_SIZE, dtype=bool)
+_DC_KEEP[FFT_SIZE // 2 - DC_GUARD_BINS:FFT_SIZE // 2 + DC_GUARD_BINS + 1] = False
+
 
 class ScannerMode(Mode):
     name = "scanner"
@@ -140,11 +147,35 @@ class ScannerMode(Mode):
                 blocks.append([c])
         self._blocks = []
         for bi, chans in enumerate(blocks):
-            center = (chans[0]["freq"] + chans[-1]["freq"]) / 2.0
+            lo, hi = chans[0]["freq"], chans[-1]["freq"]
+            slack = (usable - (hi - lo)) / 2.0
+            center = self._dc_safe_center(chans, (lo + hi) / 2.0, slack, sr)
             for c in chans:
                 c["block"] = bi
             self._blocks.append({"center": center, "channels": chans})
         self._dirty = False
+
+    @staticmethod
+    def _dc_safe_center(chans: list[dict], mid: float, slack: float,
+                        sr: float) -> float:
+        """Pick a tune centre whose DC spike falls *between* channels.
+
+        The dongle's false carrier sits exactly at the tune frequency, so a
+        channel on the block midpoint would break squelch forever — a range
+        search's middle slot always landed there. Candidates are the midpoints
+        of gaps between adjacent channels (clamped to the ``slack`` the usable
+        bandwidth leaves around ``mid``); keep whichever clears every channel's
+        band by a few FFT bins, preferring the smallest nudge.
+        """
+        need = (DC_GUARD_BINS + 1) * sr / FFT_SIZE   # spike width + margin
+
+        def clearance(f: float) -> float:
+            return min(abs(c["freq"] - f) - c["bw"] / 2.0 for c in chans)
+
+        cands = [mid, mid - min(slack, sr / 8.0), mid + min(slack, sr / 8.0)]
+        cands += [min(max((a["freq"] + b["freq"]) / 2.0, mid - slack), mid + slack)
+                  for a, b in zip(chans, chans[1:])]
+        return max(cands, key=lambda f: (min(clearance(f), need), -abs(f - mid)))
 
     def _config_msg(self) -> dict:
         presets = [{"id": k, "label": PRESET_LABELS[k], "builtin": True}
@@ -191,7 +222,7 @@ class ScannerMode(Mode):
 
     def _channel_level(self, row: np.ndarray, freqs: np.ndarray,
                        ch: dict, floor: float) -> float:
-        band = np.abs(freqs - ch["freq"]) <= ch["bw"] / 2.0
+        band = (np.abs(freqs - ch["freq"]) <= ch["bw"] / 2.0) & _DC_KEEP
         peak = float(row[band].max()) if band.any() else floor
         return peak - floor
 
