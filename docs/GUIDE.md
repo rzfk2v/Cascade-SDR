@@ -123,7 +123,10 @@ Marine Ch 16 while tuned to Ch 72. Open **Extra receivers** in the Radio panel:
   (green ▶ = squelch open).
 - **Click tunes: A/B/C/D** picks which receiver a waterfall click retunes —
   pick **B**, click a signal, and B parks there (A stays put). Switch back to
-  **A** for normal click-to-tune.
+  **A** for normal click-to-tune. Ticking the checkbox of a receiver that has
+  no usable frequency yet (empty, or stranded outside the band after a retune —
+  its level then reads *outside*) arms this automatically, so "check B, click
+  the signal" just works.
 - Every extra receiver must sit **inside the captured band** (the waterfall's
   span, ±1.2 MHz around Center). Retuning Center so a receiver falls outside
   switches it off automatically.

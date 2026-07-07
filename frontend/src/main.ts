@@ -410,10 +410,18 @@ sock.onJson((msg) => {
       levelMeter.classList.toggle("open", msg.open);
       if (Array.isArray(msg.vfos))
         msg.vfos.forEach((v: any, i: number) => {
-          const el = vfoRows[i]?.level;
-          if (!el) return;
-          el.textContent = v.on ? `${v.db.toFixed(0)} ${v.open ? "▶" : "·"}` : "·";
-          el.classList.toggle("open", !!(v.on && v.open));
+          const row = vfoRows[i];
+          if (!row) return;
+          const hz = parseFloat(row.freq.value) * 1e6;
+          const outside =
+            v.on && isFinite(hz) && Math.abs(hz - viewCenter) > viewRate / 2;
+          row.level.textContent = outside
+            ? "outside"
+            : v.on ? `${v.db.toFixed(0)} ${v.open ? "▶" : "·"}` : "·";
+          row.level.title = outside
+            ? "frequency is outside the captured band — click the waterfall to re-park it"
+            : "";
+          row.level.classList.toggle("open", !!(v.on && v.open && !outside));
         });
       break;
     case "adsb_status":
@@ -1338,6 +1346,16 @@ function sendVfo(slot: number): void {
 }
 
 vfoRows.forEach((e, i) => {
+  // Enabling a receiver that has no usable frequency yet (empty field, or a
+  // stale one left outside the band after a retune) arms the click target to
+  // it, so the natural flow "check B, then click the signal" just works.
+  e.on.addEventListener("change", () => {
+    const hz = parseFloat(e.freq.value) * 1e6;
+    if (e.on.checked && (!isFinite(hz) || Math.abs(hz - viewCenter) > viewRate / 2)) {
+      const r = vfoTargetEls.find((x) => x.value === String(i + 1));
+      if (r) r.checked = true;
+    }
+  });
   [e.on, e.freq, e.demod, e.sql].forEach((el) =>
     el.addEventListener("change", () => sendVfo(i + 1)),
   );
