@@ -392,6 +392,7 @@ sock.onJson((msg) => {
       cwText.hidden = msg.demod !== "cw";
       if (msg.demod !== "cw") cwOut.textContent = "";
       if (msg.squelch > -100) sqlInput.value = Math.round(msg.squelch).toString();
+      if (Array.isArray(msg.vfos)) syncVfos(msg.vfos);
       tunedLine.textContent =
         `tuned ${(msg.tuned_freq / 1e6).toFixed(3)} MHz · ` +
         `${msg.demod.toUpperCase()} · BW ${(msg.bandwidth / 1e3).toFixed(0)} kHz`;
@@ -407,6 +408,13 @@ sock.onJson((msg) => {
       levelMeter.textContent =
         `${msg.db.toFixed(0)} dB ${msg.open ? "▶" : "🔇"}${msg.stereo ? " ◖◗ stereo" : ""}`;
       levelMeter.classList.toggle("open", msg.open);
+      if (Array.isArray(msg.vfos))
+        msg.vfos.forEach((v: any, i: number) => {
+          const el = vfoRows[i]?.level;
+          if (!el) return;
+          el.textContent = v.on ? `${v.db.toFixed(0)} ${v.open ? "▶" : "·"}` : "·";
+          el.classList.toggle("open", !!(v.on && v.open));
+        });
       break;
     case "adsb_status":
       adsbStatus.textContent = msg.message;
@@ -1192,7 +1200,8 @@ document.getElementById("mode-tabs")!.addEventListener("click", async (e) => {
   if (mode === "dab") sock.send({ cmd: "config", params: { channel: dabChannel.value } });
 });
 
-// Apply persisted demod/volume/squelch after entering radio mode.
+// Apply persisted demod/volume/squelch (and sub-VFO rows) after entering
+// radio mode.
 function sendRadioPrefs(): void {
   sock.send({
     cmd: "config",
@@ -1205,11 +1214,24 @@ function sendRadioPrefs(): void {
       stereo: stereoOn.checked,
     },
   });
+  vfoRows.forEach((e, i) => {
+    if (e.on.checked || e.freq.value) sendVfo(i + 1);
+  });
 }
 
 // --- click / drag to tune ------------------------------------------------
 tuner.onTune = async (freqHz) => {
   if (currentMode === "radio" || currentMode === "replay") {
+    // a click can tune an extra receiver instead of the main channel
+    const t = vfoTarget();
+    if (t > 0) {
+      const e = vfoRows[t - 1];
+      e.freq.value = (+(freqHz / 1e6).toFixed(5)).toString();
+      e.on.checked = true;
+      sendVfo(t);
+      persist();
+      return;
+    }
     // tune within the currently captured band, no hardware retune
     sock.send({ cmd: "config", params: { tuned_freq: freqHz } });
     tuner.setTuned(freqHz);
@@ -1274,6 +1296,75 @@ volInput.addEventListener("input", () =>
 sqlInput.addEventListener("input", () =>
   sock.send({ cmd: "config", params: { squelch: parseFloat(sqlInput.value) } }),
 );
+
+// --- extra receivers (sub-VFOs B/C/D) -------------------------------------
+// Three more channels demodulated from the same captured band (backend mixes
+// their audio into the stream). Rows map to slots 1..3; slot 0 = the main VFO.
+type VfoRow = {
+  on: HTMLInputElement; freq: HTMLInputElement; demod: HTMLSelectElement;
+  sql: HTMLInputElement; vol: HTMLInputElement; level: HTMLElement;
+};
+const vfoRows: VfoRow[] = [1, 2, 3].map((s) => ({
+  on: document.getElementById(`vfo${s}-on`) as HTMLInputElement,
+  freq: document.getElementById(`vfo${s}-freq`) as HTMLInputElement,
+  demod: document.getElementById(`vfo${s}-demod`) as HTMLSelectElement,
+  sql: document.getElementById(`vfo${s}-sql`) as HTMLInputElement,
+  vol: document.getElementById(`vfo${s}-vol`) as HTMLInputElement,
+  level: document.getElementById(`vfo${s}-level`)!,
+}));
+const VFO_BW: Record<string, number> = { nfm: 12_500, am: 10_000 };
+const vfoTargetEls = [...document.querySelectorAll('input[name="vfo-target"]')] as HTMLInputElement[];
+
+function vfoTarget(): number {
+  return parseInt(vfoTargetEls.find((r) => r.checked)?.value || "0", 10);
+}
+
+function sendVfo(slot: number): void {
+  const e = vfoRows[slot - 1];
+  const mhz = parseFloat(e.freq.value);
+  sock.send({
+    cmd: "config",
+    params: {
+      vfo: {
+        slot,
+        on: e.on.checked && isFinite(mhz),
+        freq: isFinite(mhz) ? mhz * 1e6 : 0,
+        demod: e.demod.value,
+        squelch: parseFloat(e.sql.value),
+        volume: parseFloat(e.vol.value),
+      },
+    },
+  });
+}
+
+vfoRows.forEach((e, i) => {
+  [e.on, e.freq, e.demod, e.sql].forEach((el) =>
+    el.addEventListener("change", () => sendVfo(i + 1)),
+  );
+  e.vol.addEventListener("input", () => sendVfo(i + 1));
+});
+
+// Reflect the backend's sub-VFO state into the rows + waterfall markers.
+function syncVfos(vfos: any[]): void {
+  vfos.forEach((v: any, i: number) => {
+    const e = vfoRows[i];
+    if (!e) return;
+    e.on.checked = !!v.on;
+    if (document.activeElement !== e.freq && v.freq)
+      e.freq.value = (+(v.freq / 1e6).toFixed(5)).toString();
+    e.demod.value = v.demod;
+    if (document.activeElement !== e.sql)
+      e.sql.value = Math.round(v.squelch).toString();
+    if (document.activeElement !== e.vol) e.vol.value = String(v.volume);
+    if (!v.on) {
+      e.level.textContent = "·";
+      e.level.classList.remove("open");
+    }
+  });
+  tuner.setSubVfos(
+    vfos.map((v: any) => ({ on: !!v.on, freq: v.freq, bw: VFO_BW[v.demod] || 12_500 })),
+  );
+}
 
 // --- audio recording -----------------------------------------------------
 const recAudioBtn = document.getElementById("rec-audio") as HTMLButtonElement;
@@ -1650,6 +1741,13 @@ const persistValues: Record<string, HTMLInputElement | HTMLSelectElement> = {
 const persistChecks: Record<string, HTMLInputElement> = {
   gainAuto, biasTee, wfAuto, peakHold, rdsOn, stereoOn, showTracks,
 };
+vfoRows.forEach((e, i) => {
+  persistValues[`vfo${i + 1}Freq`] = e.freq;
+  persistValues[`vfo${i + 1}Demod`] = e.demod;
+  persistValues[`vfo${i + 1}Sql`] = e.sql;
+  persistValues[`vfo${i + 1}Vol`] = e.vol;
+  persistChecks[`vfo${i + 1}On`] = e.on;
+});
 
 function persist(): void {
   const s: Record<string, string | number | boolean> = { gainDb: desiredGainDb };

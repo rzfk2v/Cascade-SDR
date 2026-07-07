@@ -63,6 +63,107 @@ DEMODS = {
     "cw": {"bw": 800, "audio": 1_200},
 }
 
+# Extra receivers (VFO B/C/D) alongside the main channel — same captured band.
+SUB_VFO_SLOTS = 3
+SUB_VFO_DEMODS = ("nfm", "am")
+
+
+class SubVfo:
+    """One extra receiver (VFO B/C/D) demodulated from the same captured band.
+
+    Runs its own channelizer + demod chain in parallel with the main channel;
+    its gated, volume-scaled mono audio is mixed into the emitted stream. NFM/AM
+    only — the wideband extras (stereo/RDS/APT/SSTV) stay on the main VFO.
+    """
+
+    def __init__(self) -> None:
+        self.on = False
+        self.freq = 0.0
+        self.demod = "nfm"
+        self.squelch_db = -60.0
+        self.volume = 0.7
+        self.level_db = -120.0
+        self.open = False
+        self._rebuild = True
+        self._chan: ComplexChannelizer | None = None
+        self._disc = FmDiscriminator()
+        self._adec: RealDecimator | None = None
+        self._dev = float(DEMODS["nfm"]["dev"])
+        self._gate = 0.0
+        self._vol_prev = self.volume
+
+    def config(self, d: dict) -> None:
+        if d.get("demod") in SUB_VFO_DEMODS and d["demod"] != self.demod:
+            self.demod = d["demod"]
+            self._rebuild = True
+        if d.get("freq") is not None:
+            self.freq = float(d["freq"])
+        if d.get("squelch") is not None:
+            self.squelch_db = float(d["squelch"])
+        if d.get("volume") is not None:
+            self.volume = float(np.clip(d["volume"], 0.0, 2.0))
+        if d.get("on") is not None:
+            self.on = bool(d["on"])
+
+    def state(self) -> dict:
+        return {"on": self.on, "freq": self.freq, "demod": self.demod,
+                "squelch": self.squelch_db, "volume": self.volume}
+
+    def _build(self, sr: float) -> None:
+        cfg = DEMODS[self.demod]
+        self._chan = ComplexChannelizer(sr, IF_DECIM, max(cfg["bw"] / 2.0, 6_000.0))
+        if_rate = self._chan.out_rate
+        self._disc = FmDiscriminator()
+        self._adec = RealDecimator(if_rate, int(round(if_rate / AUDIO_RATE)),
+                                   cfg["audio"])
+        self._dev = float(cfg.get("dev", 5_000))
+        self._rebuild = False
+
+    def process(self, samples: np.ndarray, center: float, sr: float) -> np.ndarray | None:
+        """Demodulate one block to gated, volume-scaled mono audio.
+
+        Returns ``None`` when the channel sits outside the captured band (the
+        NCO can't shift past Nyquist, so there's nothing meaningful to hear).
+        """
+        if abs(self.freq - center) > sr * 0.49:
+            self.level_db, self.open = -120.0, False
+            return None
+        if self._rebuild or self._chan is None or self._chan.in_rate != sr:
+            self._build(sr)
+        self._chan.set_shift(self.freq - center)
+        bb = self._chan.process(samples)
+        if_rate = self._chan.out_rate
+        power = float(np.mean(np.abs(bb) ** 2)) if bb.size else 0.0
+        self.level_db = 10.0 * float(np.log10(power + 1e-12))
+        self.open = self.level_db >= self.squelch_db
+        if self.demod == "am":
+            env = self._adec.process(np.abs(bb))
+            carrier = float(np.mean(env))
+            audio = (env - carrier) / carrier if carrier > 1e-6 else env * 0.0
+        else:
+            audio = self._adec.process(
+                self._disc.process(bb) * (if_rate / (2.0 * np.pi * self._dev)))
+        n = audio.size
+        if n == 0:
+            return audio
+        # same click-free squelch ramp + volume glide as the main channel
+        target = 1.0 if self.open else 0.0
+        g = np.empty(n)
+        if target != self._gate:
+            k = min(n, GATE_RAMP)
+            g[:k] = np.linspace(self._gate, target, k, endpoint=False)
+            g[k:] = target
+            self._gate = target
+        else:
+            g.fill(target)
+        vol = self.volume
+        if vol != self._vol_prev:
+            g *= np.linspace(self._vol_prev, vol, n)
+            self._vol_prev = vol
+        else:
+            g *= vol
+        return audio * g
+
 
 class RadioMode(Mode):
     name = "radio"
@@ -87,6 +188,7 @@ class RadioMode(Mode):
         self.volume = 0.7
         self.squelch_db = -80.0      # channel-power gate; -80 = effectively open
         self.deemph_us = 50.0        # FM de-emphasis: 50 µs (EU) / 75 µs (Americas)
+        self.vfos = [SubVfo() for _ in range(SUB_VFO_SLOTS)]  # extra receivers B/C/D
         self.rds_enabled = False     # decode RDS (station name/radiotext) on WFM; off by default
         self._rds: RdsDemod | None = None
         self._rds_dirty = False      # tuned to a new station -> reset RDS
@@ -164,6 +266,12 @@ class RadioMode(Mode):
         if "sstv" in params and params["sstv"] is not None:
             self.sstv_enabled = bool(params["sstv"])
             self._need_rebuild = True
+        # Extra receivers: one {"slot": 1..3, ...} dict, or a list of them.
+        vfo = params.get("vfo")
+        for d in ([vfo] if isinstance(vfo, dict) else params.get("vfos") or []):
+            if (isinstance(d, dict) and isinstance(d.get("slot"), int)
+                    and 1 <= d["slot"] <= len(self.vfos)):
+                self.vfos[d["slot"] - 1].config(d)
         self._announce_radio()
 
     def _radio_config_msg(self) -> dict:
@@ -180,6 +288,7 @@ class RadioMode(Mode):
             "apt": self.apt_enabled,
             "sstv": self.sstv_enabled,
             "audio_rate": AUDIO_RATE,
+            "vfos": [v.state() for v in self.vfos],
         }
 
     def _spectrum_config_msg(self) -> dict:
@@ -326,138 +435,178 @@ class RadioMode(Mode):
         # fell outside it, follow the band — otherwise the "tuned" readout (and any
         # bookmark made from it) goes stale, still pointing at the old channel. Done
         # before the spectrum-only return so it also tracks while just browsing.
+        # An extra receiver that fell outside the band is switched off instead
+        # (there's nothing meaningful it could demodulate any more).
         band = (self.manager.center_freq, self.manager.sample_rate)
         if band != self._last_band:
             self._last_band = band
             half = self.manager.sample_rate / 2.0
+            changed = False
             if not (self.manager.center_freq - half < self.tuned_freq
                     < self.manager.center_freq + half):
                 self.tuned_freq = self.manager.center_freq
                 self._user_tuned = False
+                changed = True
+            for v in self.vfos:
+                if v.on and not (self.manager.center_freq - half < v.freq
+                                 < self.manager.center_freq + half):
+                    v.on = False
+                    changed = True
+            if changed:
                 self._announce_radio()
 
         # Spectrum-only until the user picks a channel (click-to-tune): show the
         # waterfall but emit no audio. This is what makes one combined view serve
         # as both "browse the band" and "listen". (APT decodes the centre channel
-        # without a click, so it's exempt.)
-        if not self._user_tuned and not self.apt_enabled and not self.sstv_enabled:
+        # without a click, and an enabled extra receiver keeps its own channel
+        # going, so those are exempt.)
+        subs = [v for v in self.vfos if v.on]
+        main_active = self._user_tuned or self.apt_enabled or self.sstv_enabled
+        if not main_active and not subs:
             return
 
-        # 2) (re)build the channel chain if bandwidth/demod changed
-        if self._need_rebuild or self._chan is None:
-            self._build_chain()
-
-        assert self._chan is not None
-
-        # 3) select + demodulate the channel
-        self._chan.set_shift(self.tuned_freq - self.manager.center_freq)
-        baseband = self._chan.process(samples)            # complex, IF rate
-        if_rate = self._chan.out_rate
-
-        # channel power (dBFS) drives the squelch + level meter
-        power = float(np.mean(np.abs(baseband) ** 2)) if baseband.size else 0.0
-        level_db = 10.0 * np.log10(power + 1e-12)
-        squelched = level_db < self.squelch_db
-
+        level_db = -120.0
+        squelched = True
         audio_lr: tuple[np.ndarray, np.ndarray] | None = None  # set for true stereo
-        if self.demod in ("wfm", "nfm"):
-            disc = self._disc.process(baseband)           # radians/sample = MPX
-            disc *= if_rate / (2.0 * np.pi * self._fm_dev)
-            # RDS: decode the 57 kHz subcarrier from the full MPX (pre-decimation)
-            if self.demod == "wfm" and self.rds_enabled:
-                if self._rds is None or self._rds_dirty:
-                    self._stop_rds_worker()
-                    self._rds = RdsDemod(if_rate, self._emit_rds)
-                    self._rds_dirty = False
-                    self.manager.emit_json({"type": "rds", "pi": None, "pty": None,
-                                            "ps": "", "rt": ""})
-                    self._rds_queue = queue.Queue(maxsize=4)
-                    self._rds_thread = threading.Thread(
-                        target=self._rds_worker, daemon=True, name="rds-decoder")
-                    self._rds_thread.start()
-                if self._rds_queue is not None:
-                    try:
-                        self._rds_queue.put_nowait(disc)
-                    except queue.Full:
-                        pass  # RDS thread busy; drop block (display data, not audio)
-            mono = self._audio_decim.process(disc)
-            # NOAA APT: decode the 2400 Hz image subcarrier from the FM audio
-            # (before de-emphasis, which would tilt the subcarrier amplitude)
-            if self.demod == "wfm" and self.apt_enabled:
-                if self._apt is None or self._apt_dirty:
-                    self._apt = AptDecoder(self._audio_decim.out_rate, self._emit_apt)
-                    self._apt_dirty = False
-                self._apt.process(mono)
-            # SSTV: decode the image tone straight from the FM audio (pre-deemphasis)
-            self._feed_sstv(mono, self._audio_decim.out_rate)
-            # Stereo: recover L−R from the 38 kHz subcarrier (only when a pilot is
-            # present), otherwise fall back to mono (L = R). The mono fallback
-            # still goes through the same L/R de-emphasis pair so the filter
-            # state stays continuous across stereo<->mono transitions (no click).
-            if (self.demod == "wfm" and self.stereo_enabled
-                    and self._stereo is not None):
-                diff, frac = self._stereo.process(disc)
-                if frac >= PILOT_ON:
-                    self._stereo_on = True
-                elif frac < PILOT_OFF:
-                    self._stereo_on = False
-                if not self._stereo_on:
-                    diff = np.zeros_like(diff)
-                left, right = mono + diff, mono - diff
-                if self._deemph_l is not None:
-                    left = self._deemph_l.process(left)
-                    right = self._deemph_r.process(right)
-                audio_lr = (left, right)
-            if audio_lr is None:
-                audio = self._deemph.process(mono) if self._deemph is not None else mono
-        elif self.demod == "am":
-            env = self._audio_decim.process(np.abs(baseband))
-            carrier = float(np.mean(env))                  # carrier-normalised:
-            audio = (env - carrier) / carrier if carrier > 1e-6 else env * 0.0
-            self._feed_sstv(audio, self._audio_decim.out_rate)
-        else:  # usb / lsb / cw
-            assert self._cplx_decim is not None and self._ssb is not None
-            audio = self._ssb.process(self._cplx_decim.process(baseband))
-            if self._agc is not None:
-                audio = self._agc.process(audio)
-            self._feed_sstv(audio, self._cplx_decim.out_rate)
-            if self.demod == "cw" and self._cw is not None and self._env_decim is not None:
-                text = self._cw.process(self._env_decim.process(np.abs(baseband)))
-                if text:
-                    self.manager.emit_json({"type": "cw_text", "text": text})
+        audio: np.ndarray | None = None
+        if main_active:
+            # 2) (re)build the channel chain if bandwidth/demod changed
+            if self._need_rebuild or self._chan is None:
+                self._build_chain()
+
+            assert self._chan is not None
+
+            # 3) select + demodulate the channel
+            self._chan.set_shift(self.tuned_freq - self.manager.center_freq)
+            baseband = self._chan.process(samples)            # complex, IF rate
+            if_rate = self._chan.out_rate
+
+            # channel power (dBFS) drives the squelch + level meter
+            power = float(np.mean(np.abs(baseband) ** 2)) if baseband.size else 0.0
+            level_db = 10.0 * np.log10(power + 1e-12)
+            squelched = level_db < self.squelch_db
+
+            if self.demod in ("wfm", "nfm"):
+                disc = self._disc.process(baseband)           # radians/sample = MPX
+                disc *= if_rate / (2.0 * np.pi * self._fm_dev)
+                # RDS: decode the 57 kHz subcarrier from the full MPX (pre-decimation)
+                if self.demod == "wfm" and self.rds_enabled:
+                    if self._rds is None or self._rds_dirty:
+                        self._stop_rds_worker()
+                        self._rds = RdsDemod(if_rate, self._emit_rds)
+                        self._rds_dirty = False
+                        self.manager.emit_json({"type": "rds", "pi": None, "pty": None,
+                                                "ps": "", "rt": ""})
+                        self._rds_queue = queue.Queue(maxsize=4)
+                        self._rds_thread = threading.Thread(
+                            target=self._rds_worker, daemon=True, name="rds-decoder")
+                        self._rds_thread.start()
+                    if self._rds_queue is not None:
+                        try:
+                            self._rds_queue.put_nowait(disc)
+                        except queue.Full:
+                            pass  # RDS thread busy; drop block (display data, not audio)
+                mono = self._audio_decim.process(disc)
+                # NOAA APT: decode the 2400 Hz image subcarrier from the FM audio
+                # (before de-emphasis, which would tilt the subcarrier amplitude)
+                if self.demod == "wfm" and self.apt_enabled:
+                    if self._apt is None or self._apt_dirty:
+                        self._apt = AptDecoder(self._audio_decim.out_rate, self._emit_apt)
+                        self._apt_dirty = False
+                    self._apt.process(mono)
+                # SSTV: decode the image tone straight from the FM audio (pre-deemphasis)
+                self._feed_sstv(mono, self._audio_decim.out_rate)
+                # Stereo: recover L−R from the 38 kHz subcarrier (only when a pilot is
+                # present), otherwise fall back to mono (L = R). The mono fallback
+                # still goes through the same L/R de-emphasis pair so the filter
+                # state stays continuous across stereo<->mono transitions (no click).
+                if (self.demod == "wfm" and self.stereo_enabled
+                        and self._stereo is not None):
+                    diff, frac = self._stereo.process(disc)
+                    if frac >= PILOT_ON:
+                        self._stereo_on = True
+                    elif frac < PILOT_OFF:
+                        self._stereo_on = False
+                    if not self._stereo_on:
+                        diff = np.zeros_like(diff)
+                    left, right = mono + diff, mono - diff
+                    if self._deemph_l is not None:
+                        left = self._deemph_l.process(left)
+                        right = self._deemph_r.process(right)
+                    audio_lr = (left, right)
+                if audio_lr is None:
+                    audio = self._deemph.process(mono) if self._deemph is not None else mono
+            elif self.demod == "am":
+                env = self._audio_decim.process(np.abs(baseband))
+                carrier = float(np.mean(env))                  # carrier-normalised:
+                audio = (env - carrier) / carrier if carrier > 1e-6 else env * 0.0
+                self._feed_sstv(audio, self._audio_decim.out_rate)
+            else:  # usb / lsb / cw
+                assert self._cplx_decim is not None and self._ssb is not None
+                audio = self._ssb.process(self._cplx_decim.process(baseband))
+                if self._agc is not None:
+                    audio = self._agc.process(audio)
+                self._feed_sstv(audio, self._cplx_decim.out_rate)
+                if self.demod == "cw" and self._cw is not None and self._env_decim is not None:
+                    text = self._cw.process(self._env_decim.process(np.abs(baseband)))
+                    if text:
+                        self.manager.emit_json({"type": "cw_text", "text": text})
+
+        # Extra receivers: demodulate each enabled sub-VFO from the same block.
+        sub_audio: list[np.ndarray] = []
+        for v in subs:
+            a = v.process(samples, self.manager.center_freq,
+                          self.manager.sample_rate)
+            if a is not None and a.size:
+                sub_audio.append(a)
 
         if now - self._last_level_emit >= 0.1:  # ~10 Hz meter updates
             self._last_level_emit = now
             self.manager.emit_json({
                 "type": "radio_level", "db": round(level_db, 1),
                 "open": not squelched, "stereo": self._stereo_on,
+                "vfos": [{"on": v.on, "db": round(v.level_db, 1), "open": v.open}
+                         for v in self.vfos],
             })
 
-        # 4) scale to int16 and emit as interleaved stereo (mono -> L = R), so the
-        #    player has one consistent format. Silence when squelched — gated by a
-        #    short ramp, and volume changes glide across the block, so neither
-        #    steps the waveform mid-stream (audible click).
-        left, right = audio_lr if audio_lr is not None else (audio, audio)
-        n_out = left.size
-        if n_out == 0:
+        # 4) apply the main channel's squelch gate + volume, mix in the extra
+        #    receivers, scale to int16 and emit as interleaved stereo (mono ->
+        #    L = R), so the player has one consistent format. Silence when
+        #    squelched — gated by a short ramp, and volume changes glide across
+        #    the block, so neither steps the waveform mid-stream (audible click).
+        mix_l: np.ndarray | None = None
+        mix_r: np.ndarray | None = None
+        if main_active:
+            left, right = audio_lr if audio_lr is not None else (audio, audio)
+            n_out = left.size
+            if n_out:
+                gate = 0.0 if squelched else 1.0
+                g = np.empty(n_out)
+                if gate != self._gate:
+                    k = min(n_out, GATE_RAMP)
+                    g[:k] = np.linspace(self._gate, gate, k, endpoint=False)
+                    g[k:] = gate
+                    self._gate = gate
+                else:
+                    g.fill(gate)
+                vol = self.volume
+                if vol != self._vol_prev:
+                    g *= np.linspace(self._vol_prev, vol, n_out)
+                    self._vol_prev = vol
+                else:
+                    g *= vol
+                mix_l, mix_r = left * g, right * g
+        for a in sub_audio:
+            if mix_l is None or mix_r is None:
+                mix_l, mix_r = a.copy(), a.copy()
+            else:
+                m = min(mix_l.size, a.size)
+                mix_l[:m] += a[:m]
+                mix_r[:m] += a[:m]
+        if mix_l is None or mix_r is None or mix_l.size == 0:
             return
-        gate = 0.0 if squelched else 1.0
-        g = np.empty(n_out)
-        if gate != self._gate:
-            k = min(n_out, GATE_RAMP)
-            g[:k] = np.linspace(self._gate, gate, k, endpoint=False)
-            g[k:] = gate
-            self._gate = gate
-        else:
-            g.fill(gate)
-        vol = self.volume
-        if vol != self._vol_prev:
-            g *= np.linspace(self._vol_prev, vol, n_out)
-            self._vol_prev = vol
-        else:
-            g *= vol
-        l = np.clip(left * g, -1.0, 1.0)
-        r = np.clip(right * g, -1.0, 1.0)
+        l = np.clip(mix_l, -1.0, 1.0)
+        r = np.clip(mix_r, -1.0, 1.0)
         inter = np.empty(l.size * 2, dtype="<i2")
         inter[0::2] = (l * 32767).astype("<i2")
         inter[1::2] = (r * 32767).astype("<i2")

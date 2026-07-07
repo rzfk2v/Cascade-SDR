@@ -110,6 +110,32 @@ you click a signal. (This is the old Waterfall and Radio modes merged into one.)
 click one to listen. Scroll to zoom into a crowded patch. For a faint constant
 tone, switch Averaging to 8× and watch it firm up out of the grass.
 
+### Extra receivers (VFO B/C/D)
+
+The dongle always captures a full ~2.4 MHz band, so the Radio view can
+demodulate up to **three more channels** at the same time and mix them into the
+audio — e.g. listen to two airband frequencies at once, or keep an ear on
+Marine Ch 16 while tuned to Ch 72. Open **Extra receivers** in the Radio panel:
+
+- Each row is one receiver (**B**, **C**, **D**): enable-checkbox, frequency
+  (MHz), demod (**NFM/AM** only — stereo/RDS/decoders stay on the main VFO),
+  its own **squelch** (dBFS) and **volume**, and a live level readout
+  (green ▶ = squelch open).
+- **Click tunes: A/B/C/D** picks which receiver a waterfall click retunes —
+  pick **B**, click a signal, and B parks there (A stays put). Switch back to
+  **A** for normal click-to-tune.
+- Every extra receiver must sit **inside the captured band** (the waterfall's
+  span, ±1.2 MHz around Center). Retuning Center so a receiver falls outside
+  switches it off automatically.
+- Each receiver shows as a coloured cursor on the waterfall (B blue, C green,
+  D amber). They work in **Replay** too — pull two conversations out of one
+  recording.
+
+Set each receiver's **squelch** just above the noise (start around −60 dB and
+raise it until the static gates off); with several receivers open you'll
+otherwise mix everyone's hiss. All the audio is summed into the one stream, so
+the audio recorder captures the mix.
+
 ---
 
 ## Sweep (wideband panorama)

@@ -114,6 +114,14 @@ shows the **station name, radiotext, PI code and program type** from the 57 kHz
 data subcarrier — hand-written decoder (pilot PLL → coherent BPSK → biphase /
 differential → block-syndrome sync → group parsing), no external tool.
 
+### Extra receivers (VFO B/C/D)
+Because the dongle captures a full ~2.4 MHz band, the Radio view can demodulate
+up to **three extra channels** (NFM/AM) in parallel with the main one and mix
+them into the audio — each with its own frequency, squelch and volume, shown as
+coloured cursors on the waterfall. A **Click tunes A/B/C/D** switch picks which
+receiver a waterfall click retunes. Works in Replay too. See the
+[guide](docs/GUIDE.md#extra-receivers-vfo-bcd).
+
 ### Recording
 - **Audio**: the *Record audio* button (Radio controls) captures what you're
   hearing to a **WAV** download.

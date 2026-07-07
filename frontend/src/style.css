@@ -196,6 +196,47 @@ details.advanced[open] > summary::before { content: "▾ "; }
 .level-meter { font-size: 0.8rem; color: var(--muted); margin: 0; }
 .level-meter.open { color: var(--ok); }
 .hint { color: var(--muted); font-size: 0.72rem; margin: 0; }
+
+/* ---- extra receivers (sub-VFOs B/C/D) ---- */
+details.vfo-box { display: flex; flex-direction: column; gap: 0.4rem; }
+details.vfo-box > summary {
+  cursor: pointer; user-select: none; list-style: none;
+  font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em;
+  color: var(--muted);
+}
+details.vfo-box > summary::-webkit-details-marker { display: none; }
+details.vfo-box > summary::before { content: "▸ "; }
+details.vfo-box[open] > summary::before { content: "▾ "; }
+.vfo-target {
+  display: flex; align-items: center; gap: 0.55rem;
+  font-size: 0.74rem; color: var(--muted);
+}
+.vfo-target label {
+  display: flex; align-items: center; gap: 0.2rem;
+  color: var(--text); font-size: 0.78rem;
+}
+.vfo-target input { width: auto; margin: 0; }
+/* rows wrap: on·tag·freq·demod·squelch on the first line, volume+level below */
+.vfo-row {
+  display: flex; flex-wrap: wrap; align-items: center;
+  gap: 0.3rem; row-gap: 0.25rem; padding-bottom: 0.25rem;
+  border-bottom: 1px solid var(--border);
+}
+.vfo-row:last-of-type { border-bottom: none; }
+.vfo-row input[type="checkbox"] { width: auto; margin: 0; }
+.vfo-tag { font-weight: 700; font-size: 0.78rem; width: 1rem; text-align: center; }
+.vfo-tag-b { color: #58a6ff; }
+.vfo-tag-c { color: #3fb950; }
+.vfo-tag-d { color: #d29922; }
+.vfo-row .vfo-freq { width: 4.4rem; flex: 0 1 auto; }
+.vfo-row select { width: auto; }
+.vfo-row .vfo-sql { width: 3.4rem; }
+.vfo-row .vfo-vol { flex: 1 1 5rem; min-width: 5rem; padding: 0; }
+.vfo-level {
+  font-size: 0.72rem; color: var(--muted); min-width: 2.6rem;
+  text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.vfo-level.open { color: var(--ok); }
 .appfoot { color: var(--muted); font-size: 0.6rem; line-height: 1.5; margin-top: 0.4rem; opacity: 0.8; }
 
 /* ---- display area ---- */

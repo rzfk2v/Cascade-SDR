@@ -324,6 +324,46 @@
             <div id="rds-rt" class="rds-rt"></div>
             <div id="rds-meta" class="muted"></div>
           </div>
+          <details class="vfo-box" id="vfo-box">
+            <summary>Extra receivers (VFO B/C/D)</summary>
+            <p class="hint">Up to three more channels demodulated from the same
+              captured band and mixed into the audio. NFM/AM only — each must sit
+              within the waterfall's span.</p>
+            <div class="vfo-target">Click tunes:
+              <label><input type="radio" name="vfo-target" value="0" checked />A</label>
+              <label><input type="radio" name="vfo-target" value="1" />B</label>
+              <label><input type="radio" name="vfo-target" value="2" />C</label>
+              <label><input type="radio" name="vfo-target" value="3" />D</label>
+            </div>
+            <div class="vfo-row">
+              <input id="vfo1-on" type="checkbox" title="enable" />
+              <span class="vfo-tag vfo-tag-b">B</span>
+              <input id="vfo1-freq" class="vfo-freq" type="number" step="0.005" min="24" max="1766" placeholder="MHz" title="frequency (MHz)" />
+              <select id="vfo1-demod"><option value="nfm">NFM</option><option value="am">AM</option></select>
+              <input id="vfo1-sql" class="vfo-sql" type="number" step="1" min="-80" max="5" value="-60" title="squelch (dBFS)" />
+              <input id="vfo1-vol" class="vfo-vol" type="range" min="0" max="1.5" step="0.05" value="0.7" title="volume" />
+              <span id="vfo1-level" class="vfo-level">·</span>
+            </div>
+            <div class="vfo-row">
+              <input id="vfo2-on" type="checkbox" title="enable" />
+              <span class="vfo-tag vfo-tag-c">C</span>
+              <input id="vfo2-freq" class="vfo-freq" type="number" step="0.005" min="24" max="1766" placeholder="MHz" title="frequency (MHz)" />
+              <select id="vfo2-demod"><option value="nfm">NFM</option><option value="am">AM</option></select>
+              <input id="vfo2-sql" class="vfo-sql" type="number" step="1" min="-80" max="5" value="-60" title="squelch (dBFS)" />
+              <input id="vfo2-vol" class="vfo-vol" type="range" min="0" max="1.5" step="0.05" value="0.7" title="volume" />
+              <span id="vfo2-level" class="vfo-level">·</span>
+            </div>
+            <div class="vfo-row">
+              <input id="vfo3-on" type="checkbox" title="enable" />
+              <span class="vfo-tag vfo-tag-d">D</span>
+              <input id="vfo3-freq" class="vfo-freq" type="number" step="0.005" min="24" max="1766" placeholder="MHz" title="frequency (MHz)" />
+              <select id="vfo3-demod"><option value="nfm">NFM</option><option value="am">AM</option></select>
+              <input id="vfo3-sql" class="vfo-sql" type="number" step="1" min="-80" max="5" value="-60" title="squelch (dBFS)" />
+              <input id="vfo3-vol" class="vfo-vol" type="range" min="0" max="1.5" step="0.05" value="0.7" title="volume" />
+              <span id="vfo3-level" class="vfo-level">·</span>
+            </div>
+            <p class="hint">on · freq (MHz) · demod · squelch (dB) · volume · level</p>
+          </details>
           <button id="rec-audio">● Record audio</button>
           <p id="rec-audio-status" class="status-line"></p>
           <p id="tuned-line" class="status-line"></p>

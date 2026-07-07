@@ -4,12 +4,18 @@
 // [center - rate/2, center + rate/2], renders a frequency scale, a tuned-channel
 // cursor with its bandwidth shaded, and handles click-to-tune / drag-to-select.
 
+// Extra receivers (VFO B/C/D) shown as their own tuning cursors.
+export type SubVfoMarker = { on: boolean; freq: number; bw: number };
+const SUB_VFO_COLORS = ["#58a6ff", "#3fb950", "#d29922"];
+const SUB_VFO_LABELS = ["B", "C", "D"];
+
 export class Tuner {
   centerFreq = 100e6;
   sampleRate = 2.4e6;
   tuned = 100e6;
   bandwidth = 200e3;
   active = false; // show the cursor (radio mode)
+  subVfos: SubVfoMarker[] = [];
   // Backing stores are devicePixelRatio-scaled (set by layoutCanvases); drawing
   // stays in CSS px via a canvas transform so lines/text render crisp on HiDPI.
   dpr = 1;
@@ -78,6 +84,10 @@ export class Tuner {
   }
   setActive(active: boolean): void {
     this.active = active;
+    this.draw();
+  }
+  setSubVfos(v: SubVfoMarker[]): void {
+    this.subVfos = v;
     this.draw();
   }
 
@@ -240,9 +250,13 @@ export class Tuner {
 
     if (!this.active) return;
 
+    // px per Hz through the zoom window, so the shaded bandwidth stays true
+    // to the axis when zoomed in
+    const pxPerHz = w / (this.sampleRate * this.span());
+
     // tuned channel band
     const cx = this.fracOf(this.tuned) * w;
-    const halfPx = (this.bandwidth / this.sampleRate) * w * 0.5;
+    const halfPx = this.bandwidth * pxPerHz * 0.5;
     this.octx.fillStyle = "rgba(255,255,255,0.12)";
     this.octx.fillRect(cx - halfPx, 0, halfPx * 2, h);
     // center cursor
@@ -252,6 +266,29 @@ export class Tuner {
     this.octx.moveTo(cx, 0);
     this.octx.lineTo(cx, h);
     this.octx.stroke();
+
+    // extra receivers (VFO B/C/D): a coloured cursor + band + letter each
+    this.octx.font = "bold 11px -apple-system, system-ui, sans-serif";
+    this.subVfos.forEach((v, i) => {
+      if (!v.on) return;
+      const x = this.fracOf(v.freq) * w;
+      if (x < -10 || x > w + 10) return;
+      const half = v.bw * pxPerHz * 0.5;
+      const color = SUB_VFO_COLORS[i] || "#8b949e";
+      this.octx.save();
+      this.octx.globalAlpha = 0.14;
+      this.octx.fillStyle = color;
+      this.octx.fillRect(x - half, 0, half * 2, h);
+      this.octx.restore();
+      this.octx.strokeStyle = color;
+      this.octx.lineWidth = 1.5;
+      this.octx.beginPath();
+      this.octx.moveTo(x, 0);
+      this.octx.lineTo(x, h);
+      this.octx.stroke();
+      this.octx.fillStyle = color;
+      this.octx.fillText(SUB_VFO_LABELS[i] || "?", x + 4, 14);
+    });
   }
 
   drawAxis(): void {
