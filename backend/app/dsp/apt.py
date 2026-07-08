@@ -20,7 +20,9 @@ from __future__ import annotations
 from typing import Callable, Optional
 
 import numpy as np
-from scipy.signal import firwin, lfilter, resample_poly
+from scipy.signal import firwin, lfilter
+
+from app.dsp.blocks import StreamResampler
 
 PIXEL_RATE = 4160          # APT pixels per second
 LINE_PX = 2080             # pixels per line (2 lines/s)
@@ -50,7 +52,8 @@ class AptDecoder:
         self._zi_bp = np.zeros(128)
         self._lp = firwin(129, 1200.0 / nyq)
         self._zi_lp = np.zeros(128)
-        self._up, self._down = _ratio(PIXEL_RATE, int(self.fs))
+        # stateful resampler: no per-chunk edge transients / pixel-clock slip
+        self._resamp = StreamResampler(PIXEL_RATE, int(round(self.fs)))
         self._px_buf = np.zeros(0)         # envelope resampled to 4160 px/s
         self._sync = sync_a_reference()
         self._locked = False
@@ -64,7 +67,9 @@ class AptDecoder:
         bp, self._zi_bp = lfilter(self._bp, 1.0, audio, zi=self._zi_bp)
         env, self._zi_lp = lfilter(self._lp, 1.0, np.abs(bp), zi=self._zi_lp)
         env *= np.pi / 2.0                 # rectifier DC correction
-        px = resample_poly(env, self._up, self._down)
+        px = self._resamp.process(env)
+        if px.size == 0:
+            return
         self._px_buf = np.concatenate([self._px_buf, px])
         self._emit_lines()
 
@@ -111,9 +116,3 @@ class AptDecoder:
         self.lines += 1
         if self.on_line is not None:
             self.on_line(row[:LINE_PX])
-
-
-def _ratio(up: int, down: int) -> tuple[int, int]:
-    from math import gcd
-    g = gcd(up, down)
-    return up // g, down // g

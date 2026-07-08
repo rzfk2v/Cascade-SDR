@@ -22,9 +22,9 @@ from __future__ import annotations
 from typing import Callable, Optional
 
 import numpy as np
-from scipy.signal import firwin, lfilter, resample_poly
+from scipy.signal import firwin, lfilter
 
-from app.dsp.blocks import PilotPll
+from app.dsp.blocks import PilotPll, StreamResampler
 
 # --- cyclic code (26,16) used for block sync / error detection --------------
 _POLY = 0x5B9   # x^10 + x^8 + x^7 + x^5 + x^4 + x^3 + 1  (includes x^10)
@@ -186,13 +186,12 @@ class RdsDemod:
         self._lp = firwin(129, 2_400.0 / (fs / 2))
         self._zi_i = np.zeros(128)
         self._zi_q = np.zeros(128)
-        # resample the baseband to 16 samples/symbol (1187.5 * 16 = 19 kHz)
+        # resample the baseband to 16 samples/symbol (1187.5 * 16 = 19 kHz),
+        # stateful so chunk boundaries stay transient-free and slip-free
         self._sps = 16
         self._sym_rate = RDS_BITRATE * self._sps   # 19000 Hz
-        from math import gcd
-        _up, _down = int(self._sym_rate), int(fs)
-        _g = gcd(_up, _down)
-        self._resample_up, self._resample_down = _up // _g, _down // _g
+        self._rs_i = StreamResampler(int(self._sym_rate), int(fs))
+        self._rs_q = StreamResampler(int(self._sym_rate), int(fs))
         self._decoder = RdsGroupDecoder(on_update)
         self._prev_enc = 0
         self._sym_buf_i = np.zeros(0)
@@ -211,8 +210,8 @@ class RdsDemod:
         i, self._zi_i = lfilter(self._lp, 1.0, i, zi=self._zi_i)
         q, self._zi_q = lfilter(self._lp, 1.0, q, zi=self._zi_q)
         # resample both to the symbol-clock rate (19 kHz, 16 samples/symbol)
-        ri = resample_poly(i, self._resample_up, self._resample_down)
-        rq = resample_poly(q, self._resample_up, self._resample_down)
+        ri = self._rs_i.process(i)
+        rq = self._rs_q.process(q)
         self._symbolize(ri, rq)
 
     def _symbolize(self, si: np.ndarray, sq: np.ndarray) -> None:

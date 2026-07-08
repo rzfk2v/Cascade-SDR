@@ -10,11 +10,11 @@ import math
 
 import numpy as np
 from numpy.lib.stride_tricks import sliding_window_view
-from scipy.signal import bilinear, firwin, lfilter, lfilter_zi
+from scipy.signal import bilinear, firwin, lfilter, lfilter_zi, resample_poly
 
 
 def _fir_decimate(b_rev: np.ndarray, hist: np.ndarray, x: np.ndarray,
-                  decim: int) -> tuple[np.ndarray, np.ndarray]:
+                  decim: int, offs: int) -> tuple[np.ndarray, np.ndarray, int]:
     """Polyphase FIR low-pass + decimation that only computes the kept samples.
 
     Equivalent to ``lfilter(b, 1, x)[::decim]`` with state carried across calls,
@@ -22,15 +22,22 @@ def _fir_decimate(b_rev: np.ndarray, hist: np.ndarray, x: np.ndarray,
     throwing away ``decim-1`` of every ``decim`` outputs, it forms the strided
     windows for the decimated output positions and dots them with the (reversed)
     taps in one BLAS call. ``hist`` is the trailing ``numtaps-1`` input samples
-    from the previous call (filter continuity); ``b_rev`` is ``taps[::-1]``.
+    from the previous call (filter continuity); ``b_rev`` is ``taps[::-1]``;
+    ``offs`` is where this call's first kept sample falls in ``x`` (0..decim-1),
+    carried across calls so the decimation grid stays uniform for *any* chunk
+    length, not just multiples of ``decim``.
     """
     numtaps = b_rev.size
-    if x.size == 0:
-        return x[:0], hist
+    n = x.size
+    if n == 0:
+        return x[:0], hist, offs
     buf = np.concatenate((hist, x))               # length numtaps-1 + n
-    win = sliding_window_view(buf, numtaps)[::decim]  # rows at m=0,decim,2decim,...
+    hist = buf[-(numtaps - 1):]
+    if offs >= n:                                 # chunk shorter than the grid gap
+        return x[:0], hist, offs - n
+    win = sliding_window_view(buf, numtaps)[offs::decim]
     y = win @ b_rev
-    return y, buf[-(numtaps - 1):]
+    return y, hist, offs + win.shape[0] * decim - n
 
 
 class PilotPll:
@@ -58,22 +65,22 @@ class PilotPll:
     def run(self, mpx: np.ndarray) -> np.ndarray:
         pilot, self._zi = lfilter(self._b, 1.0, mpx, zi=self._zi)
         self.pilot_rms = float(np.sqrt(np.mean(pilot * pilot))) if pilot.size else 0.0
-        out = np.empty(mpx.size)
         ph, fr = self.phase, self.freq
         a, b = self.alpha, self.beta
-        sin, tau = math.sin, 2.0 * math.pi
-        pil = pilot.tolist()
-        for i in range(len(pil)):
-            err = pil[i] * sin(ph)
+        sin, tau, pi = math.sin, 2.0 * math.pi, math.pi
+        out: list[float] = []
+        app = out.append
+        for p in pilot.tolist():
+            err = p * sin(ph)
             fr += b * err
             ph += fr + a * err
-            if ph > math.pi:
+            if ph > pi:
                 ph -= tau
-            elif ph < -math.pi:
+            elif ph < -pi:
                 ph += tau
-            out[i] = ph
+            app(ph)
         self.phase, self.freq = ph, fr
-        return out
+        return np.asarray(out)
 
 
 class ComplexChannelizer:
@@ -81,8 +88,7 @@ class ComplexChannelizer:
 
     Pipeline per chunk: ``x -> (x * e^{-j 2pi f t}) -> FIR low-pass -> [::decim]``.
     The numerically-controlled oscillator (NCO) phase, the FIR state and the
-    decimation grid all carry across chunks. ``chunk_len`` must be a multiple of
-    ``decim`` so the decimation phase stays aligned.
+    decimation grid all carry across chunks, so any chunk length works.
     """
 
     def __init__(self, in_rate: float, decim: int, cutoff_hz: float,
@@ -105,6 +111,7 @@ class ComplexChannelizer:
         self._b = firwin(self._numtaps, cutoff / nyq).astype(np.complex128)
         self._b_rev = self._b[::-1].copy()
         self._hist = np.zeros(self._numtaps - 1, dtype=np.complex128)
+        self._offs = 0
 
     def set_cutoff(self, cutoff_hz: float) -> None:
         self._set_taps(cutoff_hz)
@@ -131,7 +138,8 @@ class ComplexChannelizer:
         osc = self._osc_base * np.exp(-1j * self._phase)
         self._phase = (self._phase + inc * n) % (2.0 * np.pi)
         mixed = x * osc
-        y, self._hist = _fir_decimate(self._b_rev, self._hist, mixed, self.decim)
+        y, self._hist, self._offs = _fir_decimate(
+            self._b_rev, self._hist, mixed, self.decim, self._offs)
         return y
 
 
@@ -148,13 +156,15 @@ class RealDecimator:
         self._b = firwin(numtaps, cutoff / nyq)
         self._b_rev = self._b[::-1].copy()
         self._hist = np.zeros(numtaps - 1, dtype=np.float64)
+        self._offs = 0
 
     @property
     def out_rate(self) -> float:
         return self.in_rate / self.decim
 
     def process(self, x: np.ndarray) -> np.ndarray:
-        y, self._hist = _fir_decimate(self._b_rev, self._hist, x, self.decim)
+        y, self._hist, self._offs = _fir_decimate(
+            self._b_rev, self._hist, x, self.decim, self._offs)
         return y
 
 
@@ -165,10 +175,12 @@ class FmDiscriminator:
         self._last = complex(1.0, 0.0)
 
     def process(self, y: np.ndarray) -> np.ndarray:
+        if y.size == 0:
+            return np.zeros(0)
         prev = np.empty_like(y)
         prev[0] = self._last
         prev[1:] = y[:-1]
-        self._last = y[-1] if y.size else self._last
+        self._last = complex(y[-1])
         return np.angle(y * np.conj(prev))
 
 
@@ -237,6 +249,8 @@ class StereoDecoder:
         self._sdec = RealDecimator(in_rate, decim, audio_lp_hz)
 
     def process(self, mpx: np.ndarray) -> tuple[np.ndarray, float]:
+        if mpx.size == 0:
+            return np.zeros(0), 0.0
         phase = self._pll.run(mpx)                  # locked, delay-free
         mpx_rms = float(np.sqrt(np.mean(mpx * mpx))) + 1e-12
         frac = self._pll.pilot_rms / mpx_rms
@@ -250,6 +264,41 @@ class StereoDecoder:
             ref = np.cos(2.0 * phase)               # 38 kHz = 2× pilot, phase-correct
             diff = mpx * ref * 2.0                   # synchronous DSB-SC detect of L−R
         return self._sdec.process(diff), frac
+
+
+class StreamResampler:
+    """Rational (up/down) resampler that is continuous across streamed chunks.
+
+    ``scipy.signal.resample_poly`` is stateless: calling it chunk by chunk
+    zero-pads *every* chunk edge, which injects a filter transient at each
+    boundary and yields non-integer per-chunk output lengths (a cumulative
+    sample-clock slip). This wraps it in overlap-save: input is consumed in
+    multiples of ``down`` samples with a guard of history on both sides, and
+    only the steady-state middle is emitted — so the concatenated stream is
+    bit-exact with resampling the whole signal in one call. Costs ``guard``
+    input samples of latency (a few ms at the rates used here).
+    """
+
+    def __init__(self, up: int, down: int) -> None:
+        g = math.gcd(int(up), int(down))
+        self.up, self.down = int(up) // g, int(down) // g
+        # resample_poly's default kaiser filter spans 10*max(up, down) samples
+        # each side at the upsampled rate; the guard must cover that span in
+        # input samples, rounded up to a multiple of `down` so the emitted
+        # slice always lands on integer output indices.
+        span_in = (10 * max(self.up, self.down)) // self.up + 1
+        self._guard = -(-span_in // self.down) * self.down
+        self._buf = np.zeros(self._guard)   # left context; zeros at stream start
+
+    def process(self, x: np.ndarray) -> np.ndarray:
+        self._buf = np.concatenate((self._buf, x))
+        m = (self._buf.size - 2 * self._guard) // self.down * self.down
+        if m <= 0:
+            return np.zeros(0)
+        y = resample_poly(self._buf[: 2 * self._guard + m], self.up, self.down)
+        lo = self._guard * self.up // self.down
+        self._buf = self._buf[m:]
+        return y[lo : lo + m * self.up // self.down]
 
 
 class DeEmphasis:

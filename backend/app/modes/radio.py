@@ -133,7 +133,8 @@ class SubVfo:
         self._chan.set_shift(self.freq - center)
         bb = self._chan.process(samples)
         if_rate = self._chan.out_rate
-        power = float(np.mean(np.abs(bb) ** 2)) if bb.size else 0.0
+        # vdot = sum(|x|^2) in one BLAS call (np.abs would sqrt every sample)
+        power = float(np.vdot(bb, bb).real) / bb.size if bb.size else 0.0
         self.level_db = 10.0 * float(np.log10(power + 1e-12))
         self.open = self.level_db >= self.squelch_db
         if self.demod == "am":
@@ -482,7 +483,9 @@ class RadioMode(Mode):
             if_rate = self._chan.out_rate
 
             # channel power (dBFS) drives the squelch + level meter
-            power = float(np.mean(np.abs(baseband) ** 2)) if baseband.size else 0.0
+            # (vdot = sum(|x|^2) in one BLAS call; np.abs would sqrt every sample)
+            power = float(np.vdot(baseband, baseband).real) / baseband.size \
+                if baseband.size else 0.0
             level_db = 10.0 * np.log10(power + 1e-12)
             squelched = level_db < self.squelch_db
 
@@ -608,6 +611,8 @@ class RadioMode(Mode):
         l = np.clip(mix_l, -1.0, 1.0)
         r = np.clip(mix_r, -1.0, 1.0)
         inter = np.empty(l.size * 2, dtype="<i2")
-        inter[0::2] = (l * 32767).astype("<i2")
-        inter[1::2] = (r * 32767).astype("<i2")
+        # rint before the cast: astype truncates toward zero, which would put a
+        # tiny dead zone around silence (crossover distortion)
+        inter[0::2] = np.rint(l * 32767).astype("<i2")
+        inter[1::2] = np.rint(r * 32767).astype("<i2")
         self.manager.emit_binary(FrameTag.AUDIO, inter.tobytes())
