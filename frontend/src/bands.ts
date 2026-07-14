@@ -15,6 +15,21 @@ interface Band {
 
 const BANDS: Band[] = [
   // --- broad services ---
+  // HF (reachable with an upconverter — Reception ▸ Advanced)
+  { lo: 0.148, hi: 0.283, name: "LW broadcast" },
+  { lo: 0.526, hi: 1.606, name: "MW broadcast (AM)" },
+  { lo: 1.81, hi: 2.0, name: "160 m ham" },
+  { lo: 3.5, hi: 3.8, name: "80 m ham" },
+  { lo: 5.9, hi: 6.2, name: "49 m SW broadcast" },
+  { lo: 7.0, hi: 7.2, name: "40 m ham" },
+  { lo: 7.2, hi: 7.45, name: "41 m SW broadcast" },
+  { lo: 9.4, hi: 9.9, name: "31 m SW broadcast" },
+  { lo: 11.6, hi: 12.1, name: "25 m SW broadcast" },
+  { lo: 14.0, hi: 14.35, name: "20 m ham" },
+  { lo: 15.1, hi: 15.83, name: "19 m SW broadcast" },
+  { lo: 18.068, hi: 18.168, name: "17 m ham" },
+  { lo: 21.0, hi: 21.45, name: "15 m ham" },
+  { lo: 24.89, hi: 24.99, name: "12 m ham" },
   { lo: 26.965, hi: 27.405, name: "CB radio (27 MHz)" },
   { lo: 28.0, hi: 29.7, name: "10 m ham" },
   { lo: 50.0, hi: 52.0, name: "6 m ham" },

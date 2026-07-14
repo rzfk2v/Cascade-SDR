@@ -142,6 +142,8 @@ async def handle_command(ws: WebSocket, msg: dict) -> None:
                 gain=msg.get("gain"),
                 ppm=msg.get("ppm"),
                 bias_tee=msg.get("bias_tee"),
+                converter_on=msg.get("converter_on"),
+                converter_hz=msg.get("converter_hz"),
             )
         elif cmd == "config":
             manager.configure_mode(msg.get("params", {}))

@@ -278,7 +278,7 @@ class ScannerMode(Mode):
     def _detect(self, sdr, blk: dict, sr: float) -> dict | None:
         """Tune a block, FFT it, score every channel; return the strongest active."""
         center = blk["center"]
-        sdr.center_freq = center
+        sdr.center_freq = self.manager.hw_freq(center)
         self._reset(sdr)
         x = sdr.read_samples(DETECT_BLOCK)
         freqs = center + (np.arange(FFT_SIZE) / FFT_SIZE - 0.5) * sr
@@ -303,7 +303,7 @@ class ScannerMode(Mode):
         a periodic squelch check.
         """
         center = self._blocks[ch["block"]]["center"]
-        sdr.center_freq = center
+        sdr.center_freq = self.manager.hw_freq(center)
         self._reset(sdr)
         cfg = DEMODS.get(ch["demod"], DEMODS["nfm"])
         chan = ComplexChannelizer(sr, IF_DECIM, max(ch["bw"] / 2.0, 6_000.0))

@@ -176,6 +176,8 @@ const gainSlider = document.getElementById("gain") as HTMLInputElement;
 const gainVal = document.getElementById("gain-val")!;
 const ppmInput = document.getElementById("ppm") as HTMLInputElement;
 const biasTee = document.getElementById("bias-tee") as HTMLInputElement;
+const upconvOn = document.getElementById("upconv") as HTMLInputElement;
+const upconvMhz = document.getElementById("upconv-mhz") as HTMLInputElement;
 let gainSteps: number[] = [];
 let desiredGainDb = 0; // last manual gain (dB), used before the step list arrives
 const radioControls = document.getElementById("radio-controls")!;
@@ -251,6 +253,8 @@ const antennaInfo = document.getElementById("antenna-info")!;
 let viewCenter = 100e6;
 let viewRate = 2.4e6;
 let viewTuned = 100e6;
+let converterOn = false;   // HF upconverter inline (backend-confirmed state)
+let converterMhz = 125;    // its LO (MHz)
 
 function updateBandInfo(): void {
   let label = "";
@@ -280,6 +284,8 @@ function updateBandInfo(): void {
     );
     label = names.length ? `Band: ${names.slice(0, 4).join(" · ")}` : "";
   }
+  if (converterOn && ["radio", "spectrum", "scan", "scanner"].includes(currentMode))
+    label = (label ? label + " · " : "") + `upconverter +${+converterMhz.toFixed(3)} MHz`;
   bandInfo.textContent = label;
   // mirror the service name onto the spectrum's noise floor (drop "Band: ")
   scope.setBandLabel(label.replace(/^Band:\s*/, ""));
@@ -312,6 +318,8 @@ sock.onJson((msg) => {
         ppm: parseInt(ppmInput.value, 10) || 0,
         bias_tee: biasTee.checked,
         gain: gainAuto.checked ? "auto" : desiredGainDb,
+        converter_on: upconvOn.checked,
+        converter_hz: (parseFloat(upconvMhz.value) || 125) * 1e6,
       });
       break;
     case "_close":
@@ -322,12 +330,21 @@ sock.onJson((msg) => {
       currentMode = msg.mode;
       viewCenter = msg.center_freq;
       viewRate = msg.sample_rate;
+      // converter state feeds updateBandInfo, so sync it before rendering
+      if (typeof msg.converter_on === "boolean") converterOn = msg.converter_on;
+      if (typeof msg.converter_hz === "number") converterMhz = msg.converter_hz / 1e6;
       updateBandInfo();
       renderStatus(msg);
       syncGain(msg);
       if (typeof msg.ppm === "number" && document.activeElement !== ppmInput)
         ppmInput.value = msg.ppm.toString();
       if (typeof msg.bias_tee === "boolean") biasTee.checked = msg.bias_tee;
+      upconvOn.checked = converterOn;
+      if (document.activeElement !== upconvMhz)
+        upconvMhz.value = (+converterMhz.toFixed(3)).toString();
+      // the manual entry range follows the converter (real HF freqs when on)
+      freqInput.min = converterOn ? "0" : "24";
+      freqInput.max = (1766 - (converterOn ? converterMhz : 0)).toFixed(0);
       highlightMode(msg.mode);
       tuner.setBand(msg.center_freq, msg.sample_rate);
       tuner.setActive(msg.mode === "radio" || msg.mode === "replay");
@@ -1748,6 +1765,16 @@ ppmInput.addEventListener("change", () =>
 biasTee.addEventListener("change", () =>
   sock.send({ cmd: "tune", bias_tee: biasTee.checked }),
 );
+function sendConverter(): void {
+  const mhz = parseFloat(upconvMhz.value);
+  sock.send({
+    cmd: "tune",
+    converter_on: upconvOn.checked,
+    converter_hz: (isFinite(mhz) && mhz > 0 ? mhz : 125) * 1e6,
+  });
+}
+upconvOn.addEventListener("change", sendConverter);
+upconvMhz.addEventListener("change", sendConverter);
 
 // --- settings persistence (localStorage) ---------------------------------
 const persistValues: Record<string, HTMLInputElement | HTMLSelectElement> = {
@@ -1755,9 +1782,11 @@ const persistValues: Record<string, HTMLInputElement | HTMLSelectElement> = {
   scanStart, scanStop, wfFloor, wfCeil, rxLoc, deemph: deemphSel, averaging,
   scannerSql, scannerVol, scannerPrio,
   rangeStart, rangeStop, rangeStep, rangeDemod,
+  upconvMhz,
 };
 const persistChecks: Record<string, HTMLInputElement> = {
   gainAuto, biasTee, wfAuto, peakHold, rdsOn, stereoOn, showTracks,
+  upconvOn,
 };
 vfoRows.forEach((e, i) => {
   persistValues[`vfo${i + 1}Freq`] = e.freq;

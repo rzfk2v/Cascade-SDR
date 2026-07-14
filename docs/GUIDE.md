@@ -58,9 +58,12 @@ Decoder modes (ADS-B/AIS/APRS/ACARS/DAB/SSTV/Pager) tune themselves, so they hid
 | **Auto gain** / **Gain** *(control bar)* | Auto lets the tuner ride gain; uncheck for a manual slider. More gain digs out weak signals but can overload near strong ones. For broadcast FM, a manual *high* gain often gives the cleanest audio and best RDS lock. |
 | **Advanced ▸ PPM correction** *(Reception panel)* | Corrects the dongle's crystal error so the displayed frequency is accurate. See *Calibration* below. |
 | **Advanced ▸ Bias-T (5 V)** *(Reception panel)* | Feeds 5 V up the coax to power an inline LNA/antenna. **Only enable if you have a powered device** — don't feed a plain antenna. |
+| **Advanced ▸ HF upconverter** *(Reception panel)* | Tick when an upconverter (e.g. **Ham It Up**, LO 125 MHz) sits between antenna and dongle. Everything — tuning, waterfall axis, bookmarks, band labels, the antenna helper — then works in **real HF frequencies** (0–30 MHz shortwave, AM broadcast, 80/40/20 m ham…) while the dongle silently tunes the LO amount higher. The LO field accepts other converters' offsets. Remember to switch the converter out (or off) again for VHF/UHF listening. |
 
-PPM and Bias-T sit under a collapsible **Advanced** disclosure in the sidebar —
-they're usually set once.
+PPM, Bias-T and the upconverter sit under a collapsible **Advanced** disclosure
+in the sidebar — they're usually set once. With the upconverter on, the band
+line shows `upconverter +125 MHz` as a reminder, and manual frequency entry
+accepts values below the dongle's native 24 MHz floor.
 
 ### Recording (Radio / APT / SSTV)
 **Record IQ** captures the raw stream to a `.cu8` file (see *Recording* below).

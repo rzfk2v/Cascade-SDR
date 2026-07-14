@@ -378,6 +378,10 @@
               <span class="hint">corrects the dongle's crystal drift; set once for your stick</span>
             </label>
             <label class="check"><input id="bias-tee" type="checkbox" /> Bias-T (5 V to antenna)</label>
+            <label class="check"><input id="upconv" type="checkbox" /> HF upconverter (Ham It Up)</label>
+            <label>Upconverter LO (MHz)<input id="upconv-mhz" type="number" step="0.001" min="1" value="125" />
+              <span class="hint">the dongle tunes this far above the shown frequency — tune and read real HF frequencies (125 for the Ham It Up)</span>
+            </label>
           </details>
         </section>
 

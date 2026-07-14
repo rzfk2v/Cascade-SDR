@@ -47,14 +47,18 @@ except Exception:  # pragma: no cover - import guarded for hardware-less dev
     RtlSdr = None  # type: ignore
     _HAVE_RTLSDR = False
 
-# R820T/R820T2 tuner reach (Hz). Requests outside this can't lock and make
-# librtlsdr raise an I/O error, so we clamp to it.
+# R820T/R820T2/R828D tuner reach (Hz). Requests outside this can't lock and
+# make librtlsdr raise an I/O error, so we clamp to it. The clamp applies to
+# what the *hardware* tunes; with an upconverter inline the displayed (real)
+# frequency sits ``converter_hz`` below that, which is what makes HF reachable.
 MIN_TUNE_HZ = 24_000_000
 MAX_TUNE_HZ = 1_766_000_000
 
 
-def clamp_freq(hz: float) -> float:
-    return max(MIN_TUNE_HZ, min(MAX_TUNE_HZ, float(hz)))
+def clamp_freq(hz: float, converter_hz: float = 0.0) -> float:
+    lo = max(0.0, MIN_TUNE_HZ - converter_hz)
+    hi = MAX_TUNE_HZ - converter_hz
+    return max(lo, min(hi, float(hz)))
 
 
 class DeviceManager:
@@ -66,6 +70,11 @@ class DeviceManager:
         self.freq_correction: int = 0       # crystal offset, ppm
         self._applied_ppm: int = 0          # last ppm written to the device
         self.bias_tee: bool = False         # 5V bias-T for powering an LNA
+        # HF upconverter (e.g. Ham It Up): when on, the hardware tunes
+        # ``converter_hz`` above every displayed frequency, so the whole app
+        # keeps working in real (antenna-side) frequencies down into HF.
+        self.converter_on: bool = False
+        self.converter_hz: float = 125_000_000.0   # Ham It Up LO
         self.valid_gains: list[float] = []  # device gain steps (dB), filled on open
         self.mode: Optional[Mode] = None
         self.mode_name: str = "idle"
@@ -88,6 +97,20 @@ class DeviceManager:
         self._rec_path: Optional[Path] = None
         self._rec_lock = threading.Lock()
 
+    # --- frequency conversion (upconverter-aware) ---------------------------
+    @property
+    def converter_offset(self) -> float:
+        """Effective LO offset in Hz (0 when the converter is switched off)."""
+        return self.converter_hz if self.converter_on else 0.0
+
+    def hw_freq(self, real_hz: float) -> float:
+        """Real (displayed) frequency -> what the dongle must tune to."""
+        return float(real_hz) + self.converter_offset
+
+    def clamp_freq(self, hz: float) -> float:
+        """Clamp a real frequency so the hardware stays within tuner range."""
+        return clamp_freq(hz, self.converter_offset)
+
     # --- introspection ------------------------------------------------------
     @property
     def running(self) -> bool:
@@ -106,6 +129,8 @@ class DeviceManager:
             "ppm": self.freq_correction,
             "gains": self.valid_gains,
             "bias_tee": self.bias_tee,
+            "converter_on": self.converter_on,
+            "converter_hz": self.converter_hz,
             "device_present": self.device_present(),
             "clients": self.hub.client_count,
         }
@@ -179,10 +204,20 @@ class DeviceManager:
                      sample_rate: float | None = None,
                      gain: float | str | None = None,
                      ppm: int | None = None,
-                     bias_tee: bool | None = None) -> None:
+                     bias_tee: bool | None = None,
+                     converter_on: bool | None = None,
+                     converter_hz: float | None = None) -> None:
         """Update radio settings. The worker applies them between read blocks."""
+        if converter_hz is not None and float(converter_hz) > 0:
+            self.converter_hz = float(converter_hz)
+        if converter_on is not None:
+            self.converter_on = bool(converter_on)
         if center_freq is not None:
-            self.center_freq = clamp_freq(center_freq)
+            self.center_freq = self.clamp_freq(center_freq)
+        elif converter_on is not None or converter_hz is not None:
+            # Toggling the converter moves the tunable window; pull the current
+            # centre back inside it (e.g. 7 MHz is unreachable once it's off).
+            self.center_freq = self.clamp_freq(self.center_freq)
         if sample_rate is not None:
             self.sample_rate = float(sample_rate)
         if gain is not None:
@@ -348,7 +383,7 @@ class DeviceManager:
                 self._applied_ppm = int(self.freq_correction)
             except Exception:
                 pass
-        sdr.center_freq = self.center_freq
+        sdr.center_freq = self.hw_freq(self.center_freq)
         try:
             sdr.gain = self.gain  # pyrtlsdr accepts 'auto' or a float
         except Exception:

@@ -161,8 +161,14 @@ weather satellites). It updates as you type a Center frequency.
   [`frontend/src/frequencies.ts`](frontend/src/frequencies.ts) to change the defaults.
 - **Bookmarks**: save the current frequency (+ demod) with a name; click to recall,
   × to delete.
-- **Settings persist** across reloads (gain, PPM, bias-T, demod, volume, squelch,
-  contrast, peak-hold, sweep range, receiver location, bookmarks) via localStorage.
+- **HF upconverter support** (Reception ▸ Advanced): tick the checkbox when a
+  **Ham It Up** (or similar) sits inline and the whole app — tuning, waterfall
+  axis, band labels, bookmarks, antenna helper — works in real HF frequencies
+  (shortwave/AM broadcast, 80/40/20 m ham with the SSB/CW demods) while the
+  dongle tunes the LO offset (default 125 MHz, editable) higher.
+- **Settings persist** across reloads (gain, PPM, bias-T, upconverter, demod,
+  volume, squelch, contrast, peak-hold, sweep range, receiver location,
+  bookmarks) via localStorage.
 
 ### Layout
 The live controls (frequency, demod, volume, squelch, gain, level meter) sit in a
