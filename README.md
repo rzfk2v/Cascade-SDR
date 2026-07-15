@@ -161,13 +161,23 @@ weather satellites). It updates as you type a Center frequency.
   [`frontend/src/frequencies.ts`](frontend/src/frequencies.ts) to change the defaults.
 - **Bookmarks**: save the current frequency (+ demod) with a name; click to recall,
   × to delete.
-- **HF upconverter support** (Reception ▸ Advanced): tick the checkbox when a
-  **Ham It Up** (or similar) sits inline and the whole app — tuning, waterfall
-  axis, band labels, bookmarks, antenna helper — works in real HF frequencies
-  (shortwave/AM broadcast, 80/40/20 m ham with the SSB/CW demods) while the
-  dongle tunes the LO offset (default 125 MHz, editable) higher.
-- **Settings persist** across reloads (gain, PPM, bias-T, upconverter, demod,
-  volume, squelch, contrast, peak-hold, sweep range, receiver location,
+- **HF modes** (Reception ▸ Advanced): reach shortwave via an inline
+  **upconverter** (Ham It Up; LO editable, default 125 MHz) or the V3's
+  **direct sampling** input (~0.5–14.4 MHz, no extra hardware). Either way the
+  whole app — tuning, waterfall axis, band labels, bookmarks, antenna helper —
+  works in real HF frequencies (shortwave/AM broadcast, 80/40/20 m ham with
+  the SSB/CW demods).
+- **Advanced reception knobs**: tuner **IF bandwidth** (tame a strong
+  neighbouring station), **RTL AGC** (the 2832's digital AGC stage), a
+  **tuning raster** (5–100 kHz incl. 8.33 airband — wheel/arrows step by it,
+  click-to-tune snaps to it), and DC-spike-free tuning (typed/recalled
+  frequencies park the hardware centre off-channel automatically).
+- **Listening tools**: **CTCSS/DCS readout + tone squelch** on NFM (see what
+  sub-tone a repeater uses; open only for your tone), an impulse **noise
+  blanker**, a manual **notch filter**, and an adjustable **SSB passband +
+  AGC speed** for USB/LSB/CW.
+- **Settings persist** across reloads (gain, PPM, bias-T, HF mode, raster,
+  demod, volume, squelch, contrast, peak-hold, sweep range, receiver location,
   bookmarks) via localStorage.
 
 ### Layout

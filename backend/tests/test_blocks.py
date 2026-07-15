@@ -16,6 +16,8 @@ from scipy.signal import resample_poly
 from app.dsp.blocks import (
     ComplexChannelizer,
     FmDiscriminator,
+    NoiseBlanker,
+    NotchFilter,
     RealDecimator,
     StreamResampler,
 )
@@ -80,9 +82,42 @@ def test_discriminator_empty_and_step():
     print("✓ FmDiscriminator: empty input ok, phase continuous across chunks")
 
 
+def test_noise_blanker_kills_impulses():
+    rng = np.random.default_rng(11)
+    n = 40_960
+    sig = (0.3 * np.exp(1j * 2 * np.pi * 0.01 * np.arange(n))).astype(np.complex128)
+    dirty = sig.copy()
+    hits = rng.integers(0, n, 60)
+    dirty[hits] += 20.0 * np.exp(1j * rng.uniform(0, 2 * np.pi, 60))  # ~36 dB spikes
+    nb = NoiseBlanker()
+    out = np.concatenate([nb.process(dirty[i:i + 5120]) for i in range(0, n, 5120)])
+    assert float(np.max(np.abs(out))) < 1.0, "impulse survived the blanker"
+    # untouched samples pass through bit-identically
+    clean_mask = np.ones(n, bool)
+    clean_mask[hits] = False
+    assert np.array_equal(out[clean_mask], dirty[clean_mask])
+    print("✓ NoiseBlanker: 36 dB impulses removed, clean samples untouched")
+
+
+def test_notch_filter_kills_tone_keeps_rest():
+    fs = 48_000.0
+    t = np.arange(int(fs)) / fs
+    x = np.sin(2 * np.pi * 1000.0 * t) + np.sin(2 * np.pi * 2500.0 * t)
+    nf = NotchFilter(fs, 1000.0)
+    y = np.concatenate([nf.process(x[i:i + 1024]) for i in range(0, x.size, 1024)])
+    spec = np.abs(np.fft.rfft(y[4096:] * np.hanning(y.size - 4096)))
+    f = np.arange(spec.size) * fs / (y.size - 4096)
+    at = lambda f0: float(spec[(f > f0 - 30) & (f < f0 + 30)].max())
+    rej = 20 * np.log10(at(1000) / at(2500))
+    assert rej < -25, f"notch rejection only {rej:.1f} dB"
+    print(f"✓ NotchFilter: 1 kHz tone {rej:.0f} dB below the kept 2.5 kHz tone")
+
+
 if __name__ == "__main__":
     test_real_decimator_any_chunk_size()
     test_channelizer_any_chunk_size()
     test_stream_resampler_matches_whole_signal()
     test_discriminator_empty_and_step()
+    test_noise_blanker_kills_impulses()
+    test_notch_filter_kills_tone_keeps_rest()
     print("all blocks tests passed")

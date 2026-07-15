@@ -176,8 +176,11 @@ const gainSlider = document.getElementById("gain") as HTMLInputElement;
 const gainVal = document.getElementById("gain-val")!;
 const ppmInput = document.getElementById("ppm") as HTMLInputElement;
 const biasTee = document.getElementById("bias-tee") as HTMLInputElement;
-const upconvOn = document.getElementById("upconv") as HTMLInputElement;
+const hfMode = document.getElementById("hf-mode") as HTMLSelectElement;
+const stepSel = document.getElementById("step") as HTMLSelectElement;
 const upconvMhz = document.getElementById("upconv-mhz") as HTMLInputElement;
+const tunerBw = document.getElementById("tuner-bw") as HTMLInputElement;
+const rtlAgc = document.getElementById("rtl-agc") as HTMLInputElement;
 let gainSteps: number[] = [];
 let desiredGainDb = 0; // last manual gain (dB), used before the step list arrives
 const radioControls = document.getElementById("radio-controls")!;
@@ -189,6 +192,16 @@ const demodSel = document.getElementById("demod") as HTMLSelectElement;
 const deemphSel = document.getElementById("deemph") as HTMLSelectElement;
 const stereoOn = document.getElementById("stereo-on") as HTMLInputElement;
 const rdsOn = document.getElementById("rds-on") as HTMLInputElement;
+const nbOn = document.getElementById("nb-on") as HTMLInputElement;
+const notchOn = document.getElementById("notch-on") as HTMLInputElement;
+const notchHz = document.getElementById("notch-hz") as HTMLInputElement;
+const ssbBox = document.getElementById("ssb-box")!;
+const toneBox = document.getElementById("tone-box")!;
+const toneRead = document.getElementById("tone-read")!;
+const toneSql = document.getElementById("tone-sql") as HTMLInputElement;
+const ssbLow = document.getElementById("ssb-low") as HTMLInputElement;
+const ssbHigh = document.getElementById("ssb-high") as HTMLInputElement;
+const agcSpeed = document.getElementById("agc-speed") as HTMLSelectElement;
 const rdsBox = document.getElementById("rds-box")!;
 const rdsPs = document.getElementById("rds-ps")!;
 const rdsRt = document.getElementById("rds-rt")!;
@@ -200,6 +213,7 @@ const levelMeter = document.getElementById("level-meter")!;
 // control bar (live controls above the view)
 const controlBar = document.getElementById("control-bar")!;
 const cbFreq = document.getElementById("cb-freq")!;
+const cbStep = document.getElementById("cb-step")!;
 const cbDemod = document.getElementById("cb-demod")!;
 const cbVol = document.getElementById("cb-vol")!;
 const cbSql = document.getElementById("cb-sql")!;
@@ -255,6 +269,7 @@ let viewRate = 2.4e6;
 let viewTuned = 100e6;
 let converterOn = false;   // HF upconverter inline (backend-confirmed state)
 let converterMhz = 125;    // its LO (MHz)
+let directOn = false;      // V3 direct sampling active (backend-confirmed)
 
 function updateBandInfo(): void {
   let label = "";
@@ -284,8 +299,12 @@ function updateBandInfo(): void {
     );
     label = names.length ? `Band: ${names.slice(0, 4).join(" · ")}` : "";
   }
-  if (converterOn && ["radio", "spectrum", "scan", "scanner"].includes(currentMode))
-    label = (label ? label + " · " : "") + `upconverter +${+converterMhz.toFixed(3)} MHz`;
+  if (["radio", "spectrum", "scan", "scanner"].includes(currentMode)) {
+    if (converterOn)
+      label = (label ? label + " · " : "") + `upconverter +${+converterMhz.toFixed(3)} MHz`;
+    else if (directOn)
+      label = (label ? label + " · " : "") + "direct sampling (HF)";
+  }
   bandInfo.textContent = label;
   // mirror the service name onto the spectrum's noise floor (drop "Band: ")
   scope.setBandLabel(label.replace(/^Band:\s*/, ""));
@@ -318,8 +337,11 @@ sock.onJson((msg) => {
         ppm: parseInt(ppmInput.value, 10) || 0,
         bias_tee: biasTee.checked,
         gain: gainAuto.checked ? "auto" : desiredGainDb,
-        converter_on: upconvOn.checked,
+        converter_on: hfMode.value === "upconv",
         converter_hz: (parseFloat(upconvMhz.value) || 125) * 1e6,
+        direct_sampling: hfMode.value === "direct",
+        tuner_bw: (parseFloat(tunerBw.value) || 0) * 1e3,
+        rtl_agc: rtlAgc.checked,
       });
       break;
     case "_close":
@@ -330,21 +352,26 @@ sock.onJson((msg) => {
       currentMode = msg.mode;
       viewCenter = msg.center_freq;
       viewRate = msg.sample_rate;
-      // converter state feeds updateBandInfo, so sync it before rendering
+      // HF-mode state feeds updateBandInfo, so sync it before rendering
       if (typeof msg.converter_on === "boolean") converterOn = msg.converter_on;
       if (typeof msg.converter_hz === "number") converterMhz = msg.converter_hz / 1e6;
+      if (typeof msg.direct_sampling === "boolean") directOn = msg.direct_sampling;
       updateBandInfo();
       renderStatus(msg);
       syncGain(msg);
       if (typeof msg.ppm === "number" && document.activeElement !== ppmInput)
         ppmInput.value = msg.ppm.toString();
       if (typeof msg.bias_tee === "boolean") biasTee.checked = msg.bias_tee;
-      upconvOn.checked = converterOn;
+      hfMode.value = directOn ? "direct" : converterOn ? "upconv" : "off";
       if (document.activeElement !== upconvMhz)
         upconvMhz.value = (+converterMhz.toFixed(3)).toString();
-      // the manual entry range follows the converter (real HF freqs when on)
-      freqInput.min = converterOn ? "0" : "24";
-      freqInput.max = (1766 - (converterOn ? converterMhz : 0)).toFixed(0);
+      if (typeof msg.tuner_bw === "number" && document.activeElement !== tunerBw)
+        tunerBw.value = Math.round(msg.tuner_bw / 1e3).toString();
+      if (typeof msg.rtl_agc === "boolean") rtlAgc.checked = msg.rtl_agc;
+      // the manual entry range follows the HF mode (real HF freqs when active)
+      freqInput.min = converterOn || directOn ? "0" : "24";
+      freqInput.max = directOn ? "14.4"
+        : (1766 - (converterOn ? converterMhz : 0)).toFixed(0);
       highlightMode(msg.mode);
       tuner.setBand(msg.center_freq, msg.sample_rate);
       tuner.setActive(msg.mode === "radio" || msg.mode === "replay");
@@ -379,6 +406,7 @@ sock.onJson((msg) => {
         const audio = msg.mode === "radio" || msg.mode === "replay";
         controlBar.hidden = msg.mode === "idle";
         cbFreq.hidden = !["spectrum", "radio"].includes(msg.mode);
+        cbStep.hidden = !["spectrum", "radio", "replay"].includes(msg.mode);
         cbDemod.hidden = !audio;
         cbVol.hidden = !audio;
         cbSql.hidden = !audio;
@@ -403,6 +431,20 @@ sock.onJson((msg) => {
       if (msg.deemph) deemphSel.value = String(Math.round(msg.deemph));
       if (typeof msg.rds === "boolean") rdsOn.checked = msg.rds;
       if (typeof msg.stereo === "boolean") stereoOn.checked = msg.stereo;
+      if (typeof msg.nb === "boolean") nbOn.checked = msg.nb;
+      if (typeof msg.notch === "boolean") notchOn.checked = msg.notch;
+      if (typeof msg.notch_hz === "number" && document.activeElement !== notchHz)
+        notchHz.value = Math.round(msg.notch_hz).toString();
+      if (typeof msg.ssb_low === "number" && document.activeElement !== ssbLow)
+        ssbLow.value = Math.round(msg.ssb_low).toString();
+      if (typeof msg.ssb_high === "number" && document.activeElement !== ssbHigh)
+        ssbHigh.value = Math.round(msg.ssb_high).toString();
+      if (typeof msg.agc === "string") agcSpeed.value = msg.agc;
+      if (typeof msg.tone_squelch === "string" && document.activeElement !== toneSql)
+        toneSql.value = msg.tone_squelch;
+      ssbBox.hidden = !["usb", "lsb", "cw"].includes(msg.demod);
+      toneBox.hidden = msg.demod !== "nfm";
+      if (msg.demod !== "nfm") toneRead.textContent = "—";
       rdsBox.hidden = !(msg.demod === "wfm" && rdsOn.checked);
       if (msg.demod !== "wfm") { rdsPs.textContent = "—"; rdsRt.textContent = ""; rdsMeta.textContent = ""; }
       bwInput.value = Math.round(msg.bandwidth / 1000).toString();
@@ -450,6 +492,10 @@ sock.onJson((msg) => {
     case "cw_text":
       cwOut.textContent = (cwOut.textContent + msg.text).slice(-400);
       cwText.scrollTop = cwText.scrollHeight;
+      break;
+    case "tone":
+      // CTCSS Hz ("88.5") or DCS code ("D023"); null = signature lost
+      toneRead.textContent = msg.tone || "—";
       break;
     case "rds":
       rdsPs.textContent = msg.ps || "—";
@@ -1237,6 +1283,13 @@ function sendRadioPrefs(): void {
       deemph: parseFloat(deemphSel.value),
       rds: rdsOn.checked,
       stereo: stereoOn.checked,
+      nb: nbOn.checked,
+      notch: notchOn.checked,
+      notch_hz: parseFloat(notchHz.value) || 1000,
+      ssb_low: parseFloat(ssbLow.value) || 200,
+      ssb_high: parseFloat(ssbHigh.value) || 2800,
+      agc: agcSpeed.value,
+      tone_squelch: toneSql.value.trim(),
     },
   });
   vfoRows.forEach((e, i) => {
@@ -1245,7 +1298,18 @@ function sendRadioPrefs(): void {
 }
 
 // --- click / drag to tune ------------------------------------------------
+// Tuning raster: wheel/arrow step for the frequency field; click-to-tune
+// snaps onto it so e.g. airband clicks land exactly on the 8.33 kHz grid.
+function rasterHz(): number {
+  return parseFloat(stepSel.value) || 0;
+}
+function snapToRaster(hz: number): number {
+  const s = rasterHz();
+  return s > 0 ? Math.round(hz / s) * s : hz;
+}
+
 tuner.onTune = async (freqHz) => {
+  freqHz = snapToRaster(freqHz);
   if (currentMode === "radio" || currentMode === "replay") {
     // a click can tune an extra receiver instead of the main channel
     const t = vfoTarget();
@@ -1265,15 +1329,26 @@ tuner.onTune = async (freqHz) => {
     await audio.init();
     sock.send({ cmd: "set_mode", mode: "radio" });
     sendRadioPrefs();
-    sock.send({ cmd: "tune", center_freq: freqHz });
-    sock.send({ cmd: "config", params: { tuned_freq: freqHz } });
-    tuner.setTuned(freqHz);
+    listenAt(freqHz);
+    return;
   }
   // Reflect the new channel in the Tuning field straight away, rather than
   // waiting for the backend's radio_config echo.
   viewTuned = freqHz;
   syncFreqField();
 };
+
+// Retune the hardware onto a channel and listen to it. The capture centre is
+// parked a quarter of the band away, so the dongle's DC spike never sits in
+// the demodulated channel (click-to-tune gets this for free; typed/recalled
+// frequencies used to land exactly on the spike).
+function listenAt(hz: number): void {
+  sock.send({ cmd: "tune", center_freq: hz + viewRate / 4 });
+  sock.send({ cmd: "config", params: { tuned_freq: hz } });
+  tuner.setTuned(hz);
+  viewTuned = hz;
+  syncFreqField();
+}
 tuner.onSelect = (loHz, hiHz) => {
   if (currentMode === "radio" || currentMode === "replay") {
     // drag sets the demod bandwidth + re-centers the channel
@@ -1311,6 +1386,34 @@ rdsOn.addEventListener("change", () => {
 });
 stereoOn.addEventListener("change", () =>
   sock.send({ cmd: "config", params: { stereo: stereoOn.checked } }),
+);
+nbOn.addEventListener("change", () =>
+  sock.send({ cmd: "config", params: { nb: nbOn.checked } }),
+);
+function sendNotch(): void {
+  sock.send({
+    cmd: "config",
+    params: { notch: notchOn.checked, notch_hz: parseFloat(notchHz.value) || 1000 },
+  });
+}
+notchOn.addEventListener("change", sendNotch);
+notchHz.addEventListener("change", sendNotch);
+function sendSsb(): void {
+  sock.send({
+    cmd: "config",
+    params: {
+      ssb_low: parseFloat(ssbLow.value) || 200,
+      ssb_high: parseFloat(ssbHigh.value) || 2800,
+    },
+  });
+}
+ssbLow.addEventListener("change", sendSsb);
+ssbHigh.addEventListener("change", sendSsb);
+agcSpeed.addEventListener("change", () =>
+  sock.send({ cmd: "config", params: { agc: agcSpeed.value } }),
+);
+toneSql.addEventListener("change", () =>
+  sock.send({ cmd: "config", params: { tone_squelch: toneSql.value.trim() } }),
 );
 bwInput.addEventListener("change", () =>
   sock.send({ cmd: "config", params: { bandwidth: parseFloat(bwInput.value) * 1000 } }),
@@ -1654,19 +1757,43 @@ zoomOutBtn.addEventListener("click", () => {
 // --- dongle tuning -------------------------------------------------------
 // The Center / Sample-rate fields tune the dongle directly on change (Enter or
 // blur) — no separate "apply" button.
-freqInput.addEventListener("change", () => {
+function tuneFromField(): void {
   const mhz = parseFloat(freqInput.value);
   if (!isFinite(mhz)) return;
   const hz = mhz * 1e6;
+  if (currentMode === "radio") {
+    listenAt(hz);                    // DC-spike-free: channel off-centre
+    return;
+  }
   sock.send({ cmd: "tune", center_freq: hz });
   // In the Spectrum view, typing a frequency should both re-center AND listen to
   // it (the channel follows the centre), so the tuned cursor doesn't get left
   // behind on the old station.
-  if (currentMode === "radio" || currentMode === "spectrum") {
+  if (currentMode === "spectrum") {
     sock.send({ cmd: "config", params: { tuned_freq: hz } });
     tuner.setTuned(hz);
   }
-});
+}
+freqInput.addEventListener("change", tuneFromField);
+// mouse wheel on the frequency field steps by the raster (100 kHz when free)
+freqInput.addEventListener(
+  "wheel",
+  (e) => {
+    e.preventDefault();
+    const dir = e.deltaY < 0 ? 1 : -1;
+    const s = rasterHz() || 100_000;
+    const hz = snapToRaster((parseFloat(freqInput.value) || 0) * 1e6 + dir * s);
+    freqInput.value = (+(hz / 1e6).toFixed(6)).toString();
+    tuneFromField();
+  },
+  { passive: false },
+);
+// arrow keys / spinner step by the raster too (native `step` behavior)
+function applyStepAttr(): void {
+  const s = rasterHz();
+  freqInput.step = s > 0 ? (s / 1e6).toString() : "0.1";
+}
+stepSel.addEventListener("change", applyStepAttr);
 rateInput.addEventListener("change", () => {
   const ms = parseFloat(rateInput.value);
   if (isFinite(ms)) sock.send({ cmd: "tune", sample_rate: ms * 1e6 });
@@ -1765,16 +1892,23 @@ ppmInput.addEventListener("change", () =>
 biasTee.addEventListener("change", () =>
   sock.send({ cmd: "tune", bias_tee: biasTee.checked }),
 );
-function sendConverter(): void {
+function sendHfMode(): void {
   const mhz = parseFloat(upconvMhz.value);
   sock.send({
     cmd: "tune",
-    converter_on: upconvOn.checked,
+    converter_on: hfMode.value === "upconv",
+    direct_sampling: hfMode.value === "direct",
     converter_hz: (isFinite(mhz) && mhz > 0 ? mhz : 125) * 1e6,
   });
 }
-upconvOn.addEventListener("change", sendConverter);
-upconvMhz.addEventListener("change", sendConverter);
+hfMode.addEventListener("change", sendHfMode);
+upconvMhz.addEventListener("change", sendHfMode);
+tunerBw.addEventListener("change", () =>
+  sock.send({ cmd: "tune", tuner_bw: (parseFloat(tunerBw.value) || 0) * 1e3 }),
+);
+rtlAgc.addEventListener("change", () =>
+  sock.send({ cmd: "tune", rtl_agc: rtlAgc.checked }),
+);
 
 // --- settings persistence (localStorage) ---------------------------------
 const persistValues: Record<string, HTMLInputElement | HTMLSelectElement> = {
@@ -1782,11 +1916,12 @@ const persistValues: Record<string, HTMLInputElement | HTMLSelectElement> = {
   scanStart, scanStop, wfFloor, wfCeil, rxLoc, deemph: deemphSel, averaging,
   scannerSql, scannerVol, scannerPrio,
   rangeStart, rangeStop, rangeStep, rangeDemod,
-  upconvMhz,
+  upconvMhz, hfMode, tunerBw, step: stepSel,
+  notchHz, ssbLow, ssbHigh, agcSpeed, toneSql,
 };
 const persistChecks: Record<string, HTMLInputElement> = {
   gainAuto, biasTee, wfAuto, peakHold, rdsOn, stereoOn, showTracks,
-  upconvOn,
+  rtlAgc, nbOn, notchOn,
 };
 vfoRows.forEach((e, i) => {
   persistValues[`vfo${i + 1}Freq`] = e.freq;
@@ -1811,6 +1946,8 @@ function restoreSettings(): void {
     if (s[k] !== undefined) persistChecks[k].checked = Boolean(s[k]);
   // recover from a corrupt saved position (would otherwise blank all distances)
   if (rxLatLon() === null) rxLoc.value = "59.33, 18.06";
+  // migrate the pre-select upconverter checkbox setting
+  if (s.hfMode === undefined && s.upconvOn === true) hfMode.value = "upconv";
   if (typeof s.gainDb === "number") desiredGainDb = s.gainDb;
   applyContrast();
   scope.setPeakHold(peakHold.checked);
@@ -1884,15 +2021,11 @@ async function recallBookmark(b: Bookmark): Promise<void> {
   sock.send({ cmd: "set_mode", mode: "radio" });
   if (b.demod) demodSel.value = b.demod;
   sendRadioPrefs();
-  const hz = b.mhz * 1e6;
-  sock.send({ cmd: "tune", center_freq: hz });
-  sock.send({ cmd: "config", params: { tuned_freq: hz } });
-  tuner.setTuned(hz);
-  viewTuned = hz;
-  syncFreqField();
+  listenAt(b.mhz * 1e6);
 }
 
 restoreSettings();
+applyStepAttr();     // freq-field arrow/spinner step follows the restored raster
 renderBookmarks();
 
 // --- frequency directory -------------------------------------------------

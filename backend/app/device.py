@@ -53,6 +53,9 @@ except Exception:  # pragma: no cover - import guarded for hardware-less dev
 # frequency sits ``converter_hz`` below that, which is what makes HF reachable.
 MIN_TUNE_HZ = 24_000_000
 MAX_TUNE_HZ = 1_766_000_000
+# Direct-sampling reach: the RTL2832 samples at 28.8 MHz, so 0–14.4 MHz is the
+# alias-free range on the V3's direct Q input (HF without an upconverter).
+DIRECT_MAX_HZ = 14_400_000
 
 
 def clamp_freq(hz: float, converter_hz: float = 0.0) -> float:
@@ -75,6 +78,15 @@ class DeviceManager:
         # keeps working in real (antenna-side) frequencies down into HF.
         self.converter_on: bool = False
         self.converter_hz: float = 125_000_000.0   # Ham It Up LO
+        # Direct sampling (RTL-SDR V3 Q-branch): HF without an upconverter,
+        # 0–14.4 MHz, reduced dynamic range. Mutually exclusive with the
+        # upconverter — both redefine what "reachable frequencies" means.
+        self.direct_sampling: bool = False
+        self._applied_direct: bool = False   # last mode written to the device
+        self.tuner_bw_hz: float = 0.0        # tuner IF filter; 0 = auto (track rate)
+        self._applied_bw: float = 0.0
+        self.rtl_agc: bool = False           # RTL2832 digital AGC (not tuner AGC)
+        self._applied_agc: bool = False
         self.valid_gains: list[float] = []  # device gain steps (dB), filled on open
         self.mode: Optional[Mode] = None
         self.mode_name: str = "idle"
@@ -97,10 +109,12 @@ class DeviceManager:
         self._rec_path: Optional[Path] = None
         self._rec_lock = threading.Lock()
 
-    # --- frequency conversion (upconverter-aware) ---------------------------
+    # --- frequency conversion (upconverter/direct-sampling-aware) -----------
     @property
     def converter_offset(self) -> float:
         """Effective LO offset in Hz (0 when the converter is switched off)."""
+        if self.direct_sampling:
+            return 0.0     # direct sampling bypasses the tuner (and any converter)
         return self.converter_hz if self.converter_on else 0.0
 
     def hw_freq(self, real_hz: float) -> float:
@@ -109,6 +123,8 @@ class DeviceManager:
 
     def clamp_freq(self, hz: float) -> float:
         """Clamp a real frequency so the hardware stays within tuner range."""
+        if self.direct_sampling:
+            return max(0.0, min(DIRECT_MAX_HZ, float(hz)))
         return clamp_freq(hz, self.converter_offset)
 
     # --- introspection ------------------------------------------------------
@@ -131,6 +147,9 @@ class DeviceManager:
             "bias_tee": self.bias_tee,
             "converter_on": self.converter_on,
             "converter_hz": self.converter_hz,
+            "direct_sampling": self.direct_sampling,
+            "tuner_bw": self.tuner_bw_hz,
+            "rtl_agc": self.rtl_agc,
             "device_present": self.device_present(),
             "clients": self.hub.client_count,
         }
@@ -206,16 +225,30 @@ class DeviceManager:
                      ppm: int | None = None,
                      bias_tee: bool | None = None,
                      converter_on: bool | None = None,
-                     converter_hz: float | None = None) -> None:
+                     converter_hz: float | None = None,
+                     direct_sampling: bool | None = None,
+                     tuner_bw: float | None = None,
+                     rtl_agc: bool | None = None) -> None:
         """Update radio settings. The worker applies them between read blocks."""
         if converter_hz is not None and float(converter_hz) > 0:
             self.converter_hz = float(converter_hz)
         if converter_on is not None:
             self.converter_on = bool(converter_on)
+            if self.converter_on:
+                self.direct_sampling = False   # the two HF paths are exclusive
+        if direct_sampling is not None:
+            self.direct_sampling = bool(direct_sampling)
+            if self.direct_sampling:
+                self.converter_on = False
+        if tuner_bw is not None:
+            self.tuner_bw_hz = max(0.0, float(tuner_bw))
+        if rtl_agc is not None:
+            self.rtl_agc = bool(rtl_agc)
         if center_freq is not None:
             self.center_freq = self.clamp_freq(center_freq)
-        elif converter_on is not None or converter_hz is not None:
-            # Toggling the converter moves the tunable window; pull the current
+        elif (converter_on is not None or converter_hz is not None
+              or direct_sampling is not None):
+            # Toggling an HF path moves the tunable window; pull the current
             # centre back inside it (e.g. 7 MHz is unreachable once it's off).
             self.center_freq = self.clamp_freq(self.center_freq)
         if sample_rate is not None:
@@ -374,6 +407,15 @@ class DeviceManager:
 
     def _apply_settings(self, sdr) -> None:
         sdr.sample_rate = self.sample_rate
+        # Direct sampling switches the 2832's demod path, so set it before the
+        # centre frequency (the mode decides how that frequency is interpreted).
+        # Only write on change — the mode switch resets the tuner (a glitch).
+        if self.direct_sampling != self._applied_direct:
+            try:
+                sdr.set_direct_sampling("q" if self.direct_sampling else 0)
+                self._applied_direct = self.direct_sampling
+            except Exception:
+                pass
         # Only write ppm when it actually changes. librtlsdr errors on a no-op
         # set (returns -2), and that failed control transfer can wedge the next
         # USB call — so never write the default 0 to a fresh device.
@@ -384,10 +426,25 @@ class DeviceManager:
             except Exception:
                 pass
         sdr.center_freq = self.hw_freq(self.center_freq)
+        # Tuner IF filter: 0 = auto (track the sample rate). Narrower than the
+        # captured band tames strong adjacent signals. Write on change only.
+        if self.tuner_bw_hz != self._applied_bw:
+            try:
+                sdr.set_bandwidth(int(self.tuner_bw_hz))
+                self._applied_bw = self.tuner_bw_hz
+            except Exception:
+                pass
         try:
             sdr.gain = self.gain  # pyrtlsdr accepts 'auto' or a float
         except Exception:
             sdr.gain = 0.0
+        # RTL2832 digital AGC (separate from the tuner's gain/AGC above).
+        if self.rtl_agc != self._applied_agc:
+            try:
+                sdr.set_agc_mode(self.rtl_agc)
+                self._applied_agc = self.rtl_agc
+            except Exception:
+                pass
         try:
             sdr.set_bias_tee(self.bias_tee)
         except Exception:
@@ -443,7 +500,11 @@ class DeviceManager:
         reader_thread = None
         try:
             sdr = RtlSdr()  # type: ignore[operator]
-            self._applied_ppm = 0  # fresh device starts at 0 ppm
+            # fresh device: 0 ppm, tuner mode, auto IF bandwidth, RTL AGC off
+            self._applied_ppm = 0
+            self._applied_direct = False
+            self._applied_bw = 0.0
+            self._applied_agc = False
             self._apply_settings(sdr)
             self._sdr = sdr
             try:

@@ -28,6 +28,8 @@ from app.dsp.blocks import (
     ComplexChannelizer,
     DeEmphasis,
     FmDiscriminator,
+    NoiseBlanker,
+    NotchFilter,
     RealDecimator,
     SsbDemod,
     StereoDecoder,
@@ -37,6 +39,7 @@ from app.dsp.cw import CwDecoder
 from app.dsp.fft import Spectrum
 from app.dsp.rds import RdsDemod
 from app.dsp.sstv import SstvDecoder
+from app.dsp.tones import ToneDetector
 from app.hub import FrameTag
 from app.modes.base import Mode
 
@@ -66,6 +69,23 @@ DEMODS = {
 # Extra receivers (VFO B/C/D) alongside the main channel — same captured band.
 SUB_VFO_SLOTS = 3
 SUB_VFO_DEMODS = ("nfm", "am")
+
+# SSB/CW audio AGC speeds: block-AGC smoothing factor per setting.
+AGC_SMOOTH = {"fast": 0.5, "med": 0.25, "slow": 0.06}
+
+
+def _tone_matches(detected: str | None, required: str) -> bool:
+    """Does the detected CTCSS/DCS signature satisfy the tone-squelch setting?"""
+    if detected is None:
+        return False
+    req = required.strip().upper()
+    det = detected.upper()
+    if req.startswith("D"):
+        return det == req
+    try:
+        return abs(float(det) - float(req)) < 0.3     # CTCSS in Hz
+    except ValueError:
+        return False
 
 
 class SubVfo:
@@ -189,6 +209,18 @@ class RadioMode(Mode):
         self.volume = 0.7
         self.squelch_db = -80.0      # channel-power gate; -80 = effectively open
         self.deemph_us = 50.0        # FM de-emphasis: 50 µs (EU) / 75 µs (Americas)
+        self.nb_enabled = False      # impulse noise blanker (pre-demod)
+        self._nb = NoiseBlanker()
+        self.notch_enabled = False   # manual audio notch (heterodyne killer)
+        self.notch_hz = 1_000.0
+        self._notch_l: NotchFilter | None = None
+        self._notch_r: NotchFilter | None = None
+        self.ssb_low = 200.0         # SSB/CW audio passband edges (Hz)
+        self.ssb_high = 2_800.0
+        self.agc_speed = "med"       # SSB/CW audio AGC: fast | med | slow
+        self.tone_squelch = ""       # NFM: require this CTCSS/DCS ("" = off)
+        self._tones: ToneDetector | None = None
+        self._tone_last: str | None = None    # last emitted detection
         self.vfos = [SubVfo() for _ in range(SUB_VFO_SLOTS)]  # extra receivers B/C/D
         self.rds_enabled = False     # decode RDS (station name/radiotext) on WFM; off by default
         self._rds: RdsDemod | None = None
@@ -249,6 +281,31 @@ class RadioMode(Mode):
             self.volume = float(np.clip(params["volume"], 0.0, 2.0))
         if "squelch" in params and params["squelch"] is not None:
             self.squelch_db = float(params["squelch"])
+        if "nb" in params and params["nb"] is not None:
+            self.nb_enabled = bool(params["nb"])
+        if "notch" in params and params["notch"] is not None:
+            self.notch_enabled = bool(params["notch"])
+        if "notch_hz" in params and params["notch_hz"] is not None:
+            hz = float(np.clip(params["notch_hz"], 50.0, 20_000.0))
+            if hz != self.notch_hz:
+                self.notch_hz = hz
+                self._notch_l = self._notch_r = None   # rebuild at the new tone
+        if "ssb_low" in params and params["ssb_low"] is not None:
+            lo = float(np.clip(params["ssb_low"], 50.0, 2_000.0))
+            if lo != self.ssb_low:
+                self.ssb_low = lo
+                self._need_rebuild = True
+        if "ssb_high" in params and params["ssb_high"] is not None:
+            hi = float(np.clip(params["ssb_high"], 500.0, 5_000.0))
+            if hi != self.ssb_high:
+                self.ssb_high = hi
+                self._need_rebuild = True
+        if params.get("agc") in AGC_SMOOTH:
+            self.agc_speed = params["agc"]
+            if self._agc is not None:
+                self._agc.smooth = AGC_SMOOTH[self.agc_speed]
+        if "tone_squelch" in params and params["tone_squelch"] is not None:
+            self.tone_squelch = str(params["tone_squelch"]).strip()
         if "deemph" in params and params["deemph"] is not None:
             # accept 50 / 75 (µs); 0/None means leave unchanged
             tau = float(params["deemph"])
@@ -284,6 +341,13 @@ class RadioMode(Mode):
             "volume": self.volume,
             "squelch": self.squelch_db,
             "deemph": self.deemph_us,
+            "nb": self.nb_enabled,
+            "notch": self.notch_enabled,
+            "notch_hz": self.notch_hz,
+            "ssb_low": self.ssb_low,
+            "ssb_high": self.ssb_high,
+            "agc": self.agc_speed,
+            "tone_squelch": self.tone_squelch,
             "rds": self.rds_enabled,
             "stereo": self.stereo_enabled,
             "apt": self.apt_enabled,
@@ -385,10 +449,15 @@ class RadioMode(Mode):
         self._apt = None
         self._sstv = None
         self._deemph_l = self._deemph_r = None
+        self._tones = None
+        self._tone_last = None
         if self.demod in ("wfm", "nfm"):
             self._disc = FmDiscriminator()
             self._fm_dev = float(cfg["dev"])
             self._audio_decim = RealDecimator(if_rate, audio_decim, cfg["audio"])
+            if self.demod == "nfm":
+                # CTCSS/DCS live below ~300 Hz in the demodulated NFM audio
+                self._tones = ToneDetector(self._audio_decim.out_rate)
             if cfg.get("deemph"):
                 self._deemph = DeEmphasis(self._audio_decim.out_rate, tau_us=self.deemph_us)
             if self.demod == "wfm" and self.stereo_enabled:
@@ -416,12 +485,17 @@ class RadioMode(Mode):
         else:  # usb / lsb / cw  (SSB-style audio)
             # complex decimate IF -> audio rate, then one-sided sideband filter
             self._cplx_decim = ComplexChannelizer(if_rate, audio_decim, cfg["audio"] + 500)
-            self._ssb = SsbDemod(self._cplx_decim.out_rate, lsb=(self.demod == "lsb"))
-            self._agc = BlockAgc()
+            low = self.ssb_low
+            high = max(self.ssb_high, low + 200.0)   # keep a sane passband
+            self._ssb = SsbDemod(self._cplx_decim.out_rate,
+                                 lsb=(self.demod == "lsb"), low=low, high=high)
+            self._agc = BlockAgc(smooth=AGC_SMOOTH[self.agc_speed])
             if self.demod == "cw":
                 env_decim = max(1, int(round(if_rate / CW_ENV_RATE)))
                 self._env_decim = RealDecimator(if_rate, env_decim, 200)
                 self._cw = CwDecoder(if_rate / env_decim)
+        self._nb = NoiseBlanker()                 # fresh envelope estimate
+        self._notch_l = self._notch_r = None      # rebuilt lazily at AUDIO_RATE
         self._need_rebuild = False
 
     def process(self, samples: np.ndarray) -> None:
@@ -480,6 +554,8 @@ class RadioMode(Mode):
             # 3) select + demodulate the channel
             self._chan.set_shift(self.tuned_freq - self.manager.center_freq)
             baseband = self._chan.process(samples)            # complex, IF rate
+            if self.nb_enabled:
+                baseband = self._nb.process(baseband)         # zap impulses early
             if_rate = self._chan.out_rate
 
             # channel power (dBFS) drives the squelch + level meter
@@ -510,6 +586,16 @@ class RadioMode(Mode):
                         except queue.Full:
                             pass  # RDS thread busy; drop block (display data, not audio)
                 mono = self._audio_decim.process(disc)
+                # CTCSS/DCS: read the sub-audible signature; with tone squelch
+                # set, stay muted unless the required signature is present.
+                if self.demod == "nfm" and self._tones is not None:
+                    self._tones.process(mono)
+                    tone = self._tones.current
+                    if tone != self._tone_last:
+                        self._tone_last = tone
+                        self.manager.emit_json({"type": "tone", "tone": tone})
+                    if self.tone_squelch and not _tone_matches(tone, self.tone_squelch):
+                        squelched = True
                 # NOAA APT: decode the 2400 Hz image subcarrier from the FM audio
                 # (before de-emphasis, which would tilt the subcarrier amplitude)
                 if self.demod == "wfm" and self.apt_enabled:
@@ -581,6 +667,12 @@ class RadioMode(Mode):
         mix_r: np.ndarray | None = None
         if main_active:
             left, right = audio_lr if audio_lr is not None else (audio, audio)
+            if self.notch_enabled and left.size:
+                if self._notch_l is None:
+                    self._notch_l = NotchFilter(AUDIO_RATE, self.notch_hz)
+                    self._notch_r = NotchFilter(AUDIO_RATE, self.notch_hz)
+                left = self._notch_l.process(left)
+                right = self._notch_r.process(right)
             n_out = left.size
             if n_out:
                 gate = 0.0 if squelched else 1.0

@@ -46,7 +46,12 @@ shows only the setup panels that apply to the current mode.
 |---|---|
 | **Center / Frequency (MHz)** *(control bar)* | Type a frequency and press **Enter** to go there: it re-centers the band **and** tunes/listens to that frequency (the channel cursor follows). Range 24–1766 MHz (R820T). Click elsewhere in the waterfall afterwards to listen off-centre — in Radio mode the field is labelled **Frequency** and tracks the channel you're listening to (so it updates when you click around), while in the Spectrum view it's labelled **Center** and shows the dongle's centre. |
 | **Sample rate (MS/s)** | Capture bandwidth, up to 2.4. Lower = less CPU/USB, narrower view. |
+| **Step** *(control bar)* | Tuning raster. **Free** (default) leaves clicks and arrows unquantised; pick a channel spacing (5 / 6.25 / **8.33** airband / 9 MW / 10 / 12.5 / 25 marine / 50 / 100 kHz) and the ↑↓ arrows, the mouse wheel over the frequency field, **and click-to-tune** all snap to that grid — a click near an airband channel lands exactly on it. |
 | **◀ block / block ▶** | Jump the captured band down/up by one capture width (~2.4 MHz) to walk across the spectrum looking for signals. |
+
+Typing a frequency (or recalling a bookmark / directory entry) in Radio mode
+parks the hardware centre a quarter of the band away from the channel, so the
+dongle's DC spike never sits on what you're listening to.
 
 Switching modes **keeps the current band** — listen to a ship on AIS (162 MHz), hit
 **Radio**, and you're looking at 162 MHz instead of jumping back to a default.
@@ -58,12 +63,15 @@ Decoder modes (ADS-B/AIS/APRS/ACARS/DAB/SSTV/Pager) tune themselves, so they hid
 | **Auto gain** / **Gain** *(control bar)* | Auto lets the tuner ride gain; uncheck for a manual slider. More gain digs out weak signals but can overload near strong ones. For broadcast FM, a manual *high* gain often gives the cleanest audio and best RDS lock. |
 | **Advanced ▸ PPM correction** *(Reception panel)* | Corrects the dongle's crystal error so the displayed frequency is accurate. See *Calibration* below. |
 | **Advanced ▸ Bias-T (5 V)** *(Reception panel)* | Feeds 5 V up the coax to power an inline LNA/antenna. **Only enable if you have a powered device** — don't feed a plain antenna. |
-| **Advanced ▸ HF upconverter** *(Reception panel)* | Tick when an upconverter (e.g. **Ham It Up**, LO 125 MHz) sits between antenna and dongle. Everything — tuning, waterfall axis, bookmarks, band labels, the antenna helper — then works in **real HF frequencies** (0–30 MHz shortwave, AM broadcast, 80/40/20 m ham…) while the dongle silently tunes the LO amount higher. The LO field accepts other converters' offsets. Remember to switch the converter out (or off) again for VHF/UHF listening. |
+| **Advanced ▸ HF mode** *(Reception panel)* | How to reach shortwave. **Upconverter** (e.g. **Ham It Up**, LO 125 MHz): the dongle silently tunes the LO amount higher while everything — tuning, waterfall axis, bookmarks, band labels, the antenna helper — works in **real HF frequencies**; the LO field accepts other converters' offsets. **Direct sampling** (RTL-SDR **V3**): the V3's direct Q-branch input, ~0.5–14.4 MHz with no extra hardware but lower dynamic range. Switch back to **Off** for VHF/UHF. |
+| **Advanced ▸ Tuner IF bandwidth** *(Reception panel)* | The R820T's analog IF filter. **0 = auto** (tracks the sample rate). Set it narrower than the captured band (e.g. **300** kHz while capturing 2400) when a strong station a few hundred kHz away overloads the front end — the classic strong-neighbour defense. |
+| **Advanced ▸ RTL AGC** *(Reception panel)* | The RTL2832's digital AGC — a separate stage after the tuner. Occasionally squeezes out a very weak signal at maxed tuner gain; can pump. Most listening is better with it off. |
 
-PPM, Bias-T and the upconverter sit under a collapsible **Advanced** disclosure
-in the sidebar — they're usually set once. With the upconverter on, the band
-line shows `upconverter +125 MHz` as a reminder, and manual frequency entry
-accepts values below the dongle's native 24 MHz floor.
+PPM, Bias-T, HF mode and the IF/AGC knobs sit under a collapsible **Advanced**
+disclosure in the sidebar — they're usually set once. With an HF mode active,
+the band line shows `upconverter +125 MHz` / `direct sampling (HF)` as a
+reminder, and manual frequency entry accepts values below the dongle's native
+24 MHz floor.
 
 ### Recording (Radio / APT / SSTV)
 **Record IQ** captures the raw stream to a `.cu8` file (see *Recording* below).
@@ -249,6 +257,20 @@ sidebar's Radio panel keeps bandwidth, de-emphasis, stereo/RDS and recording):
   weak/multipath stations decode slowly or not at all.
 - **Volume**, and **Squelch** — raise it until the hiss on an empty channel cuts
   out; the **level meter** shows the channel strength and ▶ (open) / 🔇 (muted).
+- **Sub-tone / Tone squelch** (NFM): the panel shows the channel's **CTCSS** tone
+  (e.g. `88.5`) or **DCS** code (e.g. `D023`) a second or two into a transmission —
+  handy for setting up your own radio for a repeater. Enter that value in **Tone
+  squelch** and the audio opens **only** for transmissions carrying it (shared
+  channels stay quiet for other users). Empty = off. DCS codes are reported as
+  the canonical member of their alias set, like any scanner.
+- **Noise blanker**: zaps short ignition/power-line impulse spikes *before*
+  demodulation, so they don't smear into crackle. Helps impulsive noise, not hiss.
+- **Notch**: a narrow filter that removes one steady whistle/heterodyne — enter
+  its audio frequency in Hz (e.g. a 1000 Hz birdie on AM/SSB).
+- **SSB passband** (USB/LSB/CW): the audio window, default 200–2800 Hz. Narrow
+  the high edge to cut adjacent-signal splatter, raise the low edge against hum.
+  **AGC** picks how fast the volume recovers: *fast* for contest-style exchanges,
+  *slow* for rag-chews (less pumping between words).
 - **Record audio** → saves what you hear to a **WAV**.
 - The tuning **cursor + shaded band** on the scope/waterfall show where and how
   wide you're listening; **drag** across a signal to set the bandwidth to match it.

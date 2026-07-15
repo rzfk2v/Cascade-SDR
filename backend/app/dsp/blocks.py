@@ -10,7 +10,8 @@ import math
 
 import numpy as np
 from numpy.lib.stride_tricks import sliding_window_view
-from scipy.signal import bilinear, firwin, lfilter, lfilter_zi, resample_poly
+from scipy.signal import (bilinear, firwin, iirnotch, lfilter, lfilter_zi,
+                          resample_poly)
 
 
 def _fir_decimate(b_rev: np.ndarray, hist: np.ndarray, x: np.ndarray,
@@ -299,6 +300,52 @@ class StreamResampler:
         lo = self._guard * self.up // self.down
         self._buf = self._buf[m:]
         return y[lo : lo + m * self.up // self.down]
+
+
+class NoiseBlanker:
+    """Impulse-noise blanker for complex baseband, applied before demodulation.
+
+    Ignition/power-line impulses are microseconds wide but tens of dB above the
+    signal, and after FM/AM demodulation each one smears into a broadband click.
+    We track a slowly-updated average envelope across blocks and zero any sample
+    whose magnitude exceeds ``threshold`` times it — deleting a few samples of
+    signal is inaudible next to the click it prevents.
+    """
+
+    def __init__(self, threshold: float = 4.0, smooth: float = 0.1) -> None:
+        self.threshold = threshold
+        self.smooth = smooth
+        self._avg = 0.0
+
+    def process(self, x: np.ndarray) -> np.ndarray:
+        if x.size == 0:
+            return x
+        mag = np.abs(x)
+        m = float(np.mean(mag))
+        self._avg = m if self._avg == 0.0 else \
+            (1.0 - self.smooth) * self._avg + self.smooth * m
+        mask = mag > self.threshold * self._avg
+        if mask.any():
+            x = x.copy()
+            x[mask] = 0
+        return x
+
+
+class NotchFilter:
+    """Narrow IIR notch (biquad) at a fixed audio frequency, streaming.
+
+    Kills a steady heterodyne/birdie (carrier whistle) with minimal damage to
+    the rest of the audio. Q of 30 is ~35 Hz wide at 1 kHz.
+    """
+
+    def __init__(self, fs: float, f0_hz: float, q: float = 30.0) -> None:
+        f0 = float(np.clip(f0_hz, 10.0, fs / 2.0 * 0.95))
+        self._b, self._a = iirnotch(f0, q, fs=fs)
+        self._zi = np.zeros(2)
+
+    def process(self, x: np.ndarray) -> np.ndarray:
+        y, self._zi = lfilter(self._b, self._a, x, zi=self._zi)
+        return y
 
 
 class DeEmphasis:

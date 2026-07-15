@@ -319,6 +319,31 @@
           </label>
           <label class="check"><input id="stereo-on" type="checkbox" /> FM stereo</label>
           <label class="check"><input id="rds-on" type="checkbox" /> RDS (FM station info)</label>
+          <label class="check"><input id="nb-on" type="checkbox" /> Noise blanker (impulse noise)</label>
+          <label class="check"><input id="notch-on" type="checkbox" /> Notch
+            <input id="notch-hz" type="number" min="50" max="20000" step="10" value="1000" class="inline-num" /> Hz
+          </label>
+          <div id="tone-box" hidden>
+            <p class="status-line">Sub-tone: <span id="tone-read">—</span></p>
+            <label>Tone squelch<input id="tone-sql" type="text" placeholder="88.5 or D023 (empty = off)" />
+              <span class="hint">only open when this CTCSS tone / DCS code is heard (readout above shows what the channel uses)</span>
+            </label>
+          </div>
+          <div id="ssb-box" hidden>
+            <label>SSB passband (Hz)
+              <span class="inline-pair">
+                <input id="ssb-low" type="number" min="50" max="2000" step="50" value="200" class="inline-num" /> –
+                <input id="ssb-high" type="number" min="500" max="5000" step="100" value="2800" class="inline-num" />
+              </span>
+            </label>
+            <label>AGC
+              <select id="agc-speed">
+                <option value="fast">fast</option>
+                <option value="med" selected>medium</option>
+                <option value="slow">slow</option>
+              </select>
+            </label>
+          </div>
           <div id="rds-box" class="rds-box" hidden>
             <div id="rds-ps" class="rds-ps">—</div>
             <div id="rds-rt" class="rds-rt"></div>
@@ -378,10 +403,20 @@
               <span class="hint">corrects the dongle's crystal drift; set once for your stick</span>
             </label>
             <label class="check"><input id="bias-tee" type="checkbox" /> Bias-T (5 V to antenna)</label>
-            <label class="check"><input id="upconv" type="checkbox" /> HF upconverter (Ham It Up)</label>
-            <label>Upconverter LO (MHz)<input id="upconv-mhz" type="number" step="0.001" min="1" value="125" />
-              <span class="hint">the dongle tunes this far above the shown frequency — tune and read real HF frequencies (125 for the Ham It Up)</span>
+            <label>HF mode<select id="hf-mode">
+                <option value="off">Off (native, 24 MHz+)</option>
+                <option value="upconv">Upconverter (Ham It Up)</option>
+                <option value="direct">Direct sampling (V3, 0–14.4 MHz)</option>
+              </select>
+              <span class="hint">how to reach shortwave: an inline upconverter, or the V3's direct-sampling input (no extra hardware, lower dynamic range). Everything shows real frequencies either way</span>
             </label>
+            <label>Upconverter LO (MHz)<input id="upconv-mhz" type="number" step="0.001" min="1" value="125" />
+              <span class="hint">the dongle tunes this far above the shown frequency (125 for the Ham It Up)</span>
+            </label>
+            <label>Tuner IF bandwidth (kHz)<input id="tuner-bw" type="number" step="50" min="0" value="0" />
+              <span class="hint">0 = auto. Narrower than the captured band tames a strong neighbour overloading the tuner (try 300 while capturing 2400)</span>
+            </label>
+            <label class="check"><input id="rtl-agc" type="checkbox" /> RTL AGC (2832 digital — rarely needed)</label>
           </details>
         </section>
 
@@ -438,7 +473,22 @@
           <div class="cb-item" id="cb-freq">
             <span class="cb-label" id="freq-label">Center (MHz)</span>
             <input id="freq" type="number" step="0.1" min="24" max="1766" value="100.0"
-                   title="Press Enter to tune · range ≈ 24–1766 MHz (R820T)" />
+                   title="Press Enter to tune · scroll or ↑↓ to step · range ≈ 24–1766 MHz (R820T)" />
+          </div>
+          <div class="cb-item" id="cb-step">
+            <span class="cb-label">Step</span>
+            <select id="step" title="tuning raster: wheel/arrow step size; click-to-tune snaps to it">
+              <option value="">free</option>
+              <option value="5000">5 kHz</option>
+              <option value="6250">6.25 kHz</option>
+              <option value="8333.333333">8.33 kHz</option>
+              <option value="9000">9 kHz</option>
+              <option value="10000">10 kHz</option>
+              <option value="12500">12.5 kHz</option>
+              <option value="25000">25 kHz</option>
+              <option value="50000">50 kHz</option>
+              <option value="100000">100 kHz</option>
+            </select>
           </div>
           <div class="cb-item" id="cb-demod">
             <span class="cb-label">Demod</span>

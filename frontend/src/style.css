@@ -231,6 +231,8 @@ details.vfo-box[open] > summary::before { content: "▾ "; }
 .vfo-row .vfo-freq { width: 4.4rem; flex: 0 1 auto; }
 .vfo-row select { width: auto; }
 .vfo-row .vfo-sql { width: 3.4rem; }
+.inline-num { width: 4.6rem; }
+.inline-pair { display: inline-flex; align-items: center; gap: 0.3rem; }
 .vfo-row .vfo-vol { flex: 1 1 5rem; min-width: 5rem; padding: 0; }
 .vfo-level {
   font-size: 0.72rem; color: var(--muted); min-width: 2.6rem;
