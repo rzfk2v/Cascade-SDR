@@ -24,7 +24,7 @@ jobs:
           cache: pip
           cache-dependency-path: backend/requirements.txt
       - name: Install backend dependencies
-        run: pip install -r backend/requirements.txt pytest
+        run: pip install -r backend/requirements.txt pytest httpx2
       - name: Run the test suite
         working-directory: backend
         run: python -m pytest tests/ -q

@@ -122,6 +122,14 @@ async def ws_endpoint(ws: WebSocket) -> None:
         await hub.unregister(ws)
 
 
+@app.websocket("/{_path:path}")
+async def ws_reject(ws: WebSocket) -> None:
+    # A websocket upgrade to any path but /ws would otherwise fall through to
+    # the StaticFiles mounts below, which handle only HTTP and crash the
+    # handshake with an ASGI 500. Refuse it cleanly instead (HTTP 403).
+    await ws.close()
+
+
 async def handle_command(ws: WebSocket, msg: dict) -> None:
     cmd = msg.get("cmd")
     try:
