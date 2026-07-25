@@ -108,7 +108,10 @@ class ComplexChannelizer:
 
     def _set_taps(self, cutoff_hz: float) -> None:
         nyq = self.in_rate / 2.0
-        cutoff = float(np.clip(cutoff_hz, 1_000.0, nyq * 0.95))
+        # This FIR is the anti-alias filter for the *decimated* stream, so the
+        # cutoff has to clear the output Nyquist too — anything passed above it
+        # folds back on top of the channel.
+        cutoff = float(np.clip(cutoff_hz, 1_000.0, nyq / self.decim * 0.95))
         self._b = firwin(self._numtaps, cutoff / nyq).astype(np.complex128)
         self._b_rev = self._b[::-1].copy()
         self._hist = np.zeros(self._numtaps - 1, dtype=np.complex128)
@@ -153,7 +156,8 @@ class RealDecimator:
         self.decim = int(decim)
         self._numtaps = numtaps
         nyq = self.in_rate / 2.0
-        cutoff = float(np.clip(cutoff_hz, 500.0, nyq * 0.95))
+        # anti-alias for the decimated output — clear its Nyquist, not the input's
+        cutoff = float(np.clip(cutoff_hz, 500.0, nyq / self.decim * 0.95))
         self._b = firwin(numtaps, cutoff / nyq)
         self._b_rev = self._b[::-1].copy()
         self._hist = np.zeros(numtaps - 1, dtype=np.float64)

@@ -12,14 +12,17 @@ Per IQ block:
   3. FM (or AM) demodulate,
   4. decimate to the audio rate, de-emphasise (FM), and emit int16 PCM.
 
-Audio sample rate is fixed at 48 kHz; ``block_size`` is chosen so every
-decimation ratio is integer and the decimation grid stays aligned across blocks.
+Audio always leaves at 48 kHz, whatever the dongle runs at: the IF decimation
+is picked to keep the channel inside the IF (see ``if_decim``) and a rational
+resampler makes up whatever remainder is left to 48 kHz (see ``to_audio_rate``).
+At 2.4 MS/s the ratios come out integer and the resampler drops out entirely.
 """
 from __future__ import annotations
 
 import queue
 import threading
 import time
+from fractions import Fraction
 
 import numpy as np
 
@@ -33,6 +36,7 @@ from app.dsp.blocks import (
     RealDecimator,
     SsbDemod,
     StereoDecoder,
+    StreamResampler,
 )
 from app.dsp.apt import AptDecoder
 from app.dsp.cw import CwDecoder
@@ -46,7 +50,7 @@ from app.modes.base import Mode
 CW_ENV_RATE = 1000  # envelope rate for the Morse decoder
 
 AUDIO_RATE = 48_000
-IF_DECIM = 10          # 2.4 MS/s -> 240 kHz IF
+IF_RATE = 240_000      # IF rate to aim for (what a fixed ÷10 gave at 2.4 MS/s)
 GATE_RAMP = 240        # squelch open/close ramp, ~5 ms @ 48 kHz (no click)
 
 # FM stereo pilot hysteresis (pilot RMS as a fraction of the MPX): enter stereo
@@ -72,6 +76,34 @@ SUB_VFO_DEMODS = ("nfm", "am")
 
 # SSB/CW audio AGC speeds: block-AGC smoothing factor per setting.
 AGC_SMOOTH = {"fast": 0.5, "med": 0.25, "slow": 0.06}
+
+
+def if_decim(sr: float, bw: float) -> int:
+    """Decimation from the dongle rate to an IF that still fits the channel.
+
+    A fixed ratio only suits one dongle rate: ÷10 leaves a 120 kHz IF at
+    1.2 MS/s, far too narrow for a 200 kHz WFM channel, which then folds back
+    on top of itself. Aim for ``IF_RATE``, and widen when the channel is wider.
+    """
+    return max(1, int(sr // max(float(IF_RATE), bw * 1.2)))
+
+
+def audio_decim_for(if_rate: float) -> int:
+    """Integer part of the IF -> audio decimation (floor: never land below 48 kHz)."""
+    return max(1, int(if_rate // AUDIO_RATE))
+
+
+def to_audio_rate(in_rate: float) -> StreamResampler | None:
+    """Resampler taking ``in_rate`` to exactly ``AUDIO_RATE``; ``None`` if it's already there.
+
+    The player is fed a fixed 48 kHz and has no way to learn the chain's
+    natural rate, but only a 240 kHz IF divides evenly into it — every other
+    dongle rate leaves a remainder for this to make up.
+    """
+    if abs(in_rate - AUDIO_RATE) < 1e-9:
+        return None
+    ratio = Fraction(AUDIO_RATE / in_rate).limit_denominator(1024)
+    return StreamResampler(ratio.numerator, ratio.denominator)
 
 
 def _tone_matches(detected: str | None, required: str) -> bool:
@@ -108,6 +140,7 @@ class SubVfo:
         self._chan: ComplexChannelizer | None = None
         self._disc = FmDiscriminator()
         self._adec: RealDecimator | None = None
+        self._rs: StreamResampler | None = None       # -> AUDIO_RATE
         self._dev = float(DEMODS["nfm"]["dev"])
         self._gate = 0.0
         self._vol_prev = self.volume
@@ -131,11 +164,12 @@ class SubVfo:
 
     def _build(self, sr: float) -> None:
         cfg = DEMODS[self.demod]
-        self._chan = ComplexChannelizer(sr, IF_DECIM, max(cfg["bw"] / 2.0, 6_000.0))
+        self._chan = ComplexChannelizer(sr, if_decim(sr, cfg["bw"]),
+                                        max(cfg["bw"] / 2.0, 6_000.0))
         if_rate = self._chan.out_rate
         self._disc = FmDiscriminator()
-        self._adec = RealDecimator(if_rate, int(round(if_rate / AUDIO_RATE)),
-                                   cfg["audio"])
+        self._adec = RealDecimator(if_rate, audio_decim_for(if_rate), cfg["audio"])
+        self._rs = to_audio_rate(self._adec.out_rate)
         self._dev = float(cfg.get("dev", 5_000))
         self._rebuild = False
 
@@ -164,6 +198,8 @@ class SubVfo:
         else:
             audio = self._adec.process(
                 self._disc.process(bb) * (if_rate / (2.0 * np.pi * self._dev)))
+        if self._rs is not None:
+            audio = self._rs.process(audio)      # -> exactly AUDIO_RATE, for the mix
         n = audio.size
         if n == 0:
             return audio
@@ -192,7 +228,8 @@ class RadioMode(Mode):
     resets_tuning = False     # keep the current band when entering the spectrum view
     default_center_freq = 100_000_000.0
     default_sample_rate = 2_400_000.0
-    # 51200 is a multiple of 256 (librtlsdr), 10 (IF decim) and 50 (total decim).
+    # 51200 is a multiple of 256 (librtlsdr) and, at 2.4 MS/s, of both the IF
+    # decim (10) and the total decim to audio (50).
     # ~21 ms RF/block: large enough to sustain real-time USB throughput, small
     # enough for low latency; the player's jitter buffer smooths delivery.
     block_size = 51_200
@@ -248,6 +285,8 @@ class RadioMode(Mode):
         self._chan: ComplexChannelizer | None = None
         self._disc = FmDiscriminator()
         self._audio_decim: RealDecimator | None = None
+        self._rs_l: StreamResampler | None = None     # chain rate -> AUDIO_RATE
+        self._rs_r: StreamResampler | None = None
         self._deemph: DeEmphasis | None = None
         self._cplx_decim: ComplexChannelizer | None = None  # SSB audio-rate stage
         self._ssb: SsbDemod | None = None
@@ -431,10 +470,11 @@ class RadioMode(Mode):
     def _build_chain(self) -> None:
         sr = self.manager.sample_rate
         cfg = DEMODS.get(self.demod, DEMODS["wfm"])
-        # Stage 1: select the channel and bring it to the IF rate (240 kHz).
-        self._chan = ComplexChannelizer(sr, IF_DECIM, max(self.bandwidth / 2.0, 1_500.0))
+        # Stage 1: select the channel and bring it to the IF rate (~240 kHz).
+        self._chan = ComplexChannelizer(sr, if_decim(sr, self.bandwidth),
+                                        max(self.bandwidth / 2.0, 1_500.0))
         if_rate = self._chan.out_rate
-        audio_decim = int(round(if_rate / AUDIO_RATE))
+        audio_decim = audio_decim_for(if_rate)
 
         self._deemph = None
         self._cplx_decim = None
@@ -494,6 +534,11 @@ class RadioMode(Mode):
                 env_decim = max(1, int(round(if_rate / CW_ENV_RATE)))
                 self._env_decim = RealDecimator(if_rate, env_decim, 200)
                 self._cw = CwDecoder(if_rate / env_decim)
+        # Last stage: whatever rate the chain lands on, the stream leaves at
+        # exactly AUDIO_RATE. Stereo needs two — L and R carry separate state.
+        pre_rate = (self._cplx_decim.out_rate if self._cplx_decim is not None
+                    else self._audio_decim.out_rate)
+        self._rs_l, self._rs_r = to_audio_rate(pre_rate), to_audio_rate(pre_rate)
         self._nb = NoiseBlanker()                 # fresh envelope estimate
         self._notch_l = self._notch_r = None      # rebuilt lazily at AUDIO_RATE
         self._need_rebuild = False
@@ -667,6 +712,11 @@ class RadioMode(Mode):
         mix_r: np.ndarray | None = None
         if main_active:
             left, right = audio_lr if audio_lr is not None else (audio, audio)
+            if self._rs_l is not None and self._rs_r is not None:
+                if right is left:                 # mono: one signal, one resampler
+                    left = right = self._rs_l.process(left)
+                else:
+                    left, right = self._rs_l.process(left), self._rs_r.process(right)
             if self.notch_enabled and left.size:
                 if self._notch_l is None:
                     self._notch_l = NotchFilter(AUDIO_RATE, self.notch_hz)

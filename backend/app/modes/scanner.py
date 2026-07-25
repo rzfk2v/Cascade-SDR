@@ -25,7 +25,14 @@ from app.dsp.blocks import ComplexChannelizer, FmDiscriminator, RealDecimator
 from app.dsp.fft import Spectrum
 from app.hub import FrameTag
 from app.modes.base import Mode
-from app.modes.radio import AUDIO_RATE, DEMODS, GATE_RAMP, IF_DECIM
+from app.modes.radio import (
+    AUDIO_RATE,
+    DEMODS,
+    GATE_RAMP,
+    audio_decim_for,
+    if_decim,
+    to_audio_rate,
+)
 from app.modes.scanner_presets import (
     PRESET_LABELS, PRESETS, RANGE_PRESET, channels_from_client,
     channels_from_range, load_custom, save_custom,
@@ -306,11 +313,13 @@ class ScannerMode(Mode):
         sdr.center_freq = self.manager.hw_freq(center)
         self._reset(sdr)
         cfg = DEMODS.get(ch["demod"], DEMODS["nfm"])
-        chan = ComplexChannelizer(sr, IF_DECIM, max(ch["bw"] / 2.0, 6_000.0))
+        chan = ComplexChannelizer(sr, if_decim(sr, ch["bw"]),
+                                  max(ch["bw"] / 2.0, 6_000.0))
         if_rate = chan.out_rate
         chan.set_shift(ch["freq"] - center)
         disc = FmDiscriminator()
-        adec = RealDecimator(if_rate, round(if_rate / AUDIO_RATE), cfg["audio"])
+        adec = RealDecimator(if_rate, audio_decim_for(if_rate), cfg["audio"])
+        ars = to_audio_rate(adec.out_rate)       # -> exactly AUDIO_RATE
         dev = float(cfg.get("dev", 5_000))
         idx = self._channels.index(ch)
         freqs = center + (np.arange(FFT_SIZE) / FFT_SIZE - 0.5) * sr
@@ -365,6 +374,8 @@ class ScannerMode(Mode):
                     audio = (env - carrier) / carrier if carrier > 1e-6 else env * 0.0
                 else:
                     audio = adec.process(disc.process(bb) * (if_rate / (2.0 * math.pi * dev)))
+                if ars is not None:
+                    audio = ars.process(audio)
                 target = 1.0 if ch["_active"] else 0.0
                 if target != gate and audio.size:
                     k = min(audio.size, GATE_RAMP)   # ~5 ms ramp, no click
