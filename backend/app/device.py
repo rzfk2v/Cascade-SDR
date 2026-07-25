@@ -22,8 +22,10 @@ import asyncio
 import logging
 import os
 import queue
+import sys
 import threading
 import time
+import types
 from pathlib import Path
 from typing import Any, Optional
 
@@ -39,6 +41,26 @@ log = logging.getLogger("sdr.device")
 # which spares the SD card from the heavy sustained writes of IQ recording.
 RECORDINGS_DIR = Path(os.environ.get("CASCADE_RECORDINGS_DIR")
                       or Path(__file__).resolve().parents[1] / "recordings")
+
+# pyrtlsdr 0.3.0 does ``import pkg_resources`` at module scope purely to read its
+# own version string, and setuptools>=81 no longer ships pkg_resources. Rather
+# than hold setuptools back to <81 forever, stand in a stub: pyrtlsdr's version
+# lookup is already wrapped in a bare ``except``, so a ``require`` that raises
+# simply leaves ``rtlsdr.__version__ == 'unknown'``. Nothing else uses it.
+# (We can't just move to pyrtlsdr 0.4/0.5 — those hard-bind the keenerd-only
+# ``rtlsdr_set_dithering`` symbol at import and fail on the stock osmocom
+# librtlsdr that Homebrew and Raspberry Pi OS both ship.)
+if "pkg_resources" not in sys.modules:
+    try:
+        import pkg_resources  # type: ignore  # noqa: F401
+    except ImportError:
+        _pkg_resources_stub = types.ModuleType("pkg_resources")
+
+        def _pkg_resources_require(*_args: Any, **_kwargs: Any) -> Any:
+            raise RuntimeError("pkg_resources is not installed")
+
+        _pkg_resources_stub.require = _pkg_resources_require  # type: ignore[attr-defined]
+        sys.modules["pkg_resources"] = _pkg_resources_stub
 
 try:
     from rtlsdr import RtlSdr  # type: ignore
