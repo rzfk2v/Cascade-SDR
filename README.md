@@ -435,10 +435,12 @@ brew install rtl-sdr python@3.12 node
 rtl_test        # should print your tuner (e.g. R820T); Ctrl-C to stop
 ```
 
-> **librtlsdr / pyrtlsdr note:** we pin `pyrtlsdr==0.3.0` and `setuptools<81`
+> **librtlsdr / pyrtlsdr note:** we pin `pyrtlsdr==0.3.0`
 > (see [backend/requirements.txt](backend/requirements.txt)). Newer pyrtlsdr
 > hard-binds a symbol the Homebrew `librtlsdr` doesn't export and fails to
-> import; 0.3.0 works with the stock library.
+> import; 0.3.0 works with the stock library. 0.3.0 in turn wants
+> `pkg_resources` (gone from setuptools 81+) only to read its own version
+> string, which `app/device.py` stubs out — so no setuptools pin is needed.
 
 ## Setup
 

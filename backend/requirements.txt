@@ -1,9 +1,10 @@
-# pyrtlsdr 0.3.0 + setuptools<81 is the combination that works with the stock
-# Homebrew `librtlsdr` (osmocom build). Newer pyrtlsdr (0.4.x) hard-binds the
-# keenerd-only `rtlsdr_set_dithering` symbol at import and fails on that library;
-# pyrtlsdr 0.3.0 still imports `pkg_resources`, which setuptools>=81 removed.
+# pyrtlsdr 0.3.0 is the version that works with the stock `librtlsdr` (osmocom
+# build) that Homebrew and Raspberry Pi OS ship. Newer pyrtlsdr (0.4.x, 0.5.x)
+# hard-binds the keenerd-only `rtlsdr_set_dithering` symbol at import and fails
+# on that library. 0.3.0 also imports `pkg_resources` (dropped by setuptools>=81)
+# just to read its own version — app/device.py stubs that out, so we need no
+# setuptools pin here.
 pyrtlsdr==0.3.0
-setuptools<81
 numpy>=1.26
 scipy>=1.11
 fastapi>=0.110
