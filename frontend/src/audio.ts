@@ -46,6 +46,9 @@ export class AudioPlayer {
   private readIndex = 0;                  // read offset into buffers[0]
   private available = 0;                  // total unread interleaved samples
   private playing = false;                // false => buffering
+  // --- resampler phase, carried across chunks (see resampleStereo) ---
+  private rsPos = 0;                      // read position in input frames
+  private rsTail: [number, number] | null = null;  // previous chunk's last frame
   private prebuffer = 0;
   private watermark = 0;                  // queue depth that triggers a trim
   private trimto = 0;                     // trim the queue back down to this
@@ -164,19 +167,39 @@ export class AudioPlayer {
   }
 
   // Linear-interpolation stereo resample (interleaved L,R input/output).
+  //
+  // The read phase carries across calls. Restarting it at 0 for every chunk
+  // would step the timeline ~21 ms apart (the audio block rate) and emit a
+  // rounded, slightly wrong number of frames each time, which drifts the
+  // stream against the device clock. `rsTail` keeps the previous chunk's last
+  // frame so the interpolation either side of the seam is the real one.
   private resampleStereo(input: Float32Array, fromRate: number, toRate: number): Float32Array<ArrayBuffer> {
-    const inFrames  = input.length >> 1;
-    const outFrames = Math.round(inFrames * toRate / fromRate);
+    const inFrames = input.length >> 1;
+    if (inFrames === 0) return new Float32Array(0);
+    const step = fromRate / toRate;
+
+    // Frame -1 is the carried tail; 0..inFrames-1 are this chunk. Before the
+    // first chunk there is no tail, so start reading at frame 0.
+    if (!this.rsTail) this.rsPos = 0;
+    const last = inFrames - 1;
+    const outFrames = this.rsPos > last ? 0 : Math.floor((last - this.rsPos) / step) + 1;
     const out = new Float32Array(outFrames * 2);
+
+    let pos = this.rsPos;
     for (let i = 0; i < outFrames; i++) {
-      const src  = i * fromRate / toRate;
-      const lo   = Math.floor(src);
-      const frac = src - lo;
-      const a = Math.min(lo * 2, input.length - 2);
-      const b = Math.min(a + 2, input.length - 2);
-      out[i * 2]     = input[a]     + (input[b]     - input[a])     * frac;
-      out[i * 2 + 1] = input[a + 1] + (input[b + 1] - input[a + 1]) * frac;
+      const lo = Math.floor(pos);
+      const frac = pos - lo;
+      const aL = lo < 0 ? this.rsTail![0] : input[lo * 2];
+      const aR = lo < 0 ? this.rsTail![1] : input[lo * 2 + 1];
+      const bL = input[(lo + 1) * 2];
+      const bR = input[(lo + 1) * 2 + 1];
+      out[i * 2]     = aL + (bL - aL) * frac;
+      out[i * 2 + 1] = aR + (bR - aR) * frac;
+      pos += step;
     }
+
+    this.rsPos = pos - inFrames;          // same instant, next chunk's frame numbering
+    this.rsTail = [input[last * 2], input[last * 2 + 1]];
     return out;
   }
 
