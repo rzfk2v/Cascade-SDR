@@ -165,9 +165,11 @@ async def handle_command(ws: WebSocket, msg: dict) -> None:
                     {"type": "rec_status", "recording": manager.recording, **res}
                 )
             else:
-                name = manager.record_stop()
+                res = manager.record_stop()
                 await hub.broadcast_json(
-                    {"type": "rec_status", "recording": False, "stopped": name}
+                    {"type": "rec_status", "recording": False,
+                     "stopped": res["name"], "dropped": res["dropped"],
+                     "lost_pct": res["lost_pct"]}
                 )
         else:
             await hub.send_json(ws, {"type": "error", "message": f"unknown cmd: {cmd}"})

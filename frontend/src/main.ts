@@ -599,8 +599,14 @@ sock.onJson((msg) => {
       recIqBtn.textContent = iqRecording ? "■ Stop IQ recording" : "● Record IQ";
       if (msg.message) recIqStatus.textContent = msg.message;
       else if (iqRecording) recIqStatus.textContent = "● recording IQ…";
-      else if (msg.stopped) recIqStatus.textContent = `saved ${msg.stopped}`;
-      else recIqStatus.textContent = "";
+      else if (msg.stopped) {
+        // A capture that lost blocks still looks like a good file, so say it
+        // plainly: the samples either side of a gap don't join up.
+        recIqStatus.textContent = msg.dropped
+          ? `saved ${msg.stopped} — ⚠ lost ${msg.dropped} blocks (${msg.lost_pct}%), the writer fell behind`
+          : `saved ${msg.stopped}`;
+        recIqStatus.classList.toggle("err", !!msg.dropped);
+      } else recIqStatus.textContent = "";
       refreshRecordings();
       break;
     case "error":
@@ -640,9 +646,18 @@ function renderStatus(s: any): void {
   statusLine.classList.remove("err");
   const dev = s.device_present ? "device ✓" : "no device";
   const run = s.running ? "running" : "stopped";
+  // Dropped blocks/frames are why audio breaks up; without this they are
+  // invisible and the symptom gets blamed on the DSP or the browser.
+  const d = s.drops || {};
+  const lost = [
+    d.iq ? `${d.iq} IQ` : "",
+    d.net ? `${d.net} net` : "",
+    d.rec ? `${d.rec} rec` : "",
+  ].filter(Boolean);
   statusLine.textContent =
     `${dev} · ${run} · ${(s.center_freq / 1e6).toFixed(3)} MHz · ` +
-    `${(s.sample_rate / 1e6).toFixed(2)} MS/s`;
+    `${(s.sample_rate / 1e6).toFixed(2)} MS/s` +
+    (lost.length ? ` · ⚠ dropped ${lost.join(", ")}` : "");
   // don't clobber a value the user is mid-edit (these now tune on change)
   viewCenter = s.center_freq;
   syncFreqField();

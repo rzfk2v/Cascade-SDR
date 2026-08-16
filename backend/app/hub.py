@@ -43,6 +43,10 @@ class Hub:
         self._queues: dict[Any, asyncio.Queue] = {}
         self._senders: dict[Any, asyncio.Task] = {}
         self._lock = asyncio.Lock()
+        # Frames evicted because a client couldn't keep up. Dropping is the right
+        # behaviour (see the module docstring), but it degrades audio silently,
+        # so keep a count the UI can show instead of leaving it invisible.
+        self.dropped = 0
 
     async def register(self, ws: Any) -> None:
         async with self._lock:
@@ -82,20 +86,20 @@ class Hub:
         for q in list(self._queues.values()):
             self._enqueue(q, item)
 
-    @staticmethod
-    def _enqueue(q: asyncio.Queue, item: tuple) -> None:
+    def _enqueue(self, q: asyncio.Queue, item: tuple) -> None:
         try:
             q.put_nowait(item)
         except asyncio.QueueFull:
             # Slow client: drop its oldest frame rather than stalling everyone.
             try:
                 q.get_nowait()
+                self.dropped += 1
             except asyncio.QueueEmpty:
                 pass
             try:
                 q.put_nowait(item)
             except asyncio.QueueFull:
-                pass
+                self.dropped += 1
 
     async def _sender(self, ws: Any, q: asyncio.Queue) -> None:
         try:

@@ -130,6 +130,14 @@ class DeviceManager:
         self._rec_thread: Optional[threading.Thread] = None
         self._rec_path: Optional[Path] = None
         self._rec_lock = threading.Lock()
+        # Blocks lost to backpressure. Both paths drop on purpose — the reader
+        # must never stall — but a drop is a 21 ms hole in the samples, so count
+        # them instead of losing them silently: a recording written to a slow
+        # disk (or an NFS share) can lose a sixth of its blocks and still look
+        # like a perfectly good file.
+        self._iq_dropped = 0        # live reader -> processor
+        self._rec_dropped = 0       # reader -> recording writer
+        self._rec_blocks = 0        # blocks handed to the writer
 
     # --- frequency conversion (upconverter/direct-sampling-aware) -----------
     @property
@@ -174,6 +182,10 @@ class DeviceManager:
             "rtl_agc": self.rtl_agc,
             "device_present": self.device_present(),
             "clients": self.hub.client_count,
+            # Silent-degradation counters: a non-zero value here is what
+            # "the audio sounds robotic" looks like from the inside.
+            "drops": {"iq": self._iq_dropped, "net": self.hub.dropped,
+                      "rec": self._rec_dropped},
         }
 
     @staticmethod
@@ -317,6 +329,8 @@ class DeviceManager:
         with self._rec_lock:
             f = open(RECORDINGS_DIR / name, "wb")
             self._rec_path = RECORDINGS_DIR / name
+            self._rec_dropped = 0
+            self._rec_blocks = 0
             # ~64 blocks ≈ 1.4 s of backlog absorbs a write stall without
             # touching the reader; beyond that _write_iq drops blocks.
             self._rec_queue = queue.Queue(maxsize=64)
@@ -327,7 +341,8 @@ class DeviceManager:
             self._recording = True
         return {"ok": True, "name": name}
 
-    def record_stop(self) -> Optional[str]:
+    def record_stop(self) -> dict:
+        """Stop recording; report the file *and* what it lost, if anything."""
         with self._rec_lock:
             self._recording = False
             q, t = self._rec_queue, self._rec_thread
@@ -335,6 +350,7 @@ class DeviceManager:
             self._rec_thread = None
             name = self._rec_path.name if self._rec_path else None
             self._rec_path = None
+            dropped, blocks = self._rec_dropped, self._rec_blocks
         if q is not None:
             try:
                 q.put_nowait(None)          # sentinel: flush backlog, then exit
@@ -351,7 +367,16 @@ class DeviceManager:
                     pass
         if t is not None:
             t.join(timeout=3.0)
-        return name
+        total = dropped + blocks
+        lost = (100.0 * dropped / total) if total else 0.0
+        if dropped:
+            # The file is a concatenation of non-contiguous blocks: every drop is
+            # a step in the signal. Say so — it looks like a good capture.
+            log.warning("IQ recording %s lost %d of %d blocks (%.1f%%) — the "
+                        "writer could not keep up (slow disk or network share)",
+                        name, dropped, total, lost)
+        return {"name": name, "dropped": dropped, "blocks": total,
+                "lost_pct": round(lost, 1)}
 
     def _write_iq(self, block: "np.ndarray") -> None:
         """Called on the reader thread: hand the block to the writer, never block.
@@ -365,8 +390,9 @@ class DeviceManager:
             return
         try:
             q.put_nowait(block)
+            self._rec_blocks += 1
         except queue.Full:
-            pass
+            self._rec_dropped += 1
 
     @staticmethod
     def _rec_writer(f, q: "queue.Queue") -> None:
@@ -394,6 +420,7 @@ class DeviceManager:
         if self.mode.owns_device:
             self._stop_event.clear()
             self._retune_event.clear()
+            self._iq_dropped = 0        # per-run, so the count means this session
             target = (self._replay_worker
                       if getattr(self.mode, "reads_file", False)
                       else self._iq_worker)
@@ -509,12 +536,13 @@ class DeviceManager:
                     except _queue.Full:
                         try:
                             q.get_nowait()  # drop oldest, keep latency bounded
+                            self._iq_dropped += 1
                         except _queue.Empty:
                             pass
                         try:
                             q.put_nowait(block)
                         except _queue.Full:
-                            pass
+                            self._iq_dropped += 1
             except Exception as exc:  # device error in the reader
                 self._stop_event.set()
                 self.emit_json({"type": "error", "message": f"Device error: {exc}"})
