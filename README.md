@@ -134,6 +134,10 @@ receiver a waterfall click retunes. Works in Replay too. See the
     room to spare and less wear — e.g. a USB drive, or an **NFS-mounted NAS share**
     (handy on a Pi to keep big captures off the SD card). On a Pi, prefer Ethernet
     while recording so a WiFi stall can't drop samples mid-capture.
+  - The destination has to sustain **4.8 MB/s** at 2.4 MS/s. If it can't, blocks
+    are dropped and the capture has gaps in it while still looking like a good
+    file — so stopping a recording reports what it lost (**⚠ lost N blocks**).
+    Watch for that the first time you record to a new destination.
 
 ### Antenna helper (dipole kit)
 Under the band label, a live hint tells you how to set the **RTL-SDR.com dipole

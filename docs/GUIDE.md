@@ -225,6 +225,12 @@ notice during the live session.
 - The capture's **center frequency and sample rate** are read from its filename, so
   the axis is labelled correctly.
 - Record captures with **Record IQ** in the Radio view (Recording panel).
+- A capture is the dongle's bytes verbatim. If the disk can't keep up —
+  2.4 MS/s needs a sustained 4.8 MB/s, which a network share over WiFi often
+  can't hold — blocks are dropped, and the file *looks* fine while the samples
+  either side of each gap don't join up. Stopping the recording reports it
+  (**⚠ lost N blocks**); if you see that, record to local disk or drop to
+  1.2 MS/s.
 
 **Try:** record a minute of the FM band, then in Replay click around different
 stations — same recording, any station, any time.
@@ -600,8 +606,18 @@ frequency in the scope. Typical dongles need ~0–60 ppm. It's saved automatical
 - **Nothing on a band** — it's almost always the **antenna**. The stock whip is
   poor at 1090 MHz (ADS-B) and weak at VHF; a band-appropriate antenna transforms
   results.
-- **Audio crackles** — shouldn't, thanks to the jitter buffer; if it does, avoid
-  running heavy apps that starve the browser tab.
+- **Audio crackles or sounds "robotic"** — check the status line under the
+  spectrum. If it shows **⚠ dropped**, samples are being lost and the number
+  tells you where:
+  - **`X% USB`** — the reader isn't collecting everything the dongle produces,
+    measured against the device's own clock. A percent or so is normal
+    headroom; several percent is audible. Lowering the sample rate to
+    **1.2 MS/s** halves the USB load and is plenty for FM.
+  - **`N IQ`** — the DSP can't keep up with the samples arriving (an
+    underpowered host, or something else eating the CPU).
+  - **`N net`** — frames dropped on the way to *this* browser; a slow or
+    congested link, not the receiver.
+  Otherwise it's the browser tab being starved by other apps.
 - **Frequency looks off** — set **PPM** (see Calibration).
 - **ADS-B/AIS/DAB/ISM say a tool is missing** — install `dump1090` /
   `rtl_433` (both `brew install`) or build `AIS-catcher` / `welle-cli` (see the
