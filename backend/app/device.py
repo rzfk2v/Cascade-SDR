@@ -665,20 +665,44 @@ class DeviceManager:
             self.emit_json({"type": "error", "message": f"Device error: {exc}"})
         finally:
             self._stop_event.set()
-            if sdr is not None:
-                # Must come before the join: the reader is parked inside
-                # read_bytes_async and only returns once the read is cancelled.
+            # Tearing down an async read is the delicate part. The reader thread
+            # is parked inside read_bytes_async and only returns once librtlsdr
+            # accepts the cancel — and a cancel issued before the async loop has
+            # actually started is silently a no-op, so a mode stopped moments
+            # after starting can leave the reader parked forever. Keep asking
+            # until the thread returns.
+            #
+            # Closing while it is still parked is worse than not closing at all:
+            # it frees the handle under an in-flight transfer and leaves the
+            # device claimed, so the *next* open fails with LIBUSB_ERROR_BUSY
+            # even from a fresh process.
+            parked = False
+            if reader_thread is not None and sdr is not None:
+                # pyrtlsdr's cancel_read_async closes the device itself and
+                # raises when librtlsdr rejects the cancel — which is exactly
+                # the case we are trying to survive. Setting its canceling flag
+                # first takes that path off the table (and stops callbacks
+                # being delivered), leaving cancel purely best-effort.
                 try:
-                    sdr.cancel_read_async()
+                    sdr.read_async_canceling = True
                 except Exception:
                     pass
-            if reader_thread is not None:
-                reader_thread.join(timeout=2.0)
+                deadline = time.monotonic() + 3.0   # inside _stop_locked's 5 s
+                while reader_thread.is_alive() and time.monotonic() < deadline:
+                    try:
+                        sdr.cancel_read_async()
+                    except Exception:
+                        pass
+                    reader_thread.join(timeout=0.25)
+                parked = reader_thread.is_alive()
+                if parked:
+                    log.error("async reader would not stop; leaving the device "
+                              "open rather than closing it mid-transfer")
             try:
                 mode.on_stop()
             except Exception:
                 pass
-            if sdr is not None:
+            if sdr is not None and not parked:
                 try:
                     sdr.close()
                 except Exception:
