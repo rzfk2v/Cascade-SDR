@@ -14,5 +14,9 @@ frontend/dist/
 # Local Claude Code settings (personal permission state)
 .claude/settings.local.json
 
+# Stray per-directory Claude Code config: tools run from a subdirectory write
+# their own launch.json there, duplicating the shared /.claude/launch.json.
+/*/.claude/
+
 # AIS name/note cache (user data)
 backend/data/
