@@ -593,15 +593,18 @@ class DeviceManager:
             moment we return, so the copy is not optional. Nothing else here
             may be slow: this thread is the one that must always be ready for
             the next buffer.
+
+            Nothing here may talk to the device, either. This runs on libusb's
+            event-handling thread, and a synchronous control transfer issued
+            from inside an event callback waits on events that only this thread
+            can service — it deadlocks the dongle. Settings are therefore
+            applied by the processor loop below, never here. Cancelling is the
+            one exception: it only raises a flag for the async loop to notice.
             """
-            nonlocal read_n, t0
+            nonlocal read_n
             if self._stop_event.is_set():
                 sdr.cancel_read_async()
                 return
-            if self._retune_event.is_set():
-                self._retune_event.clear()
-                self._apply_settings(sdr)
-                read_n, t0 = 0, time.monotonic()   # a retune drops samples by design
             raw = bytes(values)
             read_n += len(raw) // 2                # 2 bytes (I,Q) per sample
             elapsed = time.monotonic() - t0
@@ -655,6 +658,14 @@ class DeviceManager:
                 reader_thread = threading.Thread(target=reader, daemon=True)
                 reader_thread.start()
                 while not self._stop_event.is_set():
+                    # Retunes happen here, on our own thread, because the USB
+                    # callback must never issue a control transfer (see
+                    # on_bytes). Blocks arrive every ~21 ms, so this is as
+                    # responsive as applying them between reads used to be.
+                    if self._retune_event.is_set():
+                        self._retune_event.clear()
+                        self._apply_settings(sdr)
+                        read_n, t0 = 0, time.monotonic()   # a retune drops samples by design
                     try:
                         raw = q.get(timeout=0.2)
                     except _queue.Empty:
