@@ -75,7 +75,7 @@ def test_recording_reports_the_blocks_its_writer_could_not_take() -> None:
     """A slow disk (or an NFS share) must not corrupt a capture in silence."""
     mgr = _recording_manager(depth=2)
     for _ in range(5):
-        mgr._write_iq(np.zeros(4, dtype=np.complex64))
+        mgr._write_iq(b"\x80\x80" * 4)      # raw interleaved uint8, as librtlsdr gives it
 
     res = mgr.record_stop()
     assert res["dropped"] == 3, res
@@ -86,7 +86,7 @@ def test_recording_reports_the_blocks_its_writer_could_not_take() -> None:
 def test_a_clean_recording_reports_no_loss() -> None:
     mgr = _recording_manager(depth=64)
     for _ in range(10):
-        mgr._write_iq(np.zeros(4, dtype=np.complex64))
+        mgr._write_iq(b"\x80\x80" * 4)      # raw interleaved uint8, as librtlsdr gives it
 
     res = mgr.record_stop()
     assert res["dropped"] == 0

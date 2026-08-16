@@ -86,6 +86,18 @@ def clamp_freq(hz: float, converter_hz: float = 0.0) -> float:
     return max(lo, min(hi, float(hz)))
 
 
+def iq_from_bytes(raw: bytes) -> "np.ndarray":
+    """Dongle-native interleaved uint8 -> complex64 baseband.
+
+    This is the format librtlsdr hands back and the format ``.cu8`` captures
+    are stored in, so both the live path and replay convert the same way.
+    """
+    buf = np.frombuffer(raw, dtype=np.uint8).astype(np.float32)
+    n = (buf.size // 2) * 2
+    iq = (buf[0:n:2] - 127.5) / 127.5 + 1j * (buf[1:n:2] - 127.5) / 127.5
+    return iq.astype(np.complex64)
+
+
 def sample_shortfall(elapsed_s: float, rate: float,
                      samples_read: int) -> tuple[float, float]:
     """Samples the USB path lost, from the wall clock: (samples, percent).
@@ -411,12 +423,16 @@ class DeviceManager:
         return {"name": name, "dropped": dropped, "blocks": total,
                 "lost_pct": round(lost, 1)}
 
-    def _write_iq(self, block: "np.ndarray") -> None:
-        """Called on the reader thread: hand the block to the writer, never block.
+    def _write_iq(self, block: bytes) -> None:
+        """Called on librtlsdr's thread: hand the block over, never block.
+
+        The block is the dongle's raw interleaved uint8 — already exactly the
+        ``.cu8`` on-disk format, so the writer copies it out verbatim instead of
+        round-tripping it through floats.
 
         If the writer has stalled (slow NFS/SD), dropping a block loses a slice
-        of the *recording*; blocking here would overflow the USB buffer and
-        corrupt the live stream *and* the recording both.
+        of the *recording*; blocking here would stall the USB callback and cost
+        samples in the live stream too.
         """
         q = self._rec_queue
         if not self._recording or q is None:
@@ -434,10 +450,7 @@ class DeviceManager:
                 block = q.get()
                 if block is None:
                     break
-                iq = np.empty(block.size * 2, dtype=np.uint8)
-                iq[0::2] = np.clip(block.real * 127.5 + 127.5, 0, 255).astype(np.uint8)
-                iq[1::2] = np.clip(block.imag * 127.5 + 127.5, 0, 255).astype(np.uint8)
-                f.write(iq.tobytes())
+                f.write(block)
         except Exception:
             log.exception("IQ writer error (recording truncated)")
         finally:
@@ -543,14 +556,21 @@ class DeviceManager:
     def _iq_worker(self, mode: Mode) -> None:
         """Owns the device for this mode's lifetime, via two threads:
 
-        * a *reader* that does nothing but call ``read_samples`` back-to-back so
-          the device buffer stays drained (no dropped samples) — this thread must
-          not be slowed by DSP, or USB overflows and audio gets gappy;
-        * this *processor* thread, which pulls IQ blocks off the queue and runs
+        * librtlsdr's own *async reader*, which keeps 15 USB transfers queued at
+          all times and calls us back with each buffer. The earlier design
+          looped on the synchronous ``read_samples``, which leaves exactly one
+          transfer in flight — so every microsecond the loop spent converting,
+          queueing or recording was time the dongle kept sampling with nowhere
+          to put it, and those samples were lost outright. Measured against the
+          device's own clock that cost 1.6% of samples on an idle Mac and 4.7%
+          on a Pi 4, which is what "the audio sounds robotic" was;
+        * this *processor* thread, which converts each raw block and runs
           ``mode.process`` (DSP is ~15% of real-time, so it keeps up easily).
 
-        The queue is bounded and drops the oldest block if the processor ever
-        falls behind, keeping latency bounded.
+        The callback therefore does as little as possible — copy, hand off,
+        return — and everything expensive happens here instead. The queue is
+        bounded and drops the oldest block if the processor ever falls behind,
+        keeping latency bounded.
         """
         if not _HAVE_RTLSDR:
             self.emit_json({
@@ -563,36 +583,51 @@ class DeviceManager:
         q: "_queue.Queue" = _queue.Queue(maxsize=8)
         sdr = None
 
-        def reader() -> None:
-            # Measured against the dongle's own clock: see sample_shortfall.
-            read_n = 0
-            t0 = time.monotonic()
+        read_n = 0                      # samples collected since t0
+        t0 = time.monotonic()
+
+        def on_bytes(values, _context) -> None:
+            """librtlsdr's callback thread. Copy, hand off, return.
+
+            ``values`` is librtlsdr's own transfer buffer and is reused the
+            moment we return, so the copy is not optional. Nothing else here
+            may be slow: this thread is the one that must always be ready for
+            the next buffer.
+            """
+            nonlocal read_n, t0
+            if self._stop_event.is_set():
+                sdr.cancel_read_async()
+                return
+            if self._retune_event.is_set():
+                self._retune_event.clear()
+                self._apply_settings(sdr)
+                read_n, t0 = 0, time.monotonic()   # a retune drops samples by design
+            raw = bytes(values)
+            read_n += len(raw) // 2                # 2 bytes (I,Q) per sample
+            elapsed = time.monotonic() - t0
+            if elapsed >= 1.0:                     # ignore start-up transients
+                self._usb_lost, self._usb_pct = sample_shortfall(
+                    elapsed, self.sample_rate, read_n)
+            if self._recording:
+                self._write_iq(raw)
             try:
-                while not self._stop_event.is_set():
-                    if self._retune_event.is_set():
-                        self._retune_event.clear()
-                        self._apply_settings(sdr)
-                        read_n, t0 = 0, time.monotonic()   # a retune drops samples by design
-                    block = sdr.read_samples(mode.block_size)
-                    read_n += block.size
-                    elapsed = time.monotonic() - t0
-                    if elapsed >= 1.0:                     # ignore start-up transients
-                        self._usb_lost, self._usb_pct = sample_shortfall(
-                            elapsed, self.sample_rate, read_n)
-                    if self._recording:
-                        self._write_iq(block)
-                    try:
-                        q.put_nowait(block)
-                    except _queue.Full:
-                        try:
-                            q.get_nowait()  # drop oldest, keep latency bounded
-                            self._iq_dropped += 1
-                        except _queue.Empty:
-                            pass
-                        try:
-                            q.put_nowait(block)
-                        except _queue.Full:
-                            self._iq_dropped += 1
+                q.put_nowait(raw)
+            except _queue.Full:
+                try:
+                    q.get_nowait()  # drop oldest, keep latency bounded
+                    self._iq_dropped += 1
+                except _queue.Empty:
+                    pass
+                try:
+                    q.put_nowait(raw)
+                except _queue.Full:
+                    self._iq_dropped += 1
+
+        def reader() -> None:
+            # Blocks here until cancel_read_async(); librtlsdr keeps its default
+            # 15 transfers queued underneath, so the device is never unserviced.
+            try:
+                sdr.read_bytes_async(on_bytes, mode.block_size * 2)
             except Exception as exc:  # device error in the reader
                 self._stop_event.set()
                 self.emit_json({"type": "error", "message": f"Device error: {exc}"})
@@ -621,15 +656,22 @@ class DeviceManager:
                 reader_thread.start()
                 while not self._stop_event.is_set():
                     try:
-                        block = q.get(timeout=0.2)
+                        raw = q.get(timeout=0.2)
                     except _queue.Empty:
                         continue
-                    mode.process(block)
+                    mode.process(iq_from_bytes(raw))
         except Exception as exc:
             log.exception("IQ worker error")
             self.emit_json({"type": "error", "message": f"Device error: {exc}"})
         finally:
             self._stop_event.set()
+            if sdr is not None:
+                # Must come before the join: the reader is parked inside
+                # read_bytes_async and only returns once the read is cancelled.
+                try:
+                    sdr.cancel_read_async()
+                except Exception:
+                    pass
             if reader_thread is not None:
                 reader_thread.join(timeout=2.0)
             try:
@@ -671,10 +713,7 @@ class DeviceManager:
                     continue
                 if len(raw) < mode.block_size * 2:
                     f.seek(0)  # play this tail, then loop on the next read
-                buf = np.frombuffer(raw, dtype=np.uint8).astype(np.float32)
-                n = (buf.size // 2) * 2
-                iq = (buf[0:n:2] - 127.5) / 127.5 + 1j * (buf[1:n:2] - 127.5) / 127.5
-                block = iq.astype(np.complex64)
+                block = iq_from_bytes(raw)
                 t0 = time.monotonic()
                 mode.process(block)
                 # pace to the capture's real-time duration
