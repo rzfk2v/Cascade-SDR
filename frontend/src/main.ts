@@ -594,6 +594,11 @@ sock.onJson((msg) => {
     case "scanner_state":
       updateScannerState(msg);
       break;
+    case "health":
+      // Heartbeat while a mode streams: repaint the counters only.
+      lastDrops = msg.drops || {};
+      paintStatusLine();
+      break;
     case "rec_status":
       iqRecording = msg.recording;
       recIqBtn.textContent = iqRecording ? "■ Stop IQ recording" : "● Record IQ";
@@ -642,13 +647,20 @@ sock.onBinary((tag, body) => {
   }
 });
 
-function renderStatus(s: any): void {
-  statusLine.classList.remove("err");
+// Last full status and last drop counters, kept apart: the counters arrive on
+// their own heartbeat (see the "health" message) and must repaint the line
+// without touching the tuning fields renderStatus syncs.
+let lastStatus: any = null;
+let lastDrops: any = {};
+
+function paintStatusLine(): void {
+  const s = lastStatus;
+  if (!s) return;
   const dev = s.device_present ? "device ✓" : "no device";
   const run = s.running ? "running" : "stopped";
-  // Dropped blocks/frames are why audio breaks up; without this they are
+  // Dropped samples/frames are why audio breaks up; without this they are
   // invisible and the symptom gets blamed on the DSP or the browser.
-  const d = s.drops || {};
+  const d = lastDrops;
   const lost = [
     // USB loss comes first: those samples never arrived, so they are missing
     // from the audio and from any recording, whatever the queues do.
@@ -661,6 +673,13 @@ function renderStatus(s: any): void {
     `${dev} · ${run} · ${(s.center_freq / 1e6).toFixed(3)} MHz · ` +
     `${(s.sample_rate / 1e6).toFixed(2)} MS/s` +
     (lost.length ? ` · ⚠ dropped ${lost.join(", ")}` : "");
+}
+
+function renderStatus(s: any): void {
+  statusLine.classList.remove("err");
+  lastStatus = s;
+  if (s.drops) lastDrops = s.drops;
+  paintStatusLine();
   // don't clobber a value the user is mid-edit (these now tune on change)
   viewCenter = s.center_freq;
   syncFreqField();

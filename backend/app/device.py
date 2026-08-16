@@ -139,6 +139,8 @@ class DeviceManager:
         self._sdr = None
         # subprocess-mode task
         self._task: Optional[asyncio.Task] = None
+        # heartbeat carrying the drop counters while a mode streams
+        self._health_task: Optional[asyncio.Task] = None
         # IQ recording. The reader thread only *enqueues* blocks; a dedicated
         # writer thread converts + writes them. Writing inline on the reader
         # would let one slow write (NFS hiccup, SD-card GC pause) block
@@ -206,10 +208,18 @@ class DeviceManager:
             "clients": self.hub.client_count,
             # Silent-degradation counters: a non-zero value here is what
             # "the audio sounds robotic" looks like from the inside.
-            "drops": {"iq": self._iq_dropped, "net": self.hub.dropped,
-                      "rec": self._rec_dropped,
-                      "usb_pct": round(self._usb_pct, 2)},
+            "drops": self.drop_stats(),
         }
+
+    def drop_stats(self) -> dict:
+        """Everything the pipeline has thrown away this run.
+
+        Kept apart from :meth:`status` because the health heartbeat sends it
+        every couple of seconds and ``status`` enumerates USB devices, which is
+        far too heavy to run on the event loop at that rate.
+        """
+        return {"iq": self._iq_dropped, "net": self.hub.dropped,
+                "rec": self._rec_dropped, "usb_pct": round(self._usb_pct, 2)}
 
     @staticmethod
     def device_present() -> bool:
@@ -454,9 +464,16 @@ class DeviceManager:
             self._thread.start()
         else:
             self._task = asyncio.create_task(self._subprocess_loop(self.mode))
+        # Full status only goes out on mode/tune changes, so without this the
+        # counters would sit at the client's last snapshot — invisible for
+        # exactly as long as someone just sits and listens.
+        self._health_task = asyncio.create_task(self._health_loop())
         await self._announce()
 
     async def _stop_locked(self) -> None:
+        if self._health_task is not None:
+            task, self._health_task = self._health_task, None
+            task.cancel()
         # Finalize any recording (its center/rate is about to change).
         if self._recording:
             self.record_stop()
@@ -689,6 +706,17 @@ class DeviceManager:
             await self.hub.broadcast_json(
                 {"type": "error", "message": f"Decoder error: {exc}"}
             )
+
+    async def _health_loop(self) -> None:
+        """Push the drop counters while a mode runs, so degradation is visible."""
+        try:
+            while True:
+                await asyncio.sleep(2.0)
+                await self.hub.broadcast_json(
+                    {"type": "health", "drops": self.drop_stats()}
+                )
+        except asyncio.CancelledError:
+            pass
 
     async def _announce(self) -> None:
         await self.hub.broadcast_json(self.status())
