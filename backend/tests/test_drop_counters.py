@@ -12,7 +12,7 @@ import queue
 
 import numpy as np
 
-from app.device import DeviceManager
+from app.device import DeviceManager, sample_shortfall
 from app.hub import QUEUE_DEPTH, FrameTag, Hub
 
 
@@ -97,4 +97,19 @@ def test_a_clean_recording_reports_no_loss() -> None:
 def test_status_exposes_the_counters() -> None:
     mgr = DeviceManager(Hub())
     drops = mgr.status()["drops"]
-    assert drops == {"iq": 0, "net": 0, "rec": 0}
+    assert drops == {"iq": 0, "net": 0, "rec": 0, "usb_pct": 0.0}
+
+
+def test_usb_shortfall_is_measured_against_the_dongle_clock() -> None:
+    """Samples the reader never collected: gone before any queue sees them."""
+    rate = 2_400_000.0
+    # kept up perfectly for 10 s
+    assert sample_shortfall(10.0, rate, 24_000_000) == (0.0, 0.0)
+    # the dongle clocked out 579 blocks; the reader collected 567 of them
+    elapsed = 579 * 51_200 / rate
+    lost, pct = sample_shortfall(elapsed, rate, 567 * 51_200)
+    assert round(lost) == 12 * 51_200
+    assert 2.0 < pct < 2.1
+    # a reader that outruns the clock (timing jitter) must not report a surplus
+    assert sample_shortfall(1.0, rate, 3_000_000) == (0.0, 0.0)
+    assert sample_shortfall(0.0, rate, 0) == (0.0, 0.0)

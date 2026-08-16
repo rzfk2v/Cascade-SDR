@@ -650,6 +650,9 @@ function renderStatus(s: any): void {
   // invisible and the symptom gets blamed on the DSP or the browser.
   const d = s.drops || {};
   const lost = [
+    // USB loss comes first: those samples never arrived, so they are missing
+    // from the audio and from any recording, whatever the queues do.
+    d.usb_pct ? `${d.usb_pct}% USB` : "",
     d.iq ? `${d.iq} IQ` : "",
     d.net ? `${d.net} net` : "",
     d.rec ? `${d.rec} rec` : "",

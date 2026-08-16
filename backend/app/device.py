@@ -86,6 +86,24 @@ def clamp_freq(hz: float, converter_hz: float = 0.0) -> float:
     return max(lo, min(hi, float(hz)))
 
 
+def sample_shortfall(elapsed_s: float, rate: float,
+                     samples_read: int) -> tuple[float, float]:
+    """Samples the USB path lost, from the wall clock: (samples, percent).
+
+    librtlsdr's synchronous read keeps one transfer in flight at a time, so the
+    dongle keeps sampling while we are between calls and anything that delays
+    the reader loses those samples outright — they never reach the DSP or a
+    recording, and nothing reports it. The device's own clock is the reference:
+    over ``elapsed_s`` it produced ``elapsed_s * rate`` samples, and whatever we
+    did not read is gone.
+    """
+    expected = max(0.0, elapsed_s * rate)
+    if expected <= 0.0:
+        return 0.0, 0.0
+    lost = max(0.0, expected - samples_read)
+    return lost, 100.0 * lost / expected
+
+
 class DeviceManager:
     def __init__(self, hub: Hub) -> None:
         self.hub = hub
@@ -138,6 +156,10 @@ class DeviceManager:
         self._iq_dropped = 0        # live reader -> processor
         self._rec_dropped = 0       # reader -> recording writer
         self._rec_blocks = 0        # blocks handed to the writer
+        # Samples the USB read never collected at all — lost before any queue,
+        # so they are missing from the live audio *and* from any recording.
+        self._usb_lost = 0.0
+        self._usb_pct = 0.0
 
     # --- frequency conversion (upconverter/direct-sampling-aware) -----------
     @property
@@ -185,7 +207,8 @@ class DeviceManager:
             # Silent-degradation counters: a non-zero value here is what
             # "the audio sounds robotic" looks like from the inside.
             "drops": {"iq": self._iq_dropped, "net": self.hub.dropped,
-                      "rec": self._rec_dropped},
+                      "rec": self._rec_dropped,
+                      "usb_pct": round(self._usb_pct, 2)},
         }
 
     @staticmethod
@@ -421,6 +444,7 @@ class DeviceManager:
             self._stop_event.clear()
             self._retune_event.clear()
             self._iq_dropped = 0        # per-run, so the count means this session
+            self._usb_lost = self._usb_pct = 0.0
             target = (self._replay_worker
                       if getattr(self.mode, "reads_file", False)
                       else self._iq_worker)
@@ -523,12 +547,21 @@ class DeviceManager:
         sdr = None
 
         def reader() -> None:
+            # Measured against the dongle's own clock: see sample_shortfall.
+            read_n = 0
+            t0 = time.monotonic()
             try:
                 while not self._stop_event.is_set():
                     if self._retune_event.is_set():
                         self._retune_event.clear()
                         self._apply_settings(sdr)
+                        read_n, t0 = 0, time.monotonic()   # a retune drops samples by design
                     block = sdr.read_samples(mode.block_size)
+                    read_n += block.size
+                    elapsed = time.monotonic() - t0
+                    if elapsed >= 1.0:                     # ignore start-up transients
+                        self._usb_lost, self._usb_pct = sample_shortfall(
+                            elapsed, self.sample_rate, read_n)
                     if self._recording:
                         self._write_iq(block)
                     try:
