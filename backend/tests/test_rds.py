@@ -124,3 +124,61 @@ if __name__ == "__main__":
     test_full_dsp_multiblock()
     test_full_dsp_drift()
     print("all RDS tests passed")
+
+
+# --- robustness: bad blocks must not reach the display ----------------------
+
+def _corrupt(blk: int) -> int:
+    """Flip a bit so the block fails its checkword."""
+    return blk ^ 1
+
+
+def test_a_character_needs_two_agreeing_readings() -> None:
+    """One reading is not enough: an undetected error would show up on screen."""
+    dec = RdsGroupDecoder()
+    groups = _ps_groups(0x2345, "TESTROCK")
+    flat = [blk for g in groups for blk in g]
+
+    dec.feed_bits(_blocks_to_bits(flat))          # first pass: seen once
+    assert dec.snapshot()["ps"] == "", dec.snapshot()
+
+    dec.feed_bits(_blocks_to_bits(flat))          # second pass: agreed, shown
+    assert dec.snapshot()["ps"] == "TESTROCK", dec.snapshot()
+
+
+def test_a_bad_character_block_is_ignored() -> None:
+    """Block D failed its CRC, so its characters are unknown — show nothing."""
+    dec = RdsGroupDecoder()
+    groups = _ps_groups(0x2345, "TESTROCK")
+    for g in groups:
+        g[3] = _corrupt(g[3])
+    flat = [blk for g in groups for blk in g]
+
+    dec.feed_bits(_blocks_to_bits(flat * 4))
+    assert dec.snapshot()["ps"] == "", dec.snapshot()
+
+
+def test_a_bad_block_b_discards_the_whole_group() -> None:
+    """Without block B there is no address: the characters could go anywhere."""
+    dec = RdsGroupDecoder()
+    groups = _ps_groups(0x2345, "TESTROCK")
+    for g in groups:
+        g[1] = _corrupt(g[1])
+    flat = [blk for g in groups for blk in g]
+
+    dec.feed_bits(_blocks_to_bits(flat * 4))
+    assert dec.snapshot()["ps"] == "", dec.snapshot()
+
+
+def test_settled_text_stops_emitting_updates() -> None:
+    """Once the name is on screen, repeating it must not churn the UI."""
+    seen = []
+    dec = RdsGroupDecoder(on_update=seen.append)
+    groups = _ps_groups(0x2345, "TESTROCK")
+    flat = [blk for g in groups for blk in g]
+
+    dec.feed_bits(_blocks_to_bits(flat * 3))      # sync, confirm, settle
+    assert dec.snapshot()["ps"] == "TESTROCK"
+    before = len(seen)
+    dec.feed_bits(_blocks_to_bits(flat * 3))      # same name again
+    assert len(seen) == before, f"{len(seen) - before} updates with no change"

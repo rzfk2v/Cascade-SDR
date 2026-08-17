@@ -72,6 +72,7 @@ class RdsGroupDecoder:
         self._bitcount = 0
         self._pos = 0                     # index in _SEQ of the next block to close
         self._group = [0, 0, 0, 0]
+        self._ok = [False] * 4            # did each block pass its checkword?
         self._errs = 0
         # decoded state
         self.pi: Optional[int] = None
@@ -79,6 +80,14 @@ class RdsGroupDecoder:
         self.ps = [" "] * 8
         self.rt = [" "] * 64
         self._rt_ab: Optional[int] = None
+        # Characters seen once but not yet shown. The 10-bit checkword catches
+        # most corruption but not all, and a single wrong character is very
+        # visible in an 8-character station name — so a character has to arrive
+        # twice in agreement before it reaches the display. Stations repeat
+        # every segment several times a second, so this costs nothing in
+        # practice and stops the name flickering between readings.
+        self._ps_seen = [" "] * 8
+        self._rt_seen = [" "] * 64
 
     # --- bit input ----------------------------------------------------------
     def feed_bits(self, bits) -> None:
@@ -93,6 +102,7 @@ class RdsGroupDecoder:
                 self._synced = True
                 self._bitcount = 0
                 self._group[0] = (self._reg >> 10) & 0xFFFF
+                self._ok = [True, False, False, False]
                 self._pos = 1
                 self._errs = 0
             return
@@ -105,6 +115,7 @@ class RdsGroupDecoder:
         synd = calc_syndrome(self._reg)
         ok = synd == SYNDROMES[name] or (name == "C" and synd == SYNDROMES["Cp"])
         self._group[self._pos] = (self._reg >> 10) & 0xFFFF
+        self._ok[self._pos] = ok
         if not ok:
             self._errs += 1
         if self._pos == 3:
@@ -116,11 +127,24 @@ class RdsGroupDecoder:
 
     # --- group parsing ------------------------------------------------------
     def _parse_group(self, g: list[int]) -> None:
+        """Apply a received group — but only the blocks that passed their CRC.
+
+        A block whose checkword fails carries unknown bits. Using it anyway puts
+        wrong characters straight on screen, which is then corrected by the next
+        good copy: the station name appears to flicker and never settles.
+        """
         a, b, c, d = g
+        ok_a, ok_b, ok_c, ok_d = self._ok
         changed = False
-        if self.pi != a:
+        if ok_a and self.pi != a:
             self.pi = a
             changed = True
+        if not ok_b:
+            # Block B carries the group type, the address and the A/B flag.
+            # Without it there is no way to know where these characters belong.
+            if changed and self.on_update is not None:
+                self.on_update(self.snapshot())
+            return
         gtype = (b >> 12) & 0xF
         ver_b = (b >> 11) & 1
         pty = (b >> 5) & 0x1F
@@ -128,32 +152,47 @@ class RdsGroupDecoder:
             self.pty = pty
             changed = True
 
-        if gtype == 0:                 # 0A/0B: program service name
+        if gtype == 0 and ok_d:        # 0A/0B: program service name
             addr = b & 0x3
             for k, ch in enumerate(((d >> 8) & 0xFF, d & 0xFF)):
                 idx = addr * 2 + k
                 if 0 <= idx < 8:
-                    self.ps[idx] = _ch(ch)
-            changed = True
+                    changed |= self._confirm(self.ps, self._ps_seen, idx, _ch(ch))
         elif gtype == 2:               # 2A/2B: radiotext
             ab = (b >> 4) & 1
             if self._rt_ab is not None and ab != self._rt_ab:
                 self.rt = [" "] * 64   # A/B flag toggled -> message changed
+                self._rt_seen = [" "] * 64
+                changed = True
             self._rt_ab = ab
             addr = b & 0xF
             if ver_b == 0:             # 2A: 4 chars (in C and D)
-                chars = ((c >> 8) & 0xFF, c & 0xFF, (d >> 8) & 0xFF, d & 0xFF)
-                base = addr * 4
+                if not (ok_c and ok_d):
+                    chars, base = (), 0
+                else:
+                    chars = ((c >> 8) & 0xFF, c & 0xFF, (d >> 8) & 0xFF, d & 0xFF)
+                    base = addr * 4
             else:                      # 2B: 2 chars (in D)
-                chars = ((d >> 8) & 0xFF, d & 0xFF)
+                chars = ((d >> 8) & 0xFF, d & 0xFF) if ok_d else ()
                 base = addr * 2
             for k, ch in enumerate(chars):
                 if 0 <= base + k < 64:
-                    self.rt[base + k] = _ch(ch)
-            changed = True
+                    changed |= self._confirm(self.rt, self._rt_seen,
+                                             base + k, _ch(ch))
 
         if changed and self.on_update is not None:
             self.on_update(self.snapshot())
+
+    @staticmethod
+    def _confirm(shown: list, seen: list, idx: int, ch: str) -> bool:
+        """Show a character once two readings agree. True if the display moved."""
+        if seen[idx] == ch:
+            if shown[idx] != ch:
+                shown[idx] = ch
+                return True
+            return False
+        seen[idx] = ch
+        return False
 
     def snapshot(self) -> dict:
         return {
