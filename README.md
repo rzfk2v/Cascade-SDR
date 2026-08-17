@@ -630,8 +630,15 @@ Whatever you pick, budget for these — they're where SDR-on-Pi setups usually g
 ```bash
 # 1) dependencies
 sudo apt update
-sudo apt install -y rtl-sdr librtlsdr-dev python3 python3-venv nodejs npm
+sudo apt install -y rtl-sdr librtlsdr-dev python3 python3-venv
 rtl_test            # confirm the tuner is seen (Ctrl-C to stop)
+
+# Node 20+ is required to build the frontend, and Raspberry Pi OS bookworm
+# still ships Node 18 in apt — which fails with "ReferenceError: CustomEvent is
+# not defined". Install a current one from NodeSource instead:
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+sudo apt install -y nodejs
+node -v             # must be >= 20.19
 # If rtl_test says the device is "usb_claim_interface error", the kernel DVB-T
 # driver grabbed it. Blacklist it once and reboot:
 #   echo 'blacklist dvb_usb_rtl28xxu' | sudo tee /etc/modprobe.d/blacklist-rtl.conf
