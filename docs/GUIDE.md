@@ -446,6 +446,34 @@ and watch the coastline scroll in. (Meteor-M LRPT is digital and not supported.)
 
 ---
 
+## Satellite — Meteor-M LRPT (**beta**)
+
+**Experimental.** APT is analog and its NOAA satellites are at the end of their
+life; the modern 137 MHz picture service is Meteor-M's **LRPT**, which is digital
+— QPSK wrapped in a CCSDS stack (Viterbi, Reed–Solomon, framing) around
+JPEG-compressed imagery. That's a protocol stack rather than a DSP chain, so as
+with ADS-B and DAB we don't decode it ourselves: **SatDump** owns the dongle for
+the pass and writes the images, and Cascade shows its progress and results.
+
+- **Install SatDump separately** (it isn't bundled — see the README). Set
+  `SATDUMP_BIN` if it isn't on your `PATH`.
+- Pick the satellite (**Meteor-M N2-4** 137.100, **N2-3** 137.900 MHz) and start
+  the mode a minute before AOS. Pass times: gpredict or n2yo.com.
+- The status line shows lock, SNR and frame count while the pass runs, so you can
+  tell "no signal" from "signal but no lock". Images appear underneath as SatDump
+  produces them, and stay after the pass; delete them with ×.
+- Same antenna as APT — a horizontal **V-dipole (~120°)** with ~53 cm legs.
+- Products go to `backend/data/satellite/<pass>/`; override with
+  `CASCADE_SATELLITE_DIR` to keep them off an SD card.
+
+**Why beta:** SatDump's command line has changed between releases, so if a pass
+produces nothing, check the flags in `backend/app/modes/satellite.py` (`_cmd`,
+the only place they appear) against your installed build. LRPT is also weaker and
+wider than APT — an FM band-stop filter helps a lot near strong broadcast
+transmitters.
+
+---
+
 ## SSTV (slow-scan TV images)
 
 Decodes **SSTV** — pictures sent as audio tones over the radio. Hand-written

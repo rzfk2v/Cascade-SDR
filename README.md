@@ -24,6 +24,7 @@ things to try. Status:
 | **AIS** | Ships on a Leaflet map (via `AIS-catcher`) | ✅ working** |
 | **APRS** | Packet-radio stations on the map + live packet feed (via `rtl_fm` → `direwolf`) | ✅ working‡ |
 | **ACARS** | Aircraft VHF data messages as a live feed (via `acarsdec`) | ✅ working§ |
+| **Satellite (beta)** | Digital weather-satellite imagery (Meteor-M LRPT) via SatDump | 🧪 experimental |
 | **APT** | NOAA weather-satellite images at 137 MHz (hand-written decoder) | ✅ working¶ |
 | **SSTV** | Slow-scan TV images — auto-detects Martin / Scottie / Robot / PD (hand-written decoder) | ✅ working◇ |
 | **Pager** | POCSAG/FLEX pager messages as a live feed (via `multimon-ng`) | ✅ working◆ |

@@ -91,6 +91,12 @@ const acarsCount = document.getElementById("acars-count")!;
 const acarsView = document.getElementById("acars-view")!;
 const acarsLog = document.getElementById("acars-log")!;
 const acarsFeedCount = document.getElementById("acars-feedcount")!;
+const satControls = document.getElementById("sat-controls")!;
+const satSelect = document.getElementById("sat-select") as HTMLSelectElement;
+const satStatus = document.getElementById("sat-status")!;
+const satView = document.getElementById("sat-view")!;
+const satProducts = document.getElementById("sat-products")!;
+const satCount = document.getElementById("sat-count")!;
 const ismControls = document.getElementById("ism-controls")!;
 const ismStatus = document.getElementById("ism-status")!;
 const ismCount = document.getElementById("ism-count")!;
@@ -287,6 +293,8 @@ function updateBandInfo(): void {
     label = "SSTV · 144.500 MHz (slow-scan TV)";
   } else if (currentMode === "pager") {
     label = "Pager · POCSAG/FLEX";
+  } else if (currentMode === "satellite") {
+    label = "Satellite · 137 MHz LRPT (experimental)";
   } else if (currentMode === "ism") {
     label = `ISM · ${ismFreqMhz} MHz (sensors)`;
   } else if (currentMode === "radio" || currentMode === "replay") {
@@ -387,6 +395,7 @@ sock.onJson((msg) => {
       mapOptions.hidden = !["adsb", "ais", "aprs"].includes(msg.mode);
       acarsControls.hidden = msg.mode !== "acars";
       ismControls.hidden = msg.mode !== "ism";
+      satControls.hidden = msg.mode !== "satellite";
       aptControls.hidden = msg.mode !== "apt";
       sstvControls.hidden = msg.mode !== "sstv";
       pagerControls.hidden = msg.mode !== "pager";
@@ -557,6 +566,15 @@ sock.onJson((msg) => {
     case "ism_config":
       renderIsmBands(msg);
       break;
+    case "sat_config":
+      renderSatConfig(msg);
+      break;
+    case "sat_status":
+      satStatus.textContent = msg.message;
+      break;
+    case "sat_products":
+      renderSatProducts(msg.products || []);
+      break;
     case "ism_status":
       ismStatus.textContent = msg.message;
       break;
@@ -717,9 +735,10 @@ function showView(mode: string): void {
   const isSstv = mode === "sstv";
   const isPager = mode === "pager";
   const isScanner = mode === "scanner";
+  const isSat = mode === "satellite";
   const isFft =
     !isMap && !isDab && !isAcars && !isIsm && !isApt && !isSstv && !isPager &&
-    !isScanner; // radio/sweep/idle
+    !isScanner && !isSat; // radio/sweep/idle
   fftView.hidden = !isFft;
   mapDiv.hidden = !isMap;
   aircraftPanel.hidden = !isMap;
@@ -730,6 +749,7 @@ function showView(mode: string): void {
   sstvView.hidden = !isSstv;
   pagerView.hidden = !isPager;
   scannerView.hidden = !isScanner;
+  satView.hidden = !isSat;
   if (isApt || isSstv) zoomOutBtn.hidden = true;
   if (isApt) requestAnimationFrame(() => {
     const r = aptView.getBoundingClientRect();
@@ -2378,3 +2398,54 @@ window.addEventListener("resize", () => {
 requestAnimationFrame(() => requestAnimationFrame(layoutCanvases));
 
 sock.connect();
+
+// --- satellite (SatDump) — experimental ----------------------------------
+function renderSatConfig(msg: any): void {
+  const sats: any[] = msg.satellites || [];
+  if (satSelect.options.length !== sats.length) {
+    satSelect.innerHTML = sats
+      .map((s) => `<option value="${esc(s.id)}">${esc(s.label)}</option>`)
+      .join("");
+  }
+  if (msg.satellite) satSelect.value = msg.satellite;
+}
+
+satSelect.addEventListener("change", () =>
+  sock.send({ cmd: "config", params: { satellite: satSelect.value } }),
+);
+
+function renderSatProducts(products: any[]): void {
+  satCount.textContent = products.length
+    ? `${products.length} image${products.length === 1 ? "" : "s"}`
+    : "";
+  if (!products.length) {
+    satProducts.innerHTML =
+      `<p class="hint">Nothing yet — images appear here as SatDump produces them.</p>`;
+    return;
+  }
+  // Newest first; the path is server-generated but still escaped on the way out.
+  satProducts.innerHTML = products
+    .slice()
+    .reverse()
+    .map((p) => {
+      const url = `${BASE}satellite/${p.path.split("/").map(encodeURIComponent).join("/")}`;
+      const kb = (p.size / 1e6).toFixed(1);
+      return (
+        `<div class="bm-row"><a class="recall" href="${esc(url)}" target="_blank" rel="noopener">` +
+        `${esc(p.name)} <span class="muted">${kb} MB</span></a>` +
+        `<button class="del" data-path="${esc(p.path)}" title="delete">×</button></div>`
+      );
+    })
+    .join("");
+}
+
+satProducts.addEventListener("click", async (e) => {
+  const btn = (e.target as HTMLElement).closest("button.del") as HTMLElement | null;
+  if (!btn) return;
+  const path = btn.dataset.path || "";
+  await fetch(`${BASE}api/satellite/${path.split("/").map(encodeURIComponent).join("/")}`, {
+    method: "DELETE",
+  });
+  const d = await (await fetch(`${BASE}api/satellite`)).json();
+  renderSatProducts(d.products || []);
+});

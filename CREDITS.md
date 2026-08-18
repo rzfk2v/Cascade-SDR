@@ -39,6 +39,7 @@ It builds on the following open-source projects — thanks to their authors.
 | [multimon-ng](https://github.com/EliasOenal/multimon-ng) | GPL-2.0 | Pager (POCSAG/FLEX) |
 | [welle.io](https://github.com/AlbrechtL/welle.io) (`welle-cli`) | GPL-2.0 | DAB |
 | [rtl_433](https://github.com/merbanan/rtl_433) | GPL-2.0+ | 433 MHz ISM devices |
+| [SatDump](https://github.com/SatDump/SatDump) | GPL-3.0 | Satellite imagery (Meteor-M LRPT) — **experimental** |
 
 These tools are **not bundled** — Cascade SDR launches them if you install them
 yourself (see the README). They keep their own licenses.

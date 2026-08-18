@@ -46,6 +46,7 @@
               <button data-mode="sstv">SSTV</button>
               <button data-mode="pager">Pager</button>
               <button data-mode="ism">ISM</button>
+              <button data-mode="satellite" title="Experimental — needs SatDump installed">Sat <span class="beta-tag">beta</span></button>
             </div>
           </div>
         </nav>
@@ -285,6 +286,17 @@
           <p class="hint">~131 MHz aircraft data (EU: 131.725/131.525/131.825).
             Needs <b>acarsdec</b> built from source (see README). Messages are
             short and infrequent — leave it running near an airport.</p>
+        </section>
+
+        <section class="group" id="sat-controls" hidden>
+          <h2>Satellite <span class="beta-tag">beta</span></h2>
+          <label>Satellite<select id="sat-select"></select></label>
+          <p id="sat-status" class="status-line">starting…</p>
+          <p class="hint"><b>Experimental.</b> Digital weather-satellite imagery
+            (Meteor-M <b>LRPT</b>) decoded by <b>SatDump</b>, which must be
+            installed separately (see the README). Needs a pass overhead and a
+            137 MHz V-dipole — check pass times with gpredict or n2yo.com and
+            start a minute before AOS. Images appear below as they are produced.</p>
         </section>
 
         <section class="group" id="ism-controls" hidden>
@@ -561,6 +573,11 @@
             </select>
           </div>
           <div id="ism-log" class="ism-log"></div>
+        </div>
+        <div id="sat-view" class="acars-view" hidden>
+          <div class="acars-head"><span>Satellite images <span class="beta-tag">beta</span></span>
+            <span id="sat-count" class="muted"></span></div>
+          <div id="sat-products" class="bm-list"></div>
         </div>
         <div id="scanner-view" class="scanner-view" hidden>
           <div class="scanner-head"><span id="scanner-now">Scanning…</span></div>

@@ -25,3 +25,26 @@ def test_stray_ws_paths_are_refused_not_500(path: str) -> None:
                 pass
         # A clean refusal, not the StaticFiles assertion crash.
         assert not isinstance(exc_info.value, AssertionError)
+
+
+def test_satellite_products_endpoint_lists_nothing_by_default() -> None:
+    with TestClient(app) as client:
+        r = client.get("/api/satellite")
+        assert r.status_code == 200
+        assert isinstance(r.json()["products"], list)
+
+
+@pytest.mark.parametrize("path", ["%2e%2e%2fsecrets.png", "pass1%2f..%2f..%2fetc%2fx.png"])
+def test_satellite_delete_refuses_to_escape_its_directory(path: str) -> None:
+    """The products directory is served publicly; deletes must stay inside it.
+
+    Percent-encoded, because a literal "../" is normalised away by the router
+    before the handler ever sees it — this is the form that actually arrives.
+    """
+    with TestClient(app) as client:
+        assert client.delete(f"/api/satellite/{path}").status_code == 400
+
+
+def test_satellite_delete_refuses_non_images() -> None:
+    with TestClient(app) as client:
+        assert client.delete("/api/satellite/pass1/frames.cadu").status_code == 400

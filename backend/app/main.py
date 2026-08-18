@@ -32,6 +32,7 @@ from app.modes.ism import IsmMode
 from app.modes.pager import PagerMode
 from app.modes.radio import RadioMode
 from app.modes.replay import ReplayMode
+from app.modes.satellite import SATELLITE_DIR, SatelliteMode
 from app.modes.scan import ScanMode
 from app.modes.scanner import ScannerMode
 from app.modes.spectrum import SpectrumMode
@@ -56,6 +57,7 @@ MODE_REGISTRY: dict[str, type[Mode]] = {
     PagerMode.name: PagerMode,
     DabMode.name: DabMode,
     IsmMode.name: IsmMode,
+    SatelliteMode.name: SatelliteMode,
 }
 
 app = FastAPI(title="Cascade SDR")
@@ -96,6 +98,31 @@ async def delete_recording(name: str) -> dict:
     # guard against path traversal — only allow plain .cu8 names in the dir
     target = (RECORDINGS_DIR / name).resolve()
     if target.parent != RECORDINGS_DIR.resolve() or target.suffix != ".cu8":
+        raise HTTPException(status_code=400, detail="bad name")
+    target.unlink(missing_ok=True)
+    return {"ok": True}
+
+
+@app.get("/api/satellite")
+async def api_satellite() -> dict:
+    """Images SatDump has produced, newest first (experimental mode)."""
+    SATELLITE_DIR.mkdir(parents=True, exist_ok=True)
+    items = []
+    for p in sorted(SATELLITE_DIR.rglob("*"), key=lambda x: x.name, reverse=True):
+        if p.is_file() and p.suffix.lower() in (".png", ".jpg", ".jpeg"):
+            st = p.stat()
+            items.append({"name": p.name, "path": str(p.relative_to(SATELLITE_DIR)),
+                          "size": st.st_size, "mtime": st.st_mtime})
+    return {"products": items}
+
+
+@app.delete("/api/satellite/{path:path}")
+async def delete_product(path: str) -> dict:
+    # Same guard as the recordings endpoint: stay inside the directory, images only.
+    target = (SATELLITE_DIR / path).resolve()
+    root = SATELLITE_DIR.resolve()
+    if not str(target).startswith(str(root) + "/") or target.suffix.lower() not in (
+            ".png", ".jpg", ".jpeg"):
         raise HTTPException(status_code=400, detail="bad name")
     target.unlink(missing_ok=True)
     return {"ok": True}
@@ -180,6 +207,10 @@ async def handle_command(ws: WebSocket, msg: dict) -> None:
 # --- IQ recordings download (mounted before the catch-all frontend) ---------
 RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/recordings", StaticFiles(directory=str(RECORDINGS_DIR)), name="recordings")
+
+# --- SatDump products (experimental satellite mode) -------------------------
+SATELLITE_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/satellite", StaticFiles(directory=str(SATELLITE_DIR)), name="satellite")
 
 # --- static frontend (optional; present after `npm run build`) --------------
 _DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"
