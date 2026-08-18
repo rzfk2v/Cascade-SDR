@@ -94,3 +94,27 @@ def test_snapshot_tells_a_new_client_it_is_experimental() -> None:
     kinds = [s["type"] for s in m.snapshot()]
     assert kinds == ["sat_config", "sat_status", "sat_products"]
     assert m.snapshot()[0]["experimental"] is True
+
+
+def test_macos_app_bundle_gets_its_resources_directory(tmp_path, monkeypatch) -> None:
+    """The .app CLI can't find its config unless run from Resources."""
+    bundle = tmp_path / "SatDump.app" / "Contents"
+    (bundle / "MacOS").mkdir(parents=True)
+    (bundle / "Resources" / "pipelines").mkdir(parents=True)
+    exe = bundle / "MacOS" / "satdump"
+    exe.write_text("#!/bin/sh\n")
+    exe.chmod(0o755)
+
+    monkeypatch.setattr(SatelliteMode, "_exe", staticmethod(lambda: str(exe)))
+    assert SatelliteMode._workdir() == bundle / "Resources"
+
+
+def test_a_plain_unix_install_runs_where_it_is(tmp_path, monkeypatch) -> None:
+    """Linux packages find their own resources; don't move them."""
+    exe = tmp_path / "bin" / "satdump"
+    exe.parent.mkdir(parents=True)
+    exe.write_text("#!/bin/sh\n")
+    exe.chmod(0o755)
+
+    monkeypatch.setattr(SatelliteMode, "_exe", staticmethod(lambda: str(exe)))
+    assert SatelliteMode._workdir() is None

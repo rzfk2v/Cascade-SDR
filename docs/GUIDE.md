@@ -466,11 +466,23 @@ the pass and writes the images, and Cascade shows its progress and results.
 - Products go to `backend/data/satellite/<pass>/`; override with
   `CASCADE_SATELLITE_DIR` to keep them off an SD card.
 
-**Why beta:** SatDump's command line has changed between releases, so if a pass
-produces nothing, check the flags in `backend/app/modes/satellite.py` (`_cmd`,
-the only place they appear) against your installed build. LRPT is also weaker and
-wider than APT — an FM band-stop filter helps a lot near strong broadcast
-transmitters.
+- **If a pass decodes nothing, try the other symbol rate.** Meteor-M has
+  transmitted LRPT at both 72k and 80k; the wrong pipeline simply never locks,
+  which looks identical to having no signal. Both are in the dropdown.
+- SatDump fetches TLEs on startup, so give the machine internet access if you
+  want geo-referenced products.
+
+**Why beta:** verified against SatDump 1.2.2 (`satdump live` accepts our
+pipeline, `--source rtlsdr`, `--frequency`, `--samplerate`, `--gain` and
+`--ppm_correction`), but never yet run against a real pass. Flags have moved
+between releases and live only in `_cmd()` in
+`backend/app/modes/satellite.py`. LRPT is also weaker and wider than APT — an FM
+band-stop filter helps a lot near strong broadcast transmitters.
+
+On **macOS** SatDump installs as an .app bundle (`brew install --cask satdump`)
+whose CLI looks for its config in a compiled-in path it doesn't use; the mode
+runs it from the bundle's `Resources` directory to work around that. Linux
+packages need no such handling.
 
 ---
 

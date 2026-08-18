@@ -33,11 +33,19 @@ SATELLITE_DIR = Path(os.environ.get("CASCADE_SATELLITE_DIR")
 
 # Satellites we offer. `pipeline` is SatDump's own name for the decode chain, so
 # adding HRPT or a geostationary format later is a row here plus a UI entry.
+# The 72k and 80k entries are the same satellites at different symbol rates:
+# Meteor-M has transmitted at both, and the wrong pipeline simply never locks —
+# so if a pass decodes nothing, try the other one before blaming the antenna.
+# Rate 1e6 is what SatDump's own pipeline definition expects.
 SATELLITES: list[dict] = [
-    {"id": "meteor_m2-4_lrpt", "label": "Meteor-M N2-4 · LRPT",
-     "pipeline": "meteor_m2-x_lrpt", "freq": 137_100_000.0, "rate": 1_024_000.0},
-    {"id": "meteor_m2-3_lrpt", "label": "Meteor-M N2-3 · LRPT",
-     "pipeline": "meteor_m2-x_lrpt", "freq": 137_900_000.0, "rate": 1_024_000.0},
+    {"id": "meteor_m2-4_lrpt", "label": "Meteor-M N2-4 · LRPT 72k",
+     "pipeline": "meteor_m2-x_lrpt", "freq": 137_100_000.0, "rate": 1_000_000.0},
+    {"id": "meteor_m2-3_lrpt", "label": "Meteor-M N2-3 · LRPT 72k",
+     "pipeline": "meteor_m2-x_lrpt", "freq": 137_900_000.0, "rate": 1_000_000.0},
+    {"id": "meteor_m2-4_lrpt80", "label": "Meteor-M N2-4 · LRPT 80k",
+     "pipeline": "meteor_m2-x_lrpt_80k", "freq": 137_100_000.0, "rate": 1_000_000.0},
+    {"id": "meteor_m2-3_lrpt80", "label": "Meteor-M N2-3 · LRPT 80k",
+     "pipeline": "meteor_m2-x_lrpt_80k", "freq": 137_900_000.0, "rate": 1_000_000.0},
 ]
 
 PRODUCT_SUFFIXES = (".png", ".jpg", ".jpeg")
@@ -84,6 +92,24 @@ class SatelliteMode(Mode):
         if override and os.access(override, os.X_OK):
             return override
         return shutil.which("satdump")
+
+    @classmethod
+    def _workdir(cls) -> Path | None:
+        """Where to run SatDump from, or None to inherit ours.
+
+        The macOS build ships as an .app bundle whose CLI looks for its config
+        at a compiled-in ``/usr/local/share/satdump`` that the bundle does not
+        use — it exits with "Couldn't load config file!". It does look in the
+        working directory, so running it from the bundle's Resources directory
+        fixes it. Linux packages install to the prefix they were built with and
+        need none of this.
+        """
+        exe = cls._exe()
+        if not exe:
+            return None
+        real = Path(exe).resolve()
+        bundle = real.parent.parent / "Resources"       # <app>/Contents/Resources
+        return bundle if (bundle / "pipelines").is_dir() else None
 
     def _cmd(self, out_dir: Path) -> list[str]:
         """The one place SatDump's command line lives — see the module docstring."""
@@ -155,7 +181,7 @@ class SatelliteMode(Mode):
 
     async def _run_pass(self) -> None:
         sat = self.sat
-        self._out = SATELLITE_DIR / f"{time.strftime('%Y%m%d-%H%M%S')}_{sat['id']}"
+        self._out = (SATELLITE_DIR / f"{time.strftime('%Y%m%d-%H%M%S')}_{sat['id']}").resolve()
         self._out.mkdir(parents=True, exist_ok=True)
         self._products = []
         self._snr, self._frames, self._locked = None, 0, False
@@ -165,6 +191,7 @@ class SatelliteMode(Mode):
             *self._cmd(self._out),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            cwd=self._workdir(),          # see _workdir: macOS .app bundles
         )
         err = self._watch_stderr(self._proc)
         self.manager.emit_json(self._status_msg(
