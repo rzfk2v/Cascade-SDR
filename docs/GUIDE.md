@@ -399,8 +399,10 @@ Shared controls for all three map modes:
 
 - **My location** (lat, lon) — the reference point for **distance/bearing** in the
   lists, also shown as a small **blue dot** on the map so you can confirm it's
-  right. Click **📍 Use my location** to fill it from the browser's geolocation
-  (works in a browser; in the desktop app, type it in — either way it's saved).
+  right. The **Dist** column is in kilometres, switching to metres for anything
+  closer than 1 km. Click **📍 Use my location** to fill it from the browser's
+  geolocation (works in a browser; in the desktop app, type it in — either way
+  it's saved).
   Defaults to central Stockholm; set it to where your antenna is.
 - **Show tracks** — toggle the movement trails on/off (useful when the map is busy).
 

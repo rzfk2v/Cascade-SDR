@@ -856,6 +856,16 @@ function haversineKm(a: [number, number], lat: number, lon: number): number {
   return R * 2 * Math.atan2(Math.sqrt(s), Math.sqrt(1 - s));
 }
 
+// Distance for the Dist column in all three map lists. Rounding to whole kilometres
+// collapses to "0 km" inside 500 m, which reads as a broken value for a ship moored
+// in the harbour in front of you — switch to metres below 1 km, to the nearest 10 m
+// so position jitter doesn't twitch the column on every update.
+function fmtDist(km: number): string {
+  if (km >= 1) return `${km.toFixed(0)} km`;
+  const m = Math.round(km * 100) * 10;
+  return m >= 1000 ? "1 km" : `${m} m`;
+}
+
 function renderAircraftList(list: Aircraft[]): void {
   const rx = rxLatLon();
   const rows = list.map((ac) => {
@@ -879,7 +889,7 @@ function renderAircraftList(list: Aircraft[]): void {
       const alt = ac.alt != null ? `${ac.alt.toLocaleString()}${arrow}` : "—";
       const spd = ac.speed != null ? ac.speed : "—";
       const trk = ac.track != null ? `${ac.track}°` : "—";
-      const d = dist != null ? `${dist.toFixed(0)} km` : "—";
+      const d = dist != null ? fmtDist(dist) : "—";
       const cls = ac.lat != null ? "" : ' class="no-pos"';
       return `<tr data-icao="${esc(ac.icao)}"${cls}><td>${name}</td><td>${alt}</td><td>${spd}</td><td>${trk}</td><td>${d}</td></tr>`;
     })
@@ -945,7 +955,7 @@ function renderVesselList(list: Vessel[]): void {
         : "";
       const spd = v.speed != null ? `${v.speed}` : "—";
       const crs = v.course != null ? `${v.course}°` : "—";
-      const d = dist != null ? `${dist.toFixed(0)} km` : "—";
+      const d = dist != null ? fmtDist(dist) : "—";
       const cls = v.lat != null ? "" : ' class="no-pos"';
       return `<tr data-mmsi="${v.mmsi}"${cls}><td><span class="ap-name" title="${title}">${flag}${esc(name)}</span>${note}</td><td>${spd}</td><td>${crs}</td><td>${d}</td></tr>`;
     })
@@ -965,7 +975,7 @@ function renderStationList(list: Station[]): void {
   apBody.innerHTML = rows
     .map(({ s, dist }) => {
       const info = esc((s.comment || s.kind || "").slice(0, 22) || "—");
-      const d = dist != null ? `${dist.toFixed(0)} km` : "—";
+      const d = dist != null ? fmtDist(dist) : "—";
       const cls = s.lat != null ? "" : ' class="no-pos"';
       return `<tr data-call="${esc(s.call)}"${cls}><td>${esc(s.call)}</td><td>${info}</td><td>${d}</td></tr>`;
     })
