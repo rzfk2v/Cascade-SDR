@@ -104,6 +104,16 @@
           </label>
           <label>Squelch (dB over noise)<input id="scanner-sql" type="range" min="3" max="30" step="1" value="8" /></label>
           <label>Volume<input id="scanner-vol" type="range" min="0" max="1.5" step="0.05" value="0.7" /></label>
+          <label class="check"><input id="scanner-voice" type="checkbox" /> Voice squelch</label>
+          <label>Sensitivity
+            <select id="scanner-voice-sens">
+              <option value="lenient">lenient — only skip what's clearly not speech</option>
+              <option value="normal" selected>normal</option>
+              <option value="strict">strict — skip anything doubtful</option>
+            </select>
+          </label>
+          <p class="hint">don't stop on channels carrying only data or a dead
+            carrier — resume scanning, and skip them for a while</p>
           <p id="scanner-status" class="status-line">scanning…</p>
           <details id="scanner-range" class="scanner-edit">
             <summary>Search a range <span class="beta-tag">beta</span></summary>
@@ -335,6 +345,19 @@
           <label class="check"><input id="notch-on" type="checkbox" /> Notch
             <input id="notch-hz" type="number" min="50" max="20000" step="10" value="1000" class="inline-num" /> Hz
           </label>
+          <div id="voice-box" hidden>
+            <label class="check"><input id="voice-sql" type="checkbox" /> Voice squelch</label>
+            <label>Sensitivity
+              <select id="voice-sens">
+                <option value="lenient">lenient — only mute what's clearly not speech</option>
+                <option value="normal" selected>normal</option>
+                <option value="strict">strict — mute anything doubtful</option>
+              </select>
+            </label>
+            <p class="hint">stay muted unless the channel is carrying speech — cuts
+              out data bursts, pagers, stuck carriers and steady tones. Heard now:
+              <span id="voice-read">—</span></p>
+          </div>
           <div id="tone-box" hidden>
             <p class="status-line">Sub-tone: <span id="tone-read">—</span></p>
             <label>Tone squelch<input id="tone-sql" type="text" placeholder="88.5 or D023 (empty = off)" />

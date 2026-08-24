@@ -44,6 +44,7 @@ from app.dsp.fft import Spectrum
 from app.dsp.rds import RdsDemod
 from app.dsp.sstv import SstvDecoder
 from app.dsp.tones import ToneDetector
+from app.dsp.voice import VoiceDetector
 from app.hub import FrameTag
 from app.modes.base import Mode
 
@@ -76,6 +77,10 @@ SUB_VFO_DEMODS = ("nfm", "am")
 
 # SSB/CW audio AGC speeds: block-AGC smoothing factor per setting.
 AGC_SMOOTH = {"fast": 0.5, "med": 0.25, "slow": 0.06}
+
+# Voice squelch: the demods it applies to, and how picky it's allowed to be.
+VOICE_DEMODS = ("nfm", "am", "usb", "lsb")
+VOICE_SENS = ("lenient", "normal", "strict")
 
 
 def if_decim(sr: float, bw: float) -> int:
@@ -258,6 +263,9 @@ class RadioMode(Mode):
         self.tone_squelch = ""       # NFM: require this CTCSS/DCS ("" = off)
         self._tones: ToneDetector | None = None
         self._tone_last: str | None = None    # last emitted detection
+        self.voice_squelch = False   # only open for speech, not data/tones/carriers
+        self.voice_sens = "normal"   # lenient | normal | strict
+        self._voice: VoiceDetector | None = None
         self.vfos = [SubVfo() for _ in range(SUB_VFO_SLOTS)]  # extra receivers B/C/D
         self.rds_enabled = False     # decode RDS (station name/radiotext) on WFM; off by default
         self._rds: RdsDemod | None = None
@@ -345,6 +353,12 @@ class RadioMode(Mode):
                 self._agc.smooth = AGC_SMOOTH[self.agc_speed]
         if "tone_squelch" in params and params["tone_squelch"] is not None:
             self.tone_squelch = str(params["tone_squelch"]).strip()
+        if "voice_squelch" in params and params["voice_squelch"] is not None:
+            self.voice_squelch = bool(params["voice_squelch"])
+        if params.get("voice_sens") in VOICE_SENS:
+            self.voice_sens = params["voice_sens"]
+            if self._voice is not None:            # takes effect without a rebuild
+                self._voice.set_sensitivity(self.voice_sens)
         if "deemph" in params and params["deemph"] is not None:
             # accept 50 / 75 (µs); 0/None means leave unchanged
             tau = float(params["deemph"])
@@ -387,6 +401,8 @@ class RadioMode(Mode):
             "ssb_high": self.ssb_high,
             "agc": self.agc_speed,
             "tone_squelch": self.tone_squelch,
+            "voice_squelch": self.voice_squelch,
+            "voice_sens": self.voice_sens,
             "rds": self.rds_enabled,
             "stereo": self.stereo_enabled,
             "apt": self.apt_enabled,
@@ -538,6 +554,11 @@ class RadioMode(Mode):
         # exactly AUDIO_RATE. Stereo needs two — L and R carry separate state.
         pre_rate = (self._cplx_decim.out_rate if self._cplx_decim is not None
                     else self._audio_decim.out_rate)
+        # Voice squelch scores the demodulated audio, so it only applies to the
+        # voice demods: WFM broadcast has no use for a squelch, and CW has no
+        # speech in it to find.
+        self._voice = (VoiceDetector(pre_rate, float(cfg["audio"]), self.voice_sens)
+                       if self.demod in VOICE_DEMODS else None)
         self._rs_l, self._rs_r = to_audio_rate(pre_rate), to_audio_rate(pre_rate)
         self._nb = NoiseBlanker()                 # fresh envelope estimate
         self._notch_l = self._notch_r = None      # rebuilt lazily at AUDIO_RATE
@@ -686,6 +707,19 @@ class RadioMode(Mode):
                     if text:
                         self.manager.emit_json({"type": "cw_text", "text": text})
 
+            # Voice squelch: the level (and tone) gate is open — but is this
+            # speech, or a dead carrier, a pager burst or a birdie? Score it only
+            # while the gate is open: between transmissions there's nothing to
+            # judge, and the reset puts the detector back into probation so the
+            # next over isn't clipped while it makes up its mind.
+            if self._voice is not None and audio is not None:
+                if squelched:
+                    self._voice.reset()
+                else:
+                    self._voice.process(audio)
+                    if self.voice_squelch and not self._voice.speaking:
+                        squelched = True
+
         # Extra receivers: demodulate each enabled sub-VFO from the same block.
         sub_audio: list[np.ndarray] = []
         for v in subs:
@@ -699,6 +733,9 @@ class RadioMode(Mode):
             self.manager.emit_json({
                 "type": "radio_level", "db": round(level_db, 1),
                 "open": not squelched, "stereo": self._stereo_on,
+                # lets the panel show what voice squelch is hearing, so the
+                # sensitivity can be set by eye instead of by guesswork
+                "voice": round(self._voice.score, 2) if self._voice is not None else None,
                 "vfos": [{"on": v.on, "db": round(v.level_db, 1), "open": v.open}
                          for v in self.vfos],
             })

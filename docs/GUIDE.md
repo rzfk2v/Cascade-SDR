@@ -187,6 +187,14 @@ quiet — like a marine/PMR scanner.
 - **Priority** — pick a channel (e.g. Marine **Ch 16**) and the scanner jumps to it
   the moment it's active, even while parked on another channel, then returns to
   normal scanning when it goes quiet. "Off" disables it.
+- **Voice squelch** — don't stop on channels carrying only data or a dead
+  carrier. When the scanner parks, it listens to the audio for about **0.6 s**;
+  if there's no speech in it, it mutes, gives up on that channel and resumes
+  scanning, then **skips it for 15 s** so the same still-transmitting pager
+  doesn't catch it again on the very next pass. The channel still shows as
+  active in the grid — there really is a signal there — it just isn't worth
+  stopping for. Same **Sensitivity** setting as the radio panel. Turning it off
+  releases everything it had skipped.
 - **Search a range** (*beta*) — instead of a channel list, sweep a whole
   frequency range: enter **from / to** (MHz), pick a **step** (5–100 kHz, e.g.
   25 kHz for marine/airband, 12.5 kHz for PMR) and a **demod** (NFM/AM), then
@@ -269,6 +277,18 @@ sidebar's Radio panel keeps bandwidth, de-emphasis, stereo/RDS and recording):
   squelch** and the audio opens **only** for transmissions carrying it (shared
   channels stay quiet for other users). Empty = off. DCS codes are reported as
   the canonical member of their alias set, like any scanner.
+- **Voice squelch** (NFM / AM / SSB): stay muted unless the channel is actually
+  carrying **speech**. An ordinary squelch opens for anything loud enough — a
+  pager burst, a trunking control channel, a stuck carrier, a birdie, a test
+  tone — and you hear all of it. This listens to the demodulated audio for the
+  rise and fall of syllables and mutes what doesn't have it. It takes about
+  **0.6 s** to make up its mind, and passes audio while it does, so the first
+  word is never clipped: a data burst is audible for that long, then cuts out.
+  **Sensitivity** sets how sure it has to be — start at *normal*, use *strict*
+  if data still gets through, *lenient* if it clips people. The **Heard now**
+  readout shows the live score and which side of the line it's on, so you can
+  set the sensitivity by watching rather than guessing. Music is tonal rather
+  than syllabic and will be muted — this is for voice channels.
 - **Noise blanker**: zaps short ignition/power-line impulse spikes *before*
   demodulation, so they don't smear into crackle. Helps impulsive noise, not hiss.
 - **Notch**: a narrow filter that removes one steady whistle/heterodyne — enter

@@ -73,7 +73,10 @@ first that breaks squelch**, playing it until it's quiet for a few seconds, then
 resumes. Each channel shows a live **signal bar** so you can set **squelch (dB over
 noise)** by eye — lower it if wanted calls don't stop, raise it if it stops on
 noise. Set a **Priority** channel (e.g. Marine Ch 16) and the scanner pre-empts to
-it whenever it's active, even while parked elsewhere. **Customize channels** lets
+it whenever it's active, even while parked elsewhere. Turn on **voice squelch**
+and it won't stop for channels carrying only data or a dead carrier — it listens
+for about 0.6 s, resumes scanning if there's no speech, and skips that channel
+for 15 s so the same pager doesn't catch it again next pass. **Customize channels** lets
 you edit/reorder/add channels (NFM or AM) and **save your own presets** (persisted
 on the backend; built-ins can't be overwritten). **Search a range** (*beta*) sweeps
 a whole frequency span instead of a channel list — enter from/to MHz, a step
@@ -178,9 +181,11 @@ weather satellites). It updates as you type a Center frequency.
   click-to-tune snaps to it), and DC-spike-free tuning (typed/recalled
   frequencies park the hardware centre off-channel automatically).
 - **Listening tools**: **CTCSS/DCS readout + tone squelch** on NFM (see what
-  sub-tone a repeater uses; open only for your tone), an impulse **noise
-  blanker**, a manual **notch filter**, and an adjustable **SSB passband +
-  AGC speed** for USB/LSB/CW.
+  sub-tone a repeater uses; open only for your tone), **voice squelch** on
+  NFM/AM/SSB (stay muted unless the channel is carrying speech — cuts out pager
+  bursts, data channels, stuck carriers and test tones, with a live score so you
+  can set its sensitivity by eye), an impulse **noise blanker**, a manual
+  **notch filter**, and an adjustable **SSB passband + AGC speed** for USB/LSB/CW.
 - **Settings persist** across reloads (gain, PPM, bias-T, HF mode, raster,
   demod, volume, squelch, contrast, peak-hold, sweep range, receiver location,
   bookmarks) via localStorage.

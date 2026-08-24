@@ -23,12 +23,15 @@ import numpy as np
 
 from app.dsp.blocks import ComplexChannelizer, FmDiscriminator, RealDecimator
 from app.dsp.fft import Spectrum
+from app.dsp.voice import VoiceDetector
 from app.hub import FrameTag
 from app.modes.base import Mode
 from app.modes.radio import (
     AUDIO_RATE,
     DEMODS,
     GATE_RAMP,
+    VOICE_DEMODS,
+    VOICE_SENS,
     audio_decim_for,
     if_decim,
     to_audio_rate,
@@ -43,6 +46,11 @@ USABLE = 0.9            # fraction of a 2.4 MHz block we trust (drop edge rollof
 DETECT_BLOCK = 16_384   # samples FFT'd to look for activity
 PARK_BLOCK = 51_200     # samples per parked read (multiple of 50 -> clean decim)
 SETTLE = 4_096          # samples discarded after a retune (PLL relock)
+
+# After voice squelch rejects a channel, ignore it for a while. Without this the
+# sweep would find the same pager burst still transmitting on the very next pass
+# and park on it again, over and over.
+VOICE_SKIP_S = 15.0
 
 # The dongle shows a false carrier at its own tune frequency (the DC spike), a
 # few FFT bins wide. Bins this close to the block centre never count towards a
@@ -66,6 +74,8 @@ class ScannerMode(Mode):
         self.hold = 3.0             # s of silence before resuming the scan
         self.volume = 0.7
         self.priority = ""          # channel label to watch + pre-empt to (or "")
+        self.voice_squelch = False  # resume scanning unless the channel carries speech
+        self.voice_sens = "normal"  # lenient | normal | strict
         self.range_cfg: dict | None = None   # active range search (beta), or None
         self._range_channels: list[dict] = []  # slots synthesized from range_cfg
         self._custom = load_custom()   # user-saved presets {name: [channels]}
@@ -130,6 +140,13 @@ class ScannerMode(Mode):
             self.volume = float(np.clip(params["volume"], 0.0, 2.0))
         if "priority" in params:
             self.priority = str(params["priority"] or "")[:12]
+        if params.get("voice_squelch") is not None:
+            self.voice_squelch = bool(params["voice_squelch"])
+            if not self.voice_squelch:             # drop any lockouts it left behind
+                for c in self._channels:
+                    c["_skip_until"] = 0.0
+        if params.get("voice_sens") in VOICE_SENS:
+            self.voice_sens = params["voice_sens"]
         self.manager.emit_json(self._config_msg())
 
     def _priority_channel(self) -> dict | None:
@@ -144,7 +161,8 @@ class ScannerMode(Mode):
     def _rebuild(self, sr: float) -> None:
         # flat channel list (preset order) + 2.4 MHz capture blocks
         chans = self._channels_for(self.preset) or []
-        self._channels = [dict(c, _level=0.0, _active=False) for c in chans]
+        self._channels = [dict(c, _level=0.0, _active=False, _skip_until=0.0)
+                          for c in chans]
         usable = sr * USABLE
         blocks: list[list[dict]] = []
         for c in sorted(self._channels, key=lambda x: x["freq"]):
@@ -198,6 +216,8 @@ class ScannerMode(Mode):
             "squelch": self.squelch_margin,
             "hold": self.hold,
             "priority": self.priority,
+            "voice_squelch": self.voice_squelch,
+            "voice_sens": self.voice_sens,
             "range": self.range_cfg,          # active range search (beta), or None
             "channels": [
                 {"label": c["label"], "mhz": round(c["freq"] / 1e6, 4),
@@ -292,10 +312,15 @@ class ScannerMode(Mode):
         row = self._spectrum.row(x)
         floor = float(np.median(row))
         prio = self._priority_channel()
+        now = time.monotonic()
         best, best_level = None, self.squelch_margin
         for c in blk["channels"]:
             lvl = self._channel_level(row, freqs, c, floor)
             c["_level"], c["_active"] = lvl, lvl >= self.squelch_margin
+            # still shown as active on the display — there really is a signal —
+            # but not worth parking on again until the lockout expires
+            if c.get("_skip_until", 0.0) > now:
+                continue
             if c is prio and c["_active"]:
                 return c                                  # priority wins outright
             if c["_active"] and lvl >= best_level:
@@ -321,6 +346,8 @@ class ScannerMode(Mode):
         adec = RealDecimator(if_rate, audio_decim_for(if_rate), cfg["audio"])
         ars = to_audio_rate(adec.out_rate)       # -> exactly AUDIO_RATE
         dev = float(cfg.get("dev", 5_000))
+        voice = (VoiceDetector(AUDIO_RATE, float(cfg["audio"]), self.voice_sens)
+                 if self.voice_squelch and ch["demod"] in VOICE_DEMODS else None)
         idx = self._channels.index(ch)
         freqs = center + (np.arange(FFT_SIZE) / FFT_SIZE - 0.5) * sr
 
@@ -376,6 +403,19 @@ class ScannerMode(Mode):
                     audio = adec.process(disc.process(bb) * (if_rate / (2.0 * math.pi * dev)))
                 if ars is not None:
                     audio = ars.process(audio)
+                # Voice squelch: a pager burst or a stuck carrier breaks squelch
+                # just as well as a person does, and would hold the scan here for
+                # the whole hold period. Score the audio; if it isn't speech, mute
+                # it, lock the channel out briefly and get back to scanning.
+                voice_reject = False
+                if voice is not None:
+                    if not ch["_active"]:
+                        voice.reset()
+                    else:
+                        voice.process(audio)
+                        if not voice.speaking:
+                            ch["_active"] = False
+                            voice_reject = True
                 target = 1.0 if ch["_active"] else 0.0
                 if target != gate and audio.size:
                     k = min(audio.size, GATE_RAMP)   # ~5 ms ramp, no click
@@ -388,6 +428,10 @@ class ScannerMode(Mode):
                     audio = np.zeros_like(audio)
                 self._emit_audio(audio)
                 now = time.monotonic()
+                if voice_reject:            # ramped to silence above, so no click
+                    ch["_skip_until"] = now + VOICE_SKIP_S
+                    self._emit_state(idx)
+                    break
 
                 if prio is not None:                     # pre-empt to the priority channel
                     plvl = self._channel_level(row, freqs, prio, floor)

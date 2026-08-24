@@ -205,6 +205,12 @@ const ssbBox = document.getElementById("ssb-box")!;
 const toneBox = document.getElementById("tone-box")!;
 const toneRead = document.getElementById("tone-read")!;
 const toneSql = document.getElementById("tone-sql") as HTMLInputElement;
+const voiceBox = document.getElementById("voice-box")!;
+const voiceSql = document.getElementById("voice-sql") as HTMLInputElement;
+const voiceSens = document.getElementById("voice-sens") as HTMLSelectElement;
+const voiceRead = document.getElementById("voice-read")!;
+const scannerVoice = document.getElementById("scanner-voice") as HTMLInputElement;
+const scannerVoiceSens = document.getElementById("scanner-voice-sens") as HTMLSelectElement;
 const ssbLow = document.getElementById("ssb-low") as HTMLInputElement;
 const ssbHigh = document.getElementById("ssb-high") as HTMLInputElement;
 const agcSpeed = document.getElementById("agc-speed") as HTMLSelectElement;
@@ -451,7 +457,12 @@ sock.onJson((msg) => {
       if (typeof msg.agc === "string") agcSpeed.value = msg.agc;
       if (typeof msg.tone_squelch === "string" && document.activeElement !== toneSql)
         toneSql.value = msg.tone_squelch;
+      if (typeof msg.voice_squelch === "boolean") voiceSql.checked = msg.voice_squelch;
+      if (typeof msg.voice_sens === "string") voiceSens.value = msg.voice_sens;
       ssbBox.hidden = !["usb", "lsb", "cw"].includes(msg.demod);
+      // voice squelch scores speech, so it's offered on the voice demods only
+      voiceBox.hidden = !["nfm", "am", "usb", "lsb"].includes(msg.demod);
+      if (voiceBox.hidden) voiceRead.textContent = "—";
       toneBox.hidden = msg.demod !== "nfm";
       if (msg.demod !== "nfm") toneRead.textContent = "—";
       rdsBox.hidden = !(msg.demod === "wfm" && rdsOn.checked);
@@ -476,6 +487,11 @@ sock.onJson((msg) => {
       levelMeter.textContent =
         `${msg.db.toFixed(0)} dB ${msg.open ? "▶" : "🔇"}${msg.stereo ? " ◖◗ stereo" : ""}`;
       levelMeter.classList.toggle("open", msg.open);
+      if (!voiceBox.hidden)
+        voiceRead.textContent =
+          typeof msg.voice === "number"
+            ? `${msg.voice.toFixed(2)} ${msg.voice >= voiceThreshold() ? "voice" : "not voice"}`
+            : "—";
       if (Array.isArray(msg.vfos))
         msg.vfos.forEach((v: any, i: number) => {
           const row = vfoRows[i];
@@ -593,6 +609,8 @@ sock.onJson((msg) => {
       renderScannerPresets(msg.presets || [], msg.preset);
       if (typeof msg.squelch === "number" && document.activeElement !== scannerSql)
         scannerSql.value = String(msg.squelch);
+      if (typeof msg.voice_squelch === "boolean") scannerVoice.checked = msg.voice_squelch;
+      if (typeof msg.voice_sens === "string") scannerVoiceSens.value = msg.voice_sens;
       renderScannerPrio(msg.priority || "");
       renderRangeNote(msg.range);
       // Reload the editor's working copy only when the preset actually changes,
@@ -1357,6 +1375,8 @@ function sendRadioPrefs(): void {
       ssb_high: parseFloat(ssbHigh.value) || 2800,
       agc: agcSpeed.value,
       tone_squelch: toneSql.value.trim(),
+      voice_squelch: voiceSql.checked,
+      voice_sens: voiceSens.value,
     },
   });
   vfoRows.forEach((e, i) => {
@@ -1482,6 +1502,23 @@ agcSpeed.addEventListener("change", () =>
 toneSql.addEventListener("change", () =>
   sock.send({ cmd: "config", params: { tone_squelch: toneSql.value.trim() } }),
 );
+// What the backend's chosen sensitivity needs the score to reach — mirrors
+// SENSITIVITIES in app/dsp/voice.py, only so the readout can say which side of
+// the line the channel is on.
+const VOICE_THRESHOLDS: Record<string, number> = {
+  lenient: 0.38, normal: 0.5, strict: 0.62,
+};
+function voiceThreshold(): number {
+  return VOICE_THRESHOLDS[voiceSens.value] ?? 0.5;
+}
+function sendVoiceSquelch(): void {
+  sock.send({
+    cmd: "config",
+    params: { voice_squelch: voiceSql.checked, voice_sens: voiceSens.value },
+  });
+}
+voiceSql.addEventListener("change", sendVoiceSquelch);
+voiceSens.addEventListener("change", sendVoiceSquelch);
 bwInput.addEventListener("change", () =>
   sock.send({ cmd: "config", params: { bandwidth: parseFloat(bwInput.value) * 1000 } }),
 );
@@ -1624,6 +1661,8 @@ function sendScannerPrefs(): void {
     params: {
       squelch: parseFloat(scannerSql.value),
       volume: parseFloat(scannerVol.value),
+      voice_squelch: scannerVoice.checked,
+      voice_sens: scannerVoiceSens.value,
       priority: String((loadSettings() as any).scannerPrio || ""),  // persisted choice
     },
   });
@@ -1783,6 +1822,16 @@ scannerSql.addEventListener("input", () =>
 scannerVol.addEventListener("input", () =>
   sock.send({ cmd: "config", params: { volume: parseFloat(scannerVol.value) } }),
 );
+const sendScannerVoice = () =>
+  sock.send({
+    cmd: "config",
+    params: {
+      voice_squelch: scannerVoice.checked,
+      voice_sens: scannerVoiceSens.value,
+    },
+  });
+scannerVoice.addEventListener("change", sendScannerVoice);
+scannerVoiceSens.addEventListener("change", sendScannerVoice);
 
 // --- display: contrast + peak hold ---------------------------------------
 function applyContrast(): void {
@@ -1985,10 +2034,11 @@ const persistValues: Record<string, HTMLInputElement | HTMLSelectElement> = {
   rangeStart, rangeStop, rangeStep, rangeDemod,
   upconvMhz, hfMode, tunerBw, step: stepSel,
   notchHz, ssbLow, ssbHigh, agcSpeed, toneSql,
+  voiceSens, scannerVoiceSens,
 };
 const persistChecks: Record<string, HTMLInputElement> = {
   gainAuto, biasTee, wfAuto, peakHold, rdsOn, stereoOn, showTracks,
-  rtlAgc, nbOn, notchOn,
+  rtlAgc, nbOn, notchOn, voiceSql, scannerVoice,
 };
 vfoRows.forEach((e, i) => {
   persistValues[`vfo${i + 1}Freq`] = e.freq;
