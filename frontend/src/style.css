@@ -313,21 +313,26 @@ details.vfo-box[open] > summary::before { content: "▾ "; }
   display: flex;
   flex-direction: column;
 }
+/* Every view sits in the column flow below the control bar — as an absolute
+   overlay it would cover the bar (Gain, and Vol/Squelch in SSTV). */
 .map {
-  position: absolute;
-  inset: 0.6rem;
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
   border: 1px solid var(--border);
   border-radius: 8px;
   overflow: hidden;
   z-index: 1;
 }
+/* Floats over the map's top-right corner; --cb-h (set from main.ts) is the
+   height the control bar takes above the map. */
 .aircraft-panel {
   position: absolute;
-  top: 1rem;
+  top: calc(1rem + var(--cb-h, 0px));
   right: 1rem;
   z-index: 5;
   width: 320px;
-  max-height: calc(100% - 2rem);
+  max-height: calc(100% - 2rem - var(--cb-h, 0px));
   display: flex;
   flex-direction: column;
   background: rgba(13, 17, 23, 0.92);
@@ -386,8 +391,6 @@ details.vfo-box[open] > summary::before { content: "▾ "; }
 .ac-popup td { padding: 1px 8px 1px 0; font-size: 12px; }
 .ac-popup td:first-child { color: #57606a; }
 
-/* In the column flow, below the control bar — an absolute overlay would cover
-   it, and SSTV needs the Vol/Squelch controls that live there. */
 .apt-view {
   position: relative;
   flex: 1 1 auto;
@@ -402,8 +405,9 @@ details.vfo-box[open] > summary::before { content: "▾ "; }
 .apt-canvas { display: block; height: 100%; image-rendering: pixelated; }
 
 .acars-view {
-  position: absolute;
-  inset: 0.6rem;
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
@@ -514,8 +518,9 @@ details.vfo-box[open] > summary::before { content: "▾ "; }
 .ism-metric-range { font-size: 0.68rem; }
 
 .dab-view {
-  position: absolute;
-  inset: 0.6rem;
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
@@ -562,8 +567,9 @@ details.vfo-box[open] > summary::before { content: "▾ "; }
 .dab-empty { color: var(--muted); font-size: 0.85rem; }
 
 .scanner-view {
-  position: absolute;
-  inset: 0.6rem;
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 0.6rem;

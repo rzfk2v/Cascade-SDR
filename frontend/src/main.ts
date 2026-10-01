@@ -228,6 +228,14 @@ const controlBar = document.getElementById("control-bar")!;
 const cbFreq = document.getElementById("cb-freq")!;
 const cbStep = document.getElementById("cb-step")!;
 const cbDemod = document.getElementById("cb-demod")!;
+// The contact panel floats over the map's corner, so it needs to know how much
+// room the control bar takes above the map (it wraps to more rows when narrow).
+new ResizeObserver(() => {
+  const h = controlBar.hidden
+    ? 0
+    : controlBar.offsetHeight + parseFloat(getComputedStyle(controlBar).marginBottom);
+  controlBar.parentElement!.style.setProperty("--cb-h", `${h}px`);
+}).observe(controlBar);
 const cbVol = document.getElementById("cb-vol")!;
 const cbSql = document.getElementById("cb-sql")!;
 const cbMeter = document.getElementById("cb-meter")!;
