@@ -1952,10 +1952,14 @@ replayApt.addEventListener("change", () => {
 // Tune the chosen SSTV channel. The ISS presets carry a wider channel filter
 // (data-bw) so the Doppler drift over a pass stays inside it — an FM carrier
 // offset only adds DC to the audio, which the tone decoder ignores.
+// The capture centre is parked a quarter of the band away (as listenAt does),
+// so the dongle's DC spike never sits in the channel — against a weak pass it
+// would capture the FM demodulator. SSTV mode always runs at 2.4 MS/s.
+const SSTV_CENTER_OFFSET_HZ = 600e3;
 function sendSstvFreq(): void {
   const hz = parseFloat(sstvFreq.value);
   const bw = parseFloat(sstvFreq.selectedOptions[0]?.dataset.bw || "12500");
-  sock.send({ cmd: "tune", center_freq: hz });
+  sock.send({ cmd: "tune", center_freq: hz + SSTV_CENTER_OFFSET_HZ });
   sock.send({ cmd: "config", params: { tuned_freq: hz, bandwidth: bw } });
 }
 sstvFreq.addEventListener("change", () => {
