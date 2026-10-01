@@ -11,6 +11,8 @@
 // deprecated-but-insecure-context-friendly ScriptProcessorNode. The fallback
 // re-implements the worklet's jitter buffer here on the main thread.
 
+import { appBase } from "./ws";
+
 // The buffer is sized to the playback path, so we don't add latency where it
 // isn't needed. The AudioWorklet only runs in a secure context (localhost /
 // HTTPS) and plays on a dedicated audio thread, so a small cushion is plenty
@@ -68,7 +70,9 @@ export class AudioPlayer {
 
     if (this.ctx.audioWorklet) {
       try {
-        await this.ctx.audioWorklet.addModule("/pcm-worklet.js?v=3");
+        // appBase(): a root-absolute path 404s behind a reverse-proxy subpath
+        // (/sdr/), which silently dropped playback to the fallback below.
+        await this.ctx.audioWorklet.addModule(`${appBase()}pcm-worklet.js?v=3`);
         this.node = new AudioWorkletNode(this.ctx, "pcm-player", {
           outputChannelCount: [2],
           processorOptions: {
