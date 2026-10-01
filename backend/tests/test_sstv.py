@@ -253,5 +253,28 @@ def test_second_picture_after_the_first():
     assert dec._f.size < FS * 3, "search buffer must stay bounded"
 
 
+def test_mode_keeps_channel_set_before_start():
+    """The client sends the channel (off-centre, clear of the DC spike) while the
+    dongle is still opening; starting the mode must not snap it to the centre."""
+    from app.modes.sstv import SstvMode
+
+    class Manager:
+        center_freq = 438_150_000.0
+        sample_rate = 2_400_000.0
+
+        def emit_json(self, msg): pass
+        def emit_binary(self, tag, body): pass
+
+    mode = SstvMode(Manager())
+    mode.configure({"tuned_freq": 437_550_000.0, "bandwidth": 36_000.0})
+    mode.on_start()
+    mode.process(np.zeros(4096, dtype=np.complex64))
+    assert mode.tuned_freq == 437_550_000.0
+
+    bare = SstvMode(Manager())          # no channel sent: decode the centre
+    bare.on_start()
+    assert bare.tuned_freq == Manager.center_freq
+
+
 def test_vis_table_unique():
     assert len({m.vis for m in MODES.values()}) == len(MODES)

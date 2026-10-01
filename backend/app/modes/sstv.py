@@ -28,6 +28,11 @@ class SstvMode(RadioMode):
         self.tuned_freq = self.default_center_freq
 
     def on_start(self) -> None:
-        self.tuned_freq = self.manager.center_freq
-        self._user_tuned = True            # decode the centre channel right away
+        # The client parks the capture centre away from the channel (DC spike) and
+        # sends the channel as tuned_freq. That config usually lands before the
+        # worker gets here (the dongle takes a moment to open), so keep it —
+        # falling back to the centre would put the channel right on the spike.
+        if not self._user_tuned:
+            self.tuned_freq = self.manager.center_freq
+        self._user_tuned = True            # decode right away, no click needed
         super().on_start()
