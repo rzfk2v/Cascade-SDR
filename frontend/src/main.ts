@@ -114,6 +114,7 @@ const aptImage = new AptImage(document.getElementById("apt-canvas") as HTMLCanva
 let aptLineCount = 0;
 const sstvControls = document.getElementById("sstv-controls")!;
 const sstvStatus = document.getElementById("sstv-status")!;
+const sstvFreq = document.getElementById("sstv-freq") as HTMLSelectElement;
 const sstvView = document.getElementById("sstv-view")!;
 const sstvImage = new SstvImage(document.getElementById("sstv-canvas") as HTMLCanvasElement);
 let sstvRowCount = 0;
@@ -296,7 +297,7 @@ function updateBandInfo(): void {
   } else if (currentMode === "apt") {
     label = "NOAA APT · 137 MHz (weather sat)";
   } else if (currentMode === "sstv") {
-    label = "SSTV · 144.500 MHz (slow-scan TV)";
+    label = `SSTV · ${(parseFloat(sstvFreq.value) / 1e6).toFixed(3)} MHz (slow-scan TV)`;
   } else if (currentMode === "pager") {
     label = "Pager · POCSAG/FLEX";
   } else if (currentMode === "satellite") {
@@ -1339,6 +1340,7 @@ document.getElementById("mode-tabs")!.addEventListener("click", async (e) => {
     sstvImage.clear();
     sstvRowCount = 0;
     sstvStatus.textContent = "waiting for a transmission…";
+    sendSstvFreq();
   }
   if (mode === "pager") {
     // Carry the frequency over from Radio/Replay (the tuned channel) or
@@ -1947,6 +1949,23 @@ replayApt.addEventListener("change", () => {
 });
 
 // --- SSTV controls -------------------------------------------------------
+// Tune the chosen SSTV channel. The ISS presets carry a wider channel filter
+// (data-bw) so the Doppler drift over a pass stays inside it — an FM carrier
+// offset only adds DC to the audio, which the tone decoder ignores.
+function sendSstvFreq(): void {
+  const hz = parseFloat(sstvFreq.value);
+  const bw = parseFloat(sstvFreq.selectedOptions[0]?.dataset.bw || "12500");
+  sock.send({ cmd: "tune", center_freq: hz });
+  sock.send({ cmd: "config", params: { tuned_freq: hz, bandwidth: bw } });
+}
+sstvFreq.addEventListener("change", () => {
+  sstvImage.clear();
+  sstvRowCount = 0;
+  sstvStatus.textContent = "waiting for a transmission…";
+  sendSstvFreq();
+  updateBandInfo();
+  persist();
+});
 document.getElementById("sstv-save")!.addEventListener("click", () => {
   const url = sstvImage.toPng();
   if (!url) { sstvStatus.textContent = "nothing to save yet"; return; }
@@ -2034,7 +2053,7 @@ const persistValues: Record<string, HTMLInputElement | HTMLSelectElement> = {
   rangeStart, rangeStop, rangeStep, rangeDemod,
   upconvMhz, hfMode, tunerBw, step: stepSel,
   notchHz, ssbLow, ssbHigh, agcSpeed, toneSql,
-  voiceSens, scannerVoiceSens,
+  voiceSens, scannerVoiceSens, sstvFreq,
 };
 const persistChecks: Record<string, HTMLInputElement> = {
   gainAuto, biasTee, wfAuto, peakHold, rdsOn, stereoOn, showTracks,

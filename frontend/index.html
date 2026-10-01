@@ -265,15 +265,24 @@
 
         <section class="group" id="sstv-controls" hidden>
           <h2>SSTV (image)</h2>
+          <label>Frequency
+            <select id="sstv-freq">
+              <option value="144500000" data-bw="12500">2 m calling · 144.500</option>
+              <option value="437550000" data-bw="36000">ISS 70 cm · 437.550</option>
+              <option value="145800000" data-bw="22000">ISS 2 m · 145.800</option>
+            </select>
+          </label>
           <p id="sstv-status" class="status-line">waiting for a transmission…</p>
           <div class="bm-add">
             <button id="sstv-save">⤓ Save PNG</button>
             <button id="sstv-clear">Clear</button>
           </div>
           <p class="hint">Slow-scan TV pictures. Default is the 2 m calling
-            frequency <b>144.500 MHz</b> (NBFM). The mode (Martin / Scottie) is
-            auto-detected from the VIS header — a picture builds top-down over
-            ~1–2 min. For HF SSTV (e.g. 14.230 MHz) open <b>Radio</b>, switch to
+            frequency <b>144.500 MHz</b> (NBFM); pick an <b>ISS</b> downlink
+            for an ARISS event — the channel filter is widened there so the
+            Doppler drift across a pass stays inside it. The mode (Martin /
+            Scottie / Robot / PD) is auto-detected from the VIS header — a
+            picture builds top-down over ~1–2 min. For HF SSTV (e.g. 14.230 MHz) open <b>Radio</b>, switch to
             USB, tune, and turn on the SSTV toggle. Record IQ to decode again in
             Replay.</p>
         </section>

@@ -517,6 +517,11 @@ decoder, no external tool.
   NBFM) and decodes any transmission it hears. The **mode is auto-detected** from
   the VIS header — **Martin M1/M2**, **Scottie S1/S2/DX**, **Robot 36/72**, and
   **PD 50/90/120/160/180** are supported.
+- **Frequency** picks the channel: the 2 m calling frequency, or an **ISS**
+  downlink for ARISS SSTV events — **437.550 MHz** (70 cm, used by the 2026
+  events) or **145.800 MHz** (2 m). The ISS presets widen the channel filter
+  (36 / 22 kHz) so the Doppler drift across a pass (about ±10 kHz on 70 cm,
+  ±3.5 kHz on 2 m) stays inside it; no retuning needed during the pass.
 - The picture builds **top-down** over ~1–2 min. **Save PNG** downloads the
   full-resolution image; **Clear** restarts.
 - For **HF SSTV** (e.g. 14.230 MHz USB — needs an HF upconverter for an RTL-SDR),

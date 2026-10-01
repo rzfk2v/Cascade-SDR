@@ -222,5 +222,17 @@ def test_round_trip_pd120():
     _check_yuv(95)
 
 
+def test_robot36_with_dc_offset():
+    """An off-centre FM carrier (Doppler on an ISS pass: ~10 kHz at 70 cm against
+    5 kHz deviation) demodulates to a DC level twice the tone's amplitude."""
+    mode = next(m for m in MODES.values() if m.name == "Robot 36")
+    img = _gradient_image(mode.width, mode.height)
+    audio = encode_yuv(mode, img)
+    audio = audio / np.max(np.abs(audio)) + 2.0
+    started, rows = _decode(mode, audio)
+    assert started.get("name") == mode.name, f"mode detect: {started}"
+    assert len(rows) >= mode.height - 2, f"got {len(rows)} rows"
+
+
 def test_vis_table_unique():
     assert len({m.vis for m in MODES.values()}) == len(MODES)

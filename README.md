@@ -351,7 +351,9 @@ Select **SSTV**: it listens on the 2 m SSTV calling frequency **144.500 MHz**
 transmission's VIS header — the RGB modes **Martin M1/M2** and **Scottie
 S1/S2/DX**, plus the YUV modes **Robot 36/72** and **PD 50/90/120/160/180**, are
 supported. The image builds top-down over ~1–2 min; **Save PNG**
-downloads it full-resolution, **Clear** restarts. It's a **hand-written decoder**
+downloads it full-resolution, **Clear** restarts. The **Frequency** selector
+also offers the **ISS** downlinks (**437.550** / **145.800 MHz**) for ARISS SSTV
+events, with a wider filter that absorbs the Doppler drift over a pass. It's a **hand-written decoder**
 (no external tool): recover the instantaneous tone frequency (1500 Hz black …
 2300 Hz white) → detect VIS → slice each line's colour sweeps → image (YUV modes
 are converted back to RGB).

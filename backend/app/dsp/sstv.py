@@ -194,6 +194,11 @@ class SstvDecoder:
         # Heterodyne + low-pass to isolate the video tone around 1900 Hz.
         self._lp = firwin(65, 1000.0 / nyq)
         self._zi = np.zeros(64, dtype=complex)
+        # DC blocker (~30 Hz high-pass): an off-centre FM carrier — e.g. Doppler
+        # on a satellite pass — demodulates to a DC level that can dwarf the tone.
+        r = 1.0 - 2.0 * np.pi * 30.0 / self.fs
+        self._dc_b, self._dc_a = np.array([1.0, -1.0]), np.array([1.0, -r])
+        self._dc_zi = np.zeros(1)
         self._phase = 0.0                 # running heterodyne phase (radians)
         self._prev = 0.0 + 0.0j           # last sample, for the discriminator
         self._f = np.zeros(0)             # buffered instantaneous frequency
@@ -210,6 +215,7 @@ class SstvDecoder:
 
     # --- front end: audio -> instantaneous frequency ------------------------
     def _to_freq(self, audio: np.ndarray) -> np.ndarray:
+        audio, self._dc_zi = lfilter(self._dc_b, self._dc_a, audio, zi=self._dc_zi)
         n = np.arange(audio.size)
         osc = np.exp(-1j * (self._phase + 2.0 * np.pi * CENTER_HZ * n / self.fs))
         self._phase = (self._phase + 2.0 * np.pi * CENTER_HZ * audio.size / self.fs) % (

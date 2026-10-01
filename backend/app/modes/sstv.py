@@ -2,9 +2,10 @@
 
 A thin preset over :class:`~app.modes.radio.RadioMode`: narrow-FM at the 2 m SSTV
 calling frequency (144.500 MHz in EU) with the SSTV decoder enabled, decoding
-immediately (no click). The same SSTV decoding runs in any RadioMode when its
+immediately (no click). The client can retune it to another channel (e.g. the
+ISS downlinks 437.550 / 145.800 MHz) and widen the filter for Doppler. The same SSTV decoding runs in any RadioMode when its
 SSTV toggle is on, so HF SSTV works too — switch demod to USB and tune to e.g.
-14.230 MHz. The mode is auto-detected from the VIS header (Martin / Scottie).
+14.230 MHz. The mode is auto-detected from the VIS header (Martin / Scottie / Robot / PD).
 """
 from __future__ import annotations
 
