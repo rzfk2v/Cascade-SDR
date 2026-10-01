@@ -234,5 +234,24 @@ def test_robot36_with_dc_offset():
     assert len(rows) >= mode.height - 2, f"got {len(rows)} rows"
 
 
+def test_second_picture_after_the_first():
+    """ARISS sends a picture every couple of minutes: once one completes the
+    decoder must go back to listening for the next VIS header."""
+    mode = next(m for m in MODES.values() if m.name == "Robot 36")
+    img = _gradient_image(mode.width, mode.height)
+    one = encode_yuv(mode, img)
+    gap = np.random.default_rng(0).standard_normal(int(FS * 3)) * 0.3
+    starts: list[str] = []
+    rows: list[np.ndarray] = []
+    dec = SstvDecoder(FS, on_start=lambda n, w, h: starts.append(n),
+                      on_row=lambda r: rows.append(r.copy()))
+    audio = np.concatenate([gap, one, gap, one, gap])
+    for i in range(0, audio.size, 1024):
+        dec.process(audio[i:i + 1024])
+    assert starts == [mode.name, mode.name], starts
+    assert len(rows) >= 2 * (mode.height - 2), f"got {len(rows)} rows"
+    assert dec._f.size < FS * 3, "search buffer must stay bounded"
+
+
 def test_vis_table_unique():
     assert len({m.vis for m in MODES.values()}) == len(MODES)

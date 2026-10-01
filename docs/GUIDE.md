@@ -522,6 +522,10 @@ decoder, no external tool.
   events) or **145.800 MHz** (2 m). The ISS presets widen the channel filter
   (36 / 22 kHz) so the Doppler drift across a pass (about ±10 kHz on 70 cm,
   ±3.5 kHz on 2 m) stays inside it; no retuning needed during the pass.
+- You hear the channel while it decodes. Raise **Squelch** in the control bar
+  to mute the hiss between transmissions — it only gates the audio, the decoder
+  keeps listening. After a picture completes the decoder waits for the next one;
+  a new transmission replaces the picture on screen, so **Save PNG** first.
 - The picture builds **top-down** over ~1–2 min. **Save PNG** downloads the
   full-resolution image; **Clear** restarts.
 - For **HF SSTV** (e.g. 14.230 MHz USB — needs an HF upconverter for an RTL-SDR),

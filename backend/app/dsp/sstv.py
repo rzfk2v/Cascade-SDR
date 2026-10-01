@@ -207,6 +207,7 @@ class SstvDecoder:
         # Decoder state
         self.mode: Optional[Mode] = None
         self._cursor = 0.0                # absolute sample index of the next line
+        self._vis_next = 0                # absolute index the VIS search resumes at
         self.rows = 0                     # image rows emitted so far
         self._scan_idx = 0               # scan periods consumed (≠ rows for PD/Robot36)
         # Robot36 cross-line chroma reconstruction (one chroma per line, paired):
@@ -254,8 +255,12 @@ class SstvDecoder:
         return self._f[lo:hi] if hi > lo else self._f[lo:lo]
 
     def _trim(self) -> None:
-        # Drop consumed history, keeping a small margin before the cursor.
-        keep_from = int(self._cursor) - int(self._ms(60.0))
+        # Drop consumed history, keeping a small margin before the cursor — or,
+        # while still searching, the leader a not-yet-examined start bit needs.
+        if self.mode is None:
+            keep_from = self._vis_next - int(self._ms(200.0))
+        else:
+            keep_from = int(self._cursor) - int(self._ms(60.0))
         drop = keep_from - self._origin
         if drop > self.fs:  # only bother once there's a second to reclaim
             self._f = self._f[drop:]
@@ -267,22 +272,34 @@ class SstvDecoder:
         need = self._ms(300.0 + 10.0 + 300.0 + VIS_BIT_MS * 11)
         if self._f.size < need:
             return
-        is1900 = np.abs(self._f - CENTER_HZ) < 70.0
-        is1200 = np.abs(self._f - SYNC_HZ) < 70.0
-        is1100 = np.abs(self._f - 1100.0) < 70.0
-        is1300 = np.abs(self._f - 1300.0) < 70.0
         lead = int(self._ms(170.0))     # 1900 leader required before the start bit
         bitn = int(self._ms(VIS_BIT_MS))
         last = self._f.size - int(self._ms(VIS_BIT_MS * 10))
-        for s in range(lead + 1, max(lead + 1, last)):
-            # Start bit = a rising edge into 1200 Hz, preceded by the leader, with a
-            # ~30 ms run (this length rules out the 10 ms calibration break).
-            if not (is1200[s] and not is1200[s - 1]):
-                continue
-            if is1900[s - lead:s - bitn // 4].mean() < 0.8:
-                continue
+        # Each candidate start is examined exactly once: resume where the last
+        # call stopped rather than rescanning the buffer (which would cost more
+        # than real time while waiting on plain noise).
+        first = max(lead + 1, self._vis_next - self._origin)
+        if last <= first:
+            return
+        self._vis_next = self._origin + last
+        is1200 = np.abs(self._f - SYNC_HZ) < 70.0
+        # Start bit = a rising edge into 1200 Hz, preceded by the leader, with a
+        # ~30 ms run (this length rules out the 10 ms calibration break).
+        edges = first + np.flatnonzero(is1200[first:last] & ~is1200[first - 1:last - 1])
+        if edges.size == 0:
+            return
+        n1900 = np.concatenate(([0], np.cumsum(np.abs(self._f - CENTER_HZ) < 70.0)))
+        span = lead - bitn // 4
+        edges = edges[(n1900[edges - bitn // 4] - n1900[edges - lead]) >= 0.8 * span]
+        if edges.size == 0:
+            return
+        is1100 = np.abs(self._f - 1100.0) < 70.0
+        is1300 = np.abs(self._f - 1300.0) < 70.0
+        max_run = int(self._ms(45.0))
+        for s in edges:
+            s = int(s)
             run = 0
-            while s + run < is1200.size and is1200[s + run]:
+            while run <= max_run and s + run < is1200.size and is1200[s + run]:
                 run += 1
             if not (self._ms(20.0) <= run <= self._ms(45.0)):
                 continue
@@ -358,6 +375,9 @@ class SstvDecoder:
             self.rows += self._emit_line(line_start)
             self._cursor = line_start + line_n
             self._scan_idx += 1
+        # Picture complete: go back to listening for the next VIS header.
+        self.mode = None
+        self._vis_next = int(self._cursor)
 
     def _emit_line(self, line_start: float) -> int:
         """Decode one scan period; emit its image row(s); return how many."""

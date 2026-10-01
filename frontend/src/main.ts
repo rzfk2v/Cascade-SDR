@@ -424,9 +424,12 @@ sock.onJson((msg) => {
         cbFreq.hidden = !["spectrum", "radio"].includes(msg.mode);
         cbStep.hidden = !["spectrum", "radio", "replay"].includes(msg.mode);
         cbDemod.hidden = !audio;
-        cbVol.hidden = !audio;
-        cbSql.hidden = !audio;
-        cbMeter.hidden = !audio;
+        // SSTV plays the channel too: without a squelch it hisses between
+        // transmissions. (The squelch only gates the audio, not the decoder.)
+        const monitor = audio || msg.mode === "sstv";
+        cbVol.hidden = !monitor;
+        cbSql.hidden = !monitor;
+        cbMeter.hidden = !monitor;
       }
       showView(msg.mode);
       break;
@@ -1960,7 +1963,13 @@ function sendSstvFreq(): void {
   const hz = parseFloat(sstvFreq.value);
   const bw = parseFloat(sstvFreq.selectedOptions[0]?.dataset.bw || "12500");
   sock.send({ cmd: "tune", center_freq: hz + SSTV_CENTER_OFFSET_HZ });
-  sock.send({ cmd: "config", params: { tuned_freq: hz, bandwidth: bw } });
+  sock.send({
+    cmd: "config",
+    params: {
+      tuned_freq: hz, bandwidth: bw,
+      volume: parseFloat(volInput.value), squelch: parseFloat(sqlInput.value),
+    },
+  });
 }
 sstvFreq.addEventListener("change", () => {
   sstvImage.clear();
