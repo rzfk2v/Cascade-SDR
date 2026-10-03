@@ -11,10 +11,12 @@ import numpy as np
 import pytest
 
 from app.dsp.sstv import (
+    BLACK_HZ,
     CENTER_HZ,
     MODES,
     SstvDecoder,
     SYNC_HZ,
+    WHITE_HZ,
 )
 
 FS = 48_000.0
@@ -278,3 +280,31 @@ def test_mode_keeps_channel_set_before_start():
 
 def test_vis_table_unique():
     assert len({m.vis for m in MODES.values()}) == len(MODES)
+
+
+def _scan_reference(dec: SstvDecoder, start: float, dur: float, width: int) -> np.ndarray:
+    """The original per-pixel _scan: the vectorized one must match it exactly."""
+    out = np.zeros(width, dtype=np.uint8)
+    px = dur / width
+    for i in range(width):
+        seg = dec._slice(start + i * px, start + (i + 1) * px)
+        f = float(np.mean(seg)) if seg.size else BLACK_HZ
+        v = (f - BLACK_HZ) / (WHITE_HZ - BLACK_HZ)
+        out[i] = int(np.clip(v, 0.0, 1.0) * 255.0 + 0.5)
+    return out
+
+
+@pytest.mark.parametrize("start,dur,width", [
+    (1_000.5, 7_000.0, 640),     # ordinary sweep, half-sample start
+    (1_000.0, 300.0, 640),       # slots under a sample wide: some come out empty
+    (-80.0, 2_000.0, 320),       # starts before the retained history
+    (9_000.0, 2_500.0, 320),     # runs off the end of the buffer
+    (20_000.0, 500.0, 64),       # entirely past the buffer: all black
+])
+def test_vectorized_scan_matches_per_pixel_reference(start, dur, width):
+    dec = SstvDecoder(FS, on_start=lambda *a: None, on_row=lambda r: None)
+    rng = np.random.default_rng(int(start) & 0xFFFF)
+    dec._f = rng.uniform(BLACK_HZ - 200.0, WHITE_HZ + 200.0, size=10_000)  # past both clips
+    dec._origin = 37
+    np.testing.assert_array_equal(dec._scan(start, dur, width),
+                                  _scan_reference(dec, start, dur, width))

@@ -430,12 +430,22 @@ class SstvDecoder:
             self.on_row(rgb)
 
     def _scan(self, start: float, dur: float, width: int) -> np.ndarray:
-        """Read one channel sweep into `width` pixel values (0–255)."""
-        out = np.zeros(width, dtype=np.uint8)
+        """Read one channel sweep into `width` pixel values (0–255).
+
+        Each pixel is the mean frequency over its slot, the same index ranges
+        `_slice` would cut. One cumulative sum gives every slot's mean at once:
+        a per-pixel loop made ~2,500 tiny numpy calls per PD120 line pair, all
+        in one burst on the IQ worker thread, which on a Pi could back the
+        reader up far enough to drop IQ mid-picture.
+        """
         px = dur / width
-        for i in range(width):
-            seg = self._slice(start + i * px, start + (i + 1) * px)
-            f = float(np.mean(seg)) if seg.size else BLACK_HZ
-            v = (f - BLACK_HZ) / (WHITE_HZ - BLACK_HZ)
-            out[i] = int(np.clip(v, 0.0, 1.0) * 255.0 + 0.5)
-        return out
+        edges = start + np.arange(width + 1) * px
+        idx = np.round(edges).astype(np.int64) - self._origin   # == int(round(x))
+        lo = np.clip(idx[:-1], 0, self._f.size)
+        hi = np.clip(idx[1:], 0, self._f.size)
+        a, b = int(lo[0]), int(hi[-1])                         # edges ascend
+        cs = np.concatenate(([0.0], np.cumsum(self._f[a:b], dtype=np.float64)))
+        n = hi - lo
+        f = np.where(n > 0, (cs[hi - a] - cs[lo - a]) / np.maximum(n, 1), BLACK_HZ)
+        v = (f - BLACK_HZ) / (WHITE_HZ - BLACK_HZ)
+        return (np.clip(v, 0.0, 1.0) * 255.0 + 0.5).astype(np.uint8)
