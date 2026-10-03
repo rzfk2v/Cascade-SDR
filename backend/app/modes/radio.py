@@ -31,6 +31,7 @@ from app.dsp.blocks import (
     ComplexChannelizer,
     DeEmphasis,
     FmDiscriminator,
+    FmTracker,
     NoiseBlanker,
     NotchFilter,
     RealDecimator,
@@ -53,6 +54,7 @@ CW_ENV_RATE = 1000  # envelope rate for the Morse decoder
 AUDIO_RATE = 48_000
 IF_RATE = 240_000      # IF rate to aim for (what a fixed ÷10 gave at 2.4 MS/s)
 GATE_RAMP = 240        # squelch open/close ramp, ~5 ms @ 48 kHz (no click)
+AFC_HALF_BW = 6_500.0  # narrow tracked channel for the picture decoder (13 kHz)
 
 # FM stereo pilot hysteresis (pilot RMS as a fraction of the MPX): enter stereo
 # above ON, leave below OFF — a station hovering at one threshold would
@@ -282,6 +284,10 @@ class RadioMode(Mode):
         self._apt_dirty = False
         self.sstv_enabled = False    # decode SSTV image (auto-detects the mode)
         self._sstv: SstvDecoder | None = None
+        # Feed the picture decoder from a narrow channel that follows a drifting
+        # carrier (satellite Doppler); SSTV mode turns it on. NFM only.
+        self.afc_enabled = False
+        self._track: FmTracker | None = None
         self._sstv_dirty = False
         self._need_rebuild = True
         self._user_tuned = False     # has the client picked a channel yet?
@@ -433,8 +439,9 @@ class RadioMode(Mode):
         self.manager.emit_binary(FrameTag.APT, row.tobytes())
 
     def _emit_sstv_start(self, mode: str, width: int, height: int) -> None:
+        by = self._sstv.started_by if self._sstv is not None else None
         self.manager.emit_json({"type": "sstv_start", "mode": mode,
-                                "width": width, "height": height})
+                                "width": width, "height": height, "by": by})
 
     def _emit_sstv_row(self, row) -> None:
         self.manager.emit_binary(FrameTag.SSTV, row.tobytes())
@@ -504,10 +511,17 @@ class RadioMode(Mode):
         self._stereo_on = False
         self._apt = None
         self._sstv = None
+        self._track = None
         self._deemph_l = self._deemph_r = None
         self._tones = None
         self._tone_last = None
         if self.demod in ("wfm", "nfm"):
+            if self.afc_enabled and self.demod == "nfm":
+                # Search the whole channel; demodulate only 13 kHz of it, centred
+                # on the carrier wherever Doppler has put it.
+                self._track = FmTracker(if_rate, audio_decim_for(if_rate),
+                                        min(AFC_HALF_BW, self.bandwidth / 2.0),
+                                        self.bandwidth / 2.0)
             self._disc = FmDiscriminator()
             self._fm_dev = float(cfg["dev"])
             self._audio_decim = RealDecimator(if_rate, audio_decim, cfg["audio"])
@@ -670,7 +684,10 @@ class RadioMode(Mode):
                         self._apt_dirty = False
                     self._apt.process(mono)
                 # SSTV: decode the image tone straight from the FM audio (pre-deemphasis)
-                self._feed_sstv(mono, self._audio_decim.out_rate)
+                if self._track is not None and self.sstv_enabled:
+                    self._feed_sstv(self._track.process(baseband), self._track.out_rate)
+                else:
+                    self._feed_sstv(mono, self._audio_decim.out_rate)
                 # Stereo: recover L−R from the 38 kHz subcarrier (only when a pilot is
                 # present), otherwise fall back to mono (L = R). The mono fallback
                 # still goes through the same L/R de-emphasis pair so the filter
@@ -736,6 +753,9 @@ class RadioMode(Mode):
                 # lets the panel show what voice squelch is hearing, so the
                 # sensitivity can be set by eye instead of by guesswork
                 "voice": round(self._voice.score, 2) if self._voice is not None else None,
+                # where the picture channel is following the carrier, if it is
+                "afc": (None if self._track is None else
+                        {"hz": round(self._track.offset), "lock": self._track.locked}),
                 "vfos": [{"on": v.on, "db": round(v.level_db, 1), "open": v.open}
                          for v in self.vfos],
             })

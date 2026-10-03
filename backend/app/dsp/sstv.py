@@ -31,6 +31,19 @@ WHITE_HZ = 2300.0
 SYNC_HZ = 1200.0
 VIS_BIT_MS = 30.0       # each VIS bit is 30 ms
 
+# Starting a picture from its line syncs when the VIS header was missed (a weak
+# satellite pass often only comes up out of the noise after the header). The
+# syncs of the last TRAIN_WINDOW_S are folded at every mode's line period; a
+# mode wins when most of its lines carry a sync. Shortest period first: a train
+# of 150 ms lines also folds perfectly at 300 ms (Robot 72) and 1050 ms
+# (Scottie DX), but a real Robot 72 would only put syncs on half the 150 ms grid.
+TRAIN_WINDOW_S = 10.0   # how far back a found train can start the picture
+TRAIN_EVAL_S = 0.5      # search cadence
+TRAIN_MIN_LINES = 8     # lines with a sync before a train counts
+TRAIN_MIN_FRAC = 0.7    # of the train's lines (from its first one) that must carry one
+TRAIN_MIN_CONTRAST = 4.0
+CATCHUP_PERIODS = 4     # scan periods decoded per call while catching up on history
+
 # Channel indices used inside a line layout. RGB modes use R/G/B; YUV modes reuse
 # the same slots as luma + the two colour-difference channels, plus a 2nd luma
 # slot (Y2) for the PD modes (which pack two image rows per scan period).
@@ -178,6 +191,79 @@ MODES: dict[int, Mode] = {
 }
 
 
+_BY_PERIOD = sorted(MODES.values(), key=lambda m: m.line_ms)
+
+
+def _fold(x: np.ndarray, period: float) -> np.ndarray:
+    """Mean of `x` (1 ms bins) at each phase of a `period`-ms cycle."""
+    nb = int(np.ceil(period))
+    ph = np.floor(np.arange(x.size) % period).astype(np.int64)
+    return np.bincount(ph, weights=x, minlength=nb) / np.maximum(np.bincount(ph, minlength=nb), 1)
+
+
+def _train(s: np.ndarray, m: Mode) -> Optional[tuple[np.ndarray, np.ndarray]]:
+    """Look for mode m's line syncs in per-ms sync-likeness `s`.
+
+    Returns the train's line grid (ms into `s`, starting at its first confirmed
+    line) and which of those lines carry a sync — or None if it isn't there.
+    """
+    period, n_sync = m.line_ms, max(1, int(round(m.sync_ms)))
+    c = np.concatenate(([0.0], np.cumsum(s)))
+    sm = (c[n_sync:] - c[:-n_sync]) / n_sync          # mean over a sync length from j
+    if sm.size < TRAIN_MIN_LINES * period:
+        return None
+    fold = _fold(sm, period)
+    phi = int(np.argmax(fold))
+    if fold[phi] < TRAIN_MIN_CONTRAST * (float(np.median(fold)) + 1e-3):
+        return None
+    pos = np.round(phi + np.arange(int((sm.size - 1 - phi) // period) + 1) * period)
+    pos = pos.astype(np.int64)
+    # A line carries a sync if it stands out from the rest of *that* line, not
+    # from the window: a clean picture reads ~0 between its syncs and noise
+    # ~0.03, one window can hold both, and noise ahead of a picture then passes
+    # for syncs — differently on every mode's grid.
+    body = np.arange(n_sync + 2, int(period) - 2)
+    rest = np.median(sm[np.clip(pos[:, None] + body, 0, sm.size - 1)], axis=1)
+    peak = sm[np.clip(pos[:, None] + np.array([-1, 0, 1]), 0, sm.size - 1)].max(axis=1)
+    hit = peak > np.maximum(3.0 * rest, 0.05)
+    # The train is judged from its first confirmed line on, so whatever came
+    # before it doesn't count — and a short-period mode reaches its minimum
+    # line count first, before any longer mode its syncs also fit.
+    k0 = next((k for k in range(hit.size) if hit[k] and hit[k:k + 4].sum() >= 3), None)
+    if k0 is None:
+        return None
+    h = hit[k0:]
+    if h.sum() < TRAIN_MIN_LINES or h.mean() < TRAIN_MIN_FRAC:
+        return None
+    if not _sync_width_fits(s, period, phi, m):
+        return None
+    return pos[k0:], h
+
+
+def _sync_width_fits(s: np.ndarray, period: float, phi: int, m: Mode) -> bool:
+    """The syncs must be about as long as the mode's: otherwise a 9 ms Robot
+    train that happens to fold at a PD line period would pose as PD's 20 ms."""
+    prof = _fold(s, period)
+    w = int(round(m.sync_ms))
+    seg = np.roll(prof, -(phi - 3))[: 2 * w + 10] - float(np.median(prof))
+    top = float(seg.max())
+    if top <= 0.0:
+        return False
+    width = int((seg > 0.5 * top).sum())
+    return 0.6 * m.sync_ms <= width <= 1.5 * m.sync_ms + 2.0
+
+
+def _parity_separator(m: Mode) -> tuple[float, float]:
+    """(offset, duration) in ms of Robot 36's even/odd tone: the sep after the Y scan."""
+    t, seen_scan = 0.0, False
+    for kind, _ch, dur in m.segments:
+        if kind == "sep" and seen_scan:
+            return t, dur
+        seen_scan = seen_scan or kind == "scan"
+        t += dur
+    return 0.0, 0.0
+
+
 class SstvDecoder:
     """Streaming SSTV decoder. Feed mono audio; get VIS-detected RGB rows out."""
 
@@ -208,6 +294,11 @@ class SstvDecoder:
         self.mode: Optional[Mode] = None
         self._cursor = 0.0                # absolute sample index of the next line
         self._vis_next = 0                # absolute index the VIS search resumes at
+        self._train_from = 0              # sync evidence before this was the last picture
+        self._train_next = int(self.fs * TRAIN_EVAL_S)  # when the train search next runs
+        self.started_by: Optional[str] = None   # "vis" or "sync": how this picture was found
+        self._sbins = np.zeros(0)         # per-ms sync-likeness, for the train search
+        self._sbin0 = 0                   # absolute ms-bin index of _sbins[0]
         self.rows = 0                     # image rows emitted so far
         self._scan_idx = 0               # scan periods consumed (≠ rows for PD/Robot36)
         # Robot36 cross-line chroma reconstruction (one chroma per line, paired):
@@ -236,10 +327,14 @@ class SstvDecoder:
         f = self._to_freq(np.asarray(audio, dtype=float))
         self._f = np.concatenate([self._f, f])
         self._fed += audio.size
+        self._tally_syncs()
         if self.mode is None:
             self._try_vis()
+        if self.mode is None and self._fed >= self._train_next:
+            self._train_next = self._fed + int(self._ms(TRAIN_EVAL_S * 1000.0))
+            self._try_train()
         if self.mode is not None:
-            self._decode_lines()
+            self._decode_lines(audio.size)
         self._trim()
 
     # --- helpers ------------------------------------------------------------
@@ -258,7 +353,8 @@ class SstvDecoder:
         # Drop consumed history, keeping a small margin before the cursor — or,
         # while still searching, the leader a not-yet-examined start bit needs.
         if self.mode is None:
-            keep_from = self._vis_next - int(self._ms(200.0))
+            keep_from = min(self._vis_next - int(self._ms(200.0)),
+                            self._fed - int(self._ms((TRAIN_WINDOW_S + 1.0) * 1000.0)))
         else:
             keep_from = int(self._cursor) - int(self._ms(60.0))
         drop = keep_from - self._origin
@@ -282,19 +378,24 @@ class SstvDecoder:
         if last <= first:
             return
         self._vis_next = self._origin + last
-        is1200 = np.abs(self._f - SYNC_HZ) < 70.0
+        # Only the unexamined tail (plus the leader a start bit needs): the buffer
+        # also holds seconds of history for the sync-train search.
+        base = first - lead - 1
+        fv = self._f[base:]
+        first, last = first - base, last - base
+        is1200 = np.abs(fv - SYNC_HZ) < 70.0
         # Start bit = a rising edge into 1200 Hz, preceded by the leader, with a
         # ~30 ms run (this length rules out the 10 ms calibration break).
         edges = first + np.flatnonzero(is1200[first:last] & ~is1200[first - 1:last - 1])
         if edges.size == 0:
             return
-        n1900 = np.concatenate(([0], np.cumsum(np.abs(self._f - CENTER_HZ) < 70.0)))
+        n1900 = np.concatenate(([0], np.cumsum(np.abs(fv - CENTER_HZ) < 70.0)))
         span = lead - bitn // 4
         edges = edges[(n1900[edges - bitn // 4] - n1900[edges - lead]) >= 0.8 * span]
         if edges.size == 0:
             return
-        is1100 = np.abs(self._f - 1100.0) < 70.0
-        is1300 = np.abs(self._f - 1300.0) < 70.0
+        is1100 = np.abs(fv - 1100.0) < 70.0
+        is1300 = np.abs(fv - 1300.0) < 70.0
         max_run = int(self._ms(45.0))
         for s in edges:
             s = int(s)
@@ -315,8 +416,82 @@ class SstvDecoder:
             mode = MODES.get(code)
             if mode is None:
                 continue
-            self._lock(mode, abs_index=self._origin + s + int(self._ms(VIS_BIT_MS * 10)))
+            self.started_by = "vis"
+            self._lock(mode, abs_index=self._origin + base + s + int(self._ms(VIS_BIT_MS * 10)))
             return
+
+    def _tally_syncs(self) -> None:
+        """Extend the per-ms sync tally with the bins the new audio completed.
+
+        Kept incrementally (a few dozen bins per call) so the train search never
+        has to re-derive seconds of history from the raw frequency buffer.
+        """
+        spb = self.fs / 1000.0
+        j0 = self._sbin0 + self._sbins.size          # next bin to fill
+        j1 = int(self._fed // spb)                    # bins the audio now completes
+        if j1 <= j0:
+            return
+        e = np.round(np.arange(j0, j1 + 1) * spb).astype(np.int64) - self._origin
+        if e[0] < 0:                                  # history gone: restart the tally
+            self._sbins, self._sbin0 = np.zeros(0), j1
+            return
+        c = np.concatenate(([0], np.cumsum(np.abs(self._f[e[0]:e[-1]] - SYNC_HZ) < 60.0)))
+        new = (c[e[1:] - e[0]] - c[e[:-1] - e[0]]) / np.diff(e)
+        keep = int((TRAIN_WINDOW_S + 1.0) * 1000.0)
+        self._sbins = np.concatenate((self._sbins, new))[-keep:]
+        self._sbin0 = j1 - self._sbins.size
+
+    def _try_train(self) -> None:
+        """Start a picture from its train of line syncs, when no VIS header came."""
+        spb = self.fs / 1000.0
+        end = self._sbin0 + self._sbins.size
+        lo = max(int(np.ceil(self._train_from / spb)), self._sbin0,
+                 end - int(TRAIN_WINDOW_S * 1000.0))
+        s = self._sbins[lo - self._sbin0:]
+        for m in _BY_PERIOD:                 # shortest first: harmonics can't win
+            found = _train(s, m)
+            if found is None:
+                continue
+            pos, hit = found                 # pos[0]: the picture's first confirmed line
+            line = self._ms(m.line_ms)
+            sync = self._refine_sync((lo + pos[0]) * spb, line, np.flatnonzero(hit), m)
+            start = sync - self._ms(m.sync_offset_ms)   # Scottie: sync is mid-line
+            while start < self._origin:
+                start += line
+            if m.color == "ROBOT36" and self._robot36_odd(start, line, m):
+                start += line                # chroma pairs must begin on an R-Y line
+            self.started_by = "sync"
+            self._lock(m, int(start))
+            self._cursor = float(start)      # _lock's leading-sync step is VIS-only
+            return
+
+    def _refine_sync(self, coarse: float, line: float, lines: np.ndarray, m: Mode) -> float:
+        """Sample-accurate sync start (absolute index): align a sync-length matched
+        filter across the train's lines within ±1.5 ms of the 1 ms grid estimate."""
+        n = max(1, int(round(self._ms(m.sync_ms))))
+        r = int(self._ms(1.5))
+        score = np.zeros(2 * r + 1)
+        for k in lines:
+            at = int(round(coarse + k * line)) - self._origin
+            if at - r < 0 or at + r + n > self._f.size:
+                continue
+            c = np.concatenate(([0], np.cumsum(np.abs(self._f[at - r:at + r + n] - SYNC_HZ) < 60.0)))
+            score += (c[n:] - c[:-n]) / n
+        return coarse + float(np.argmax(score) - r)
+
+    def _robot36_odd(self, start: float, line: float, m: Mode) -> bool:
+        """Does the line at `start` carry B-Y? Its separator is 2300 Hz, R-Y's 1500."""
+        off, dur = _parity_separator(m)
+        votes = n = 0
+        for k in range(12):
+            a = int(start + k * line + self._ms(off)) - self._origin
+            b = a + int(self._ms(dur))
+            if a < 0 or b > self._f.size:
+                break
+            odd_here = float(np.median(self._f[a:b])) > CENTER_HZ
+            votes += odd_here != (k % 2 == 1)    # this line says line 0 is odd
+            n += 1
+        return n > 0 and 2 * votes > n
 
     def _lock(self, mode: Mode, abs_index: int) -> None:
         self.mode = mode
@@ -348,20 +523,30 @@ class SstvDecoder:
         if seg.size < run + 2:
             return None
         band = np.abs(seg - SYNC_HZ) < 60.0
-        first_ok = None
-        for k in range(1, seg.size - run):
-            if band[k:k + run].mean() > 0.8:
-                if first_ok is None:
-                    first_ok = k
-                if not band[k - 1]:        # rising edge into the sync — best anchor
-                    return lo + k
-        return lo + first_ok if first_ok is not None else None
+        # Every candidate k at once (a per-k loop walked the whole window in
+        # noise, which is exactly when a weak pass needs it): a run-length mean
+        # from a cumulative sum, then the first rising edge into a sync run.
+        c = np.concatenate(([0], np.cumsum(band)))
+        ks = np.arange(1, seg.size - run)
+        ok = ks[(c[ks + run] - c[ks]) / run > 0.8]
+        if ok.size == 0:
+            return None
+        rising = ok[~band[ok - 1]]       # rising edge into the sync — best anchor
+        return lo + int(rising[0] if rising.size else ok[0])
 
-    def _decode_lines(self) -> None:
+    def _decode_lines(self, new_samples: int = 0) -> None:
         m = self.mode
         assert m is not None
         line_n = self._ms(m.line_ms)
+        # A sync-started picture begins seconds in the past; spread that backlog
+        # over a few calls rather than decoding it in one burst on the IQ thread.
+        # Whatever the new audio holds is always decoded, so a picture found by
+        # its header (no backlog) is never held back.
+        budget = int(new_samples // line_n) + 1 + CATCHUP_PERIODS
         while self.rows < m.height:
+            if budget == 0:
+                return
+            budget -= 1
             line_start = self._cursor
             need_abs = line_start + line_n
             if self._origin + self._f.size < need_abs:
@@ -375,9 +560,11 @@ class SstvDecoder:
             self.rows += self._emit_line(line_start)
             self._cursor = line_start + line_n
             self._scan_idx += 1
-        # Picture complete: go back to listening for the next VIS header.
+        # Picture complete: go back to listening for the next VIS header — and
+        # don't let this picture's own syncs start another one.
         self.mode = None
         self._vis_next = int(self._cursor)
+        self._train_from = int(self._cursor)
 
     def _emit_line(self, line_start: float) -> int:
         """Decode one scan period; emit its image row(s); return how many."""

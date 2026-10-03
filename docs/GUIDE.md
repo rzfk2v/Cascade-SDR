@@ -522,6 +522,13 @@ decoder, no external tool.
   events) or **145.800 MHz** (2 m). The ISS presets widen the channel filter
   (36 / 22 kHz) so the Doppler drift across a pass (about ±10 kHz on 70 cm,
   ±3.5 kHz on 2 m) stays inside it; no retuning needed during the pass.
+- **Weak passes.** The picture is decoded from a narrow 13 kHz channel that
+  *follows* the signal inside that wide one as Doppler moves it — the panel shows
+  *following the signal* and the frequency it's at — which buys several dB on a
+  low pass. And if the header that starts a picture is lost in the noise (a weak
+  signal often only comes up after it), the decoder still finds the picture from
+  its line syncs a few seconds in and decodes it from the top; the status then
+  says *started from its syncs*.
 - A strip of **waterfall** sits above the picture, so you can see whether
   anything is on the channel — and watch Doppler walk an ISS signal across a
   pass — before the decoder has a single line to draw. (APT shows the same strip.)

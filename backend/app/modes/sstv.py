@@ -22,6 +22,7 @@ class SstvMode(RadioMode):
         self.demod = "nfm"
         self.bandwidth = float(DEMODS["nfm"]["bw"])
         self.sstv_enabled = True
+        self.afc_enabled = True             # follow ISS Doppler with a narrow channel
         self.rds_enabled = False
         self.stereo_enabled = False
         self.apt_enabled = False

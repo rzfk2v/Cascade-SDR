@@ -114,6 +114,10 @@ const aptImage = new AptImage(document.getElementById("apt-canvas") as HTMLCanva
 let aptLineCount = 0;
 const sstvControls = document.getElementById("sstv-controls")!;
 const sstvStatus = document.getElementById("sstv-status")!;
+// Where the picture channel is following the carrier (satellite Doppler), and
+// whether the current picture was caught by its header or only its syncs.
+const sstvTrack = document.getElementById("sstv-track")!;
+let sstvBy = "";
 const sstvFreq = document.getElementById("sstv-freq") as HTMLSelectElement;
 const sstvView = document.getElementById("sstv-view")!;
 const sstvImage = new SstvImage(document.getElementById("sstv-canvas") as HTMLCanvasElement);
@@ -497,6 +501,15 @@ sock.onJson((msg) => {
       renderReplayList();
       break;
     case "radio_level":
+      if (msg.afc) {
+        const hz = parseFloat(sstvFreq.value) + msg.afc.hz;
+        const off = `${msg.afc.hz >= 0 ? "+" : "−"}${Math.abs(msg.afc.hz / 1000).toFixed(1)} kHz`;
+        sstvTrack.textContent = msg.afc.lock
+          ? `following the signal · ${(hz / 1e6).toFixed(4)} MHz (Doppler ${off})`
+          : "no signal to follow yet";
+      } else {
+        sstvTrack.textContent = "";
+      }
       levelMeter.textContent =
         `${msg.db.toFixed(0)} dB ${msg.open ? "▶" : "🔇"}${msg.stereo ? " ◖◗ stereo" : ""}`;
       levelMeter.classList.toggle("open", msg.open);
@@ -580,7 +593,8 @@ sock.onJson((msg) => {
     case "sstv_start":
       sstvImage.start(msg.mode, msg.width, msg.height);
       sstvRowCount = 0;
-      sstvStatus.textContent = `▶ ${msg.mode} · ${msg.width}×${msg.height}`;
+      sstvBy = msg.by === "sync" ? " · header missed, started from its syncs" : "";
+      sstvStatus.textContent = `▶ ${msg.mode} · ${msg.width}×${msg.height}${sstvBy}`;
       break;
     case "pager_config":
       renderPagerChannels(msg.channels || [], msg.freq);
@@ -683,7 +697,7 @@ sock.onBinary((tag, body) => {
     sstvImage.pushRow(new Uint8Array(body.buffer, body.byteOffset, body.byteLength));
     sstvRowCount++;
     const label = sstvImage.modeLabel();
-    sstvStatus.textContent = `▶ ${label} · ${sstvRowCount} rows`;
+    sstvStatus.textContent = `▶ ${label} · ${sstvRowCount} rows${sstvBy}`;
   } else if (tag === FrameTag.AUDIO) {
     audio.pushInt16(body);                       // interleaved L,R stereo
     if (wavRec.recording) {
