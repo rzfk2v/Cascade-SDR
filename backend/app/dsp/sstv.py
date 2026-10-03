@@ -194,11 +194,20 @@ MODES: dict[int, Mode] = {
 _BY_PERIOD = sorted(MODES.values(), key=lambda m: m.line_ms)
 
 
+_PHASES: dict[tuple[float, int], tuple[np.ndarray, np.ndarray]] = {}
+
+
 def _fold(x: np.ndarray, period: float) -> np.ndarray:
     """Mean of `x` (1 ms bins) at each phase of a `period`-ms cycle."""
     nb = int(np.ceil(period))
-    ph = np.floor(np.arange(x.size) % period).astype(np.int64)
-    return np.bincount(ph, weights=x, minlength=nb) / np.maximum(np.bincount(ph, minlength=nb), 1)
+    key = (period, x.size)
+    if key not in _PHASES:          # the search window is a fixed size once full
+        if len(_PHASES) > 64:
+            _PHASES.clear()
+        ph = np.floor(np.arange(x.size) % period).astype(np.int64)
+        _PHASES[key] = (ph, np.maximum(np.bincount(ph, minlength=nb), 1))
+    ph, count = _PHASES[key]
+    return np.bincount(ph, weights=x, minlength=nb) / count
 
 
 def _train(s: np.ndarray, m: Mode) -> Optional[tuple[np.ndarray, np.ndarray]]:
@@ -212,17 +221,16 @@ def _train(s: np.ndarray, m: Mode) -> Optional[tuple[np.ndarray, np.ndarray]]:
     sm = (c[n_sync:] - c[:-n_sync]) / n_sync          # mean over a sync length from j
     if sm.size < TRAIN_MIN_LINES * period:
         return None
-    fold = _fold(sm, period)
-    phi = int(np.argmax(fold))
-    if fold[phi] < TRAIN_MIN_CONTRAST * (float(np.median(fold)) + 1e-3):
-        return None
+    phi = int(np.argmax(_fold(sm, period)))            # the syncs' phase in the cycle
     pos = np.round(phi + np.arange(int((sm.size - 1 - phi) // period) + 1) * period)
     pos = pos.astype(np.int64)
     # A line carries a sync if it stands out from the rest of *that* line, not
     # from the window: a clean picture reads ~0 between its syncs and noise
     # ~0.03, one window can hold both, and noise ahead of a picture then passes
     # for syncs — differently on every mode's grid.
-    body = np.arange(n_sync + 2, int(period) - 2)
+    # (sm is a moving average over the sync length, so neighbouring bins are
+    # nearly the same: every few bins gives the same median, several times cheaper)
+    body = np.arange(n_sync + 2, int(period) - 2, max(1, n_sync // 2))
     rest = np.median(sm[np.clip(pos[:, None] + body, 0, sm.size - 1)], axis=1)
     peak = sm[np.clip(pos[:, None] + np.array([-1, 0, 1]), 0, sm.size - 1)].max(axis=1)
     hit = peak > np.maximum(3.0 * rest, 0.05)
@@ -234,6 +242,12 @@ def _train(s: np.ndarray, m: Mode) -> Optional[tuple[np.ndarray, np.ndarray]]:
         return None
     h = hit[k0:]
     if h.sum() < TRAIN_MIN_LINES or h.mean() < TRAIN_MIN_FRAC:
+        return None
+    # Contrast over the train too, not the window: diluted by the noise ahead
+    # of a picture, it crept over the line first for Robot 72's coarser fold
+    # while Robot 36 had every line.
+    tf = _fold(sm[pos[k0]:], period)
+    if tf.max() < TRAIN_MIN_CONTRAST * (float(np.median(tf)) + 1e-3):
         return None
     if not _sync_width_fits(s, period, phi, m):
         return None

@@ -463,3 +463,23 @@ def test_sstv_mode_catches_a_weak_drifting_pass():
     mae = min(np.abs(got[2:mode36.height - k - 2, inner] - img[k + 2:mode36.height - 2, inner]).mean()
               for k in range(0, 9))
     assert mae < 20.0, f"mean abs error {mae:.1f}"
+
+
+def test_a_weak_train_after_a_long_quiet_lead_is_found():
+    """Scrubbing a replay (or a long wait on a live pass) leaves seconds of
+    noise in the search window ahead of a picture. Judged over the whole
+    window, a weak train's fold contrast stays diluted below the bar long after
+    it has every line — on a real recording Robot 72's coarser fold crept over
+    it first. It must be judged over the train itself."""
+    from app.dsp.sstv import _train
+    rng = np.random.default_rng(4)
+    m36, m72 = MODES[8], MODES[12]
+    s = rng.uniform(0.0, 0.06, size=int(10_000 + 13 * m36.line_ms))   # per-ms tally
+    start = 10_000
+    for k in range(13):                                # a weak Robot 36 train, 13 lines
+        at = int(round(start + k * m36.line_ms))
+        s[at:at + int(m36.sync_ms)] = 0.4
+    found = _train(s, m36)
+    assert found is not None, "a 13-line train must be found despite the quiet lead"
+    pos, hit = found
+    assert abs(int(pos[0]) - start) <= 2 and hit.all()
