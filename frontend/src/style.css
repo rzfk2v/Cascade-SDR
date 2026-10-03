@@ -306,6 +306,13 @@ details.vfo-box[open] > summary::before { content: "▾ "; }
   display: flex;
   flex-direction: column;
 }
+/* SSTV / APT: a strip of waterfall above the picture, so you can see whether
+   anything is on frequency (and where Doppler has walked it) before the
+   decoder has a line to show. */
+.fft-view.compact {
+  flex: 0 0 34%;
+  margin-bottom: 0.6rem;
+}
 .wf-wrap {
   position: relative;
   flex: 1 1 auto;

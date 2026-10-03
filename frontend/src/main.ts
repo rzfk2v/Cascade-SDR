@@ -769,7 +769,11 @@ function showView(mode: string): void {
   const isFft =
     !isMap && !isDab && !isAcars && !isIsm && !isApt && !isSstv && !isPager &&
     !isScanner && !isSat; // radio/sweep/idle
-  fftView.hidden = !isFft;
+  // The picture modes keep a strip of waterfall above the image; the backend
+  // streams it there anyway (they're radio modes underneath).
+  const isPicture = isApt || isSstv;
+  fftView.hidden = !isFft && !isPicture;
+  fftView.classList.toggle("compact", isPicture);
   mapDiv.hidden = !isMap;
   aircraftPanel.hidden = !isMap;
   dabView.hidden = !isDab;
@@ -2462,10 +2466,13 @@ function fit(c: HTMLCanvasElement): { w: number; h: number } {
   return { w: Math.max(1, Math.round(r.width)), h: Math.max(1, Math.round(r.height)) };
 }
 
+let wfLaidOut = "";   // fft-view size the canvases were last backed at
+
 function layoutCanvases(): void {
   // Back the canvases at device-pixel resolution so traces/text are crisp on
   // HiDPI displays (CSS keeps the layout size; renderers apply the DPR).
   const dpr = Math.max(1, window.devicePixelRatio || 1);
+  wfLaidOut = `${fftView.clientWidth}x${fftView.clientHeight}`;
   const s = fit(scopeCanvas);
   scope.resize(s.w, s.h, dpr);
   const wf = fit(wfCanvas);
@@ -2494,6 +2501,16 @@ window.addEventListener("resize", () => {
   clearTimeout(resizeTimer);
   resizeTimer = window.setTimeout(layoutCanvases, 120);
 });
+// The waterfall's view changes height with the mode (full in radio, a strip
+// above the picture in SSTV/APT) and when the control bar wraps, not only with
+// the window. resize() clears the waterfall, so skip it when the size hasn't
+// actually changed (e.g. coming back from the map) or the view is hidden.
+new ResizeObserver(() => {
+  if (fftView.hidden) return;
+  if (`${fftView.clientWidth}x${fftView.clientHeight}` === wfLaidOut) return;
+  clearTimeout(resizeTimer);
+  resizeTimer = window.setTimeout(layoutCanvases, 120);
+}).observe(fftView);
 // initial sizing after the flex layout settles
 requestAnimationFrame(() => requestAnimationFrame(layoutCanvases));
 

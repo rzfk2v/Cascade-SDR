@@ -522,6 +522,9 @@ decoder, no external tool.
   events) or **145.800 MHz** (2 m). The ISS presets widen the channel filter
   (36 / 22 kHz) so the Doppler drift across a pass (about ±10 kHz on 70 cm,
   ±3.5 kHz on 2 m) stays inside it; no retuning needed during the pass.
+- A strip of **waterfall** sits above the picture, so you can see whether
+  anything is on the channel — and watch Doppler walk an ISS signal across a
+  pass — before the decoder has a single line to draw. (APT shows the same strip.)
 - You hear the channel while it decodes. Raise **Squelch** in the control bar
   to mute the hiss between transmissions — it only gates the audio, the decoder
   keeps listening. After a picture completes the decoder waits for the next one;
