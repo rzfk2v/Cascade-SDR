@@ -189,6 +189,77 @@ class FmDiscriminator:
         return np.angle(y * np.conj(prev))
 
 
+class FmTracker:
+    """A narrow FM channel that follows a drifting carrier inside a wider one.
+
+    For satellite Doppler: the caller's channel has to be wide enough to hold
+    the whole drift across a pass (±10 kHz on 70 cm), but an FM demodulator's
+    threshold depends on the noise bandwidth it sees, and a weak signal that
+    would demodulate cleanly in 13 kHz drowns in 36. This estimates where the
+    carrier is from the wide channel's averaged spectrum and demodulates a
+    narrow channel centred on it instead.
+
+    The estimate is the power-weighted centre of the bins standing clear of the
+    noise, and it only moves while something at least ``min_width_hz`` wide is
+    present — a birdie or a CW carrier can't pull it. Between transmissions it
+    holds where the last one was.
+    """
+
+    SEG = 2048           # FFT segment (117 Hz bins at a 240 kHz IF)
+    THRESH = 4.0         # a bin is "signal" at 6 dB over the noise floor
+    ALPHA = 0.1          # spectrum smoothing per block (~0.2 s at 21 ms blocks)
+    WARMUP = 10          # blocks averaged before the estimate may lock
+
+    def __init__(self, in_rate: float, decim: int, half_bw: float, search_hz: float,
+                 min_width_hz: float = 3_000.0) -> None:
+        self._chan = ComplexChannelizer(in_rate, decim, half_bw)
+        self._disc = FmDiscriminator()
+        self.min_width_hz = float(min_width_hz)
+        self.offset = 0.0        # carrier estimate, Hz from the nominal centre
+        self.locked = False      # a signal is present and being followed
+        freqs = (np.arange(self.SEG) - self.SEG // 2) * (float(in_rate) / self.SEG)
+        self._sel = np.abs(freqs) <= search_hz
+        self._f = freqs[self._sel]
+        self._bin_hz = float(in_rate) / self.SEG
+        self._win = np.hanning(self.SEG)
+        self._ema: np.ndarray | None = None
+        self._blocks = 0
+
+    @property
+    def out_rate(self) -> float:
+        return self._chan.out_rate
+
+    def _estimate(self, bb: np.ndarray) -> None:
+        k = bb.size // self.SEG
+        if k == 0:
+            return
+        x = bb[: k * self.SEG].reshape(k, self.SEG) * self._win
+        p = np.fft.fftshift((np.abs(np.fft.fft(x, axis=1)) ** 2).mean(axis=0))[self._sel]
+        self._ema = p if self._ema is None else self._ema + self.ALPHA * (p - self._ema)
+        self._blocks += 1
+        if self._blocks < self.WARMUP:       # a lone periodogram is too noisy to trust
+            return
+        # Low percentile, not the median: a strong signal can fill most of the
+        # search window and would otherwise read as the floor.
+        floor = float(np.percentile(self._ema, 20))
+        hot = self._ema > floor * self.THRESH
+        if hot.sum() * self._bin_hz < self.min_width_hz:
+            self.locked = False
+            return
+        w = np.where(hot, self._ema - floor, 0.0)
+        c = float((w * self._f).sum() / w.sum())
+        # Acquire at once, then follow smoothly: Doppler moves at most a few
+        # hundred Hz a second, while a single block's estimate jitters.
+        self.offset = c if not self.locked else self.offset + 0.3 * (c - self.offset)
+        self.locked = True
+
+    def process(self, bb: np.ndarray) -> np.ndarray:
+        """Wide complex baseband in; FM-discriminated narrow channel out."""
+        self._estimate(bb)
+        self._chan.set_shift(self.offset)
+        return self._disc.process(self._chan.process(bb))
+
+
 class BlockAgc:
     """Cheap block-based automatic gain control for SSB/AM voice.
 

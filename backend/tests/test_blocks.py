@@ -16,6 +16,7 @@ from scipy.signal import resample_poly
 from app.dsp.blocks import (
     ComplexChannelizer,
     FmDiscriminator,
+    FmTracker,
     NoiseBlanker,
     NotchFilter,
     RealDecimator,
@@ -121,3 +122,74 @@ if __name__ == "__main__":
     test_noise_blanker_kills_impulses()
     test_notch_filter_kills_tone_keeps_rest()
     print("all blocks tests passed")
+
+
+def _drifting_fm(seconds: float, f_start: float, f_end: float, snr_noise: float = 0.3,
+                 tone: float = 1_000.0, dev: float = 3_000.0, seed: int = 1):
+    """Complex baseband at FS: an FM tone whose carrier slides like satellite
+    Doppler from f_start to f_end, in complex noise. Returns (signal, carrier(t))."""
+    n = int(seconds * FS)
+    t = np.arange(n) / FS
+    carrier = f_start + (f_end - f_start) * t / seconds
+    inst = carrier + dev * np.sin(2 * np.pi * tone * t)
+    x = np.exp(1j * 2 * np.pi * np.cumsum(inst) / FS)
+    rng = np.random.default_rng(seed)
+    x = x + snr_noise * (rng.standard_normal(n) + 1j * rng.standard_normal(n))
+    return x.astype(np.complex64), carrier
+
+
+def _track(x: np.ndarray, carrier: np.ndarray):
+    trk = FmTracker(FS, 5, 6_500.0, 18_000.0)
+    blk = 5_120                                   # 21 ms at 240 kHz, as in the app
+    errs, out = [], []
+    for i in range(0, x.size - blk + 1, blk):
+        out.append(trk.process(x[i:i + blk]))
+        if i > FS and trk.locked:                 # after the first second
+            errs.append(abs(trk.offset - carrier[i + blk // 2]))
+    return np.array(errs), np.concatenate(out), x.size / blk - FS / blk
+
+
+def test_tracker_follows_a_drifting_carrier():
+    """Doppler on a pass: the narrow channel must stay on the carrier, and the
+    demodulated tone must come out clean wherever the carrier has gone. 300 Hz/s
+    is about twice the steepest 70 cm ISS Doppler, near closest approach."""
+    x, carrier = _drifting_fm(10.0, +6_000.0, +3_000.0)
+    errs, out, blocks = _track(x, carrier)
+    assert errs.size > 0.9 * blocks, "should stay locked on a clear signal"
+    assert np.median(errs) < 150.0 and errs.max() < 400.0, (np.median(errs), errs.max())
+    audio = out[-int(2 * FS / 5):]                           # last 2 s, at FS/5
+    spec = np.abs(np.fft.rfft(audio * np.hanning(audio.size)))
+    peak = np.fft.rfftfreq(audio.size, 5.0 / FS)[np.argmax(spec[1:]) + 1]
+    assert abs(peak - 1_000.0) < 20.0, f"tone came out at {peak:.0f} Hz"
+
+
+def test_tracker_keeps_up_with_extreme_drift():
+    """Ten times real Doppler rates: it lags (smoothing), but the carrier must
+    stay well inside the ±6.5 kHz channel it demodulates."""
+    x, carrier = _drifting_fm(10.0, +8_000.0, -8_000.0)
+    errs, _, blocks = _track(x, carrier)
+    assert errs.size > 0.9 * blocks
+    assert errs.max() < 1_000.0, errs.max()
+
+
+def test_tracker_ignores_a_narrow_carrier():
+    """A birdie or CW carrier is narrower than any FM signal: it mustn't pull
+    the channel, and noise alone mustn't lock it."""
+    n = int(5.0 * FS)
+    t = np.arange(n) / FS
+    rng = np.random.default_rng(2)
+    x = (0.5 * np.exp(1j * 2 * np.pi * 10_000.0 * t)
+         + 0.3 * (rng.standard_normal(n) + 1j * rng.standard_normal(n))).astype(np.complex64)
+    trk = FmTracker(FS, 5, 6_500.0, 18_000.0)
+    for i in range(0, n - 5_120 + 1, 5_120):
+        trk.process(x[i:i + 5_120])
+        assert not trk.locked
+    assert trk.offset == 0.0
+
+
+def test_tracker_waits_before_locking():
+    """A single noisy periodogram must not be trusted (it once locked at start-up)."""
+    x, _ = _drifting_fm(0.2, 5_000.0, 5_000.0, snr_noise=0.05)
+    trk = FmTracker(FS, 5, 6_500.0, 18_000.0)
+    trk.process(x[:5_120])
+    assert not trk.locked
