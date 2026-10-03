@@ -15,6 +15,10 @@ export class Tuner {
   tuned = 100e6;
   bandwidth = 200e3;
   active = false; // show the cursor (radio mode)
+  // Tag the cursor with its frequency. The picture modes have no frequency
+  // field, and their dongle centre is parked off-channel, so the DC spike is
+  // the brightest line on the strip — the tag says which line is the channel.
+  labelTuned = false;
   subVfos: SubVfoMarker[] = [];
   // Backing stores are devicePixelRatio-scaled (set by layoutCanvases); drawing
   // stays in CSS px via a canvas transform so lines/text render crisp on HiDPI.
@@ -266,6 +270,21 @@ export class Tuner {
     this.octx.moveTo(cx, 0);
     this.octx.lineTo(cx, h);
     this.octx.stroke();
+    if (this.labelTuned) {
+      const text = `${(this.tuned / 1e6).toFixed(3)} MHz`;
+      this.octx.save();
+      this.octx.font = "bold 12px -apple-system, system-ui, sans-serif";
+      this.octx.textBaseline = "middle";
+      const tw = this.octx.measureText(text).width + 10;
+      // right of the channel band, flipped to the left near the edge
+      let tx = cx + halfPx + 5;
+      if (tx + tw > w) tx = cx - halfPx - 5 - tw;
+      this.octx.fillStyle = "rgba(13,17,23,0.85)";
+      this.octx.fillRect(tx, 4, tw, 18);
+      this.octx.fillStyle = "#ff5b5b";
+      this.octx.fillText(text, tx + 5, 13);
+      this.octx.restore();
+    }
 
     // extra receivers (VFO B/C/D): a coloured cursor + band + letter each
     this.octx.font = "bold 11px -apple-system, system-ui, sans-serif";

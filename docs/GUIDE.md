@@ -525,6 +525,11 @@ decoder, no external tool.
 - A strip of **waterfall** sits above the picture, so you can see whether
   anything is on the channel — and watch Doppler walk an ISS signal across a
   pass — before the decoder has a single line to draw. (APT shows the same strip.)
+  The channel is the **red cursor tagged with its frequency**. The bright line
+  in the middle of the strip is the dongle's own DC spike, parked 600 kHz away
+  on purpose so it can't land in the channel. Clicking the strip doesn't retune —
+  pick the channel from **Frequency**. The mouse wheel zooms in on the channel;
+  any zoom change restarts the waterfall, so set it up before the pass.
 - You hear the channel while it decodes. Raise **Squelch** in the control bar
   to mute the hiss between transmissions — it only gates the audio, the decoder
   keeps listening. After a picture completes the decoder waits for the next one;

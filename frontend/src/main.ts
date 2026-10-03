@@ -397,7 +397,8 @@ sock.onJson((msg) => {
         : (1766 - (converterOn ? converterMhz : 0)).toFixed(0);
       highlightMode(msg.mode);
       tuner.setBand(msg.center_freq, msg.sample_rate);
-      tuner.setActive(msg.mode === "radio" || msg.mode === "replay");
+      tuner.labelTuned = msg.mode === "sstv" || msg.mode === "apt";
+      tuner.setActive(msg.mode === "radio" || msg.mode === "replay" || tuner.labelTuned);
       radioControls.hidden = !(msg.mode === "radio" || msg.mode === "replay");
       replayControls.hidden = msg.mode !== "replay";
       scanControls.hidden = msg.mode !== "scan";
@@ -415,7 +416,7 @@ sock.onJson((msg) => {
       sstvControls.hidden = msg.mode !== "sstv";
       pagerControls.hidden = msg.mode !== "pager";
       dabControls.hidden = msg.mode !== "dab";
-      zoomOutBtn.hidden = !["scan", "spectrum", "radio", "replay"].includes(msg.mode);
+      zoomOutBtn.hidden = !["scan", "spectrum", "radio", "replay", "sstv", "apt"].includes(msg.mode);
       displayControls.hidden = !["spectrum", "scan", "radio", "replay"].includes(msg.mode);
       // Center/sample-rate only apply to the free-tune spectrum view; decoder
       // modes self-tune. Gain/PPM/Bias-T affect reception in every running mode.
@@ -784,7 +785,6 @@ function showView(mode: string): void {
   pagerView.hidden = !isPager;
   scannerView.hidden = !isScanner;
   satView.hidden = !isSat;
-  if (isApt || isSstv) zoomOutBtn.hidden = true;
   if (isApt) requestAnimationFrame(() => {
     const r = aptView.getBoundingClientRect();
     aptImage.resize(Math.round(r.width), Math.round(r.height));
@@ -1412,7 +1412,14 @@ function snapToRaster(hz: number): number {
   return s > 0 ? Math.round(hz / s) * s : hz;
 }
 
+// SSTV / APT show the waterfall as a monitor strip above the picture. A click
+// or drag there would otherwise fall through to the spectrum handling below:
+// switch to Radio (abandoning the decode) or retune and narrow the dongle (DC
+// spike onto the channel). The channel is picked from the mode's own presets.
+const inPictureMode = (): boolean => currentMode === "sstv" || currentMode === "apt";
+
 tuner.onTune = async (freqHz) => {
+  if (inPictureMode()) return;
   freqHz = snapToRaster(freqHz);
   if (currentMode === "radio" || currentMode === "replay") {
     // a click can tune an extra receiver instead of the main channel
@@ -1454,6 +1461,7 @@ function listenAt(hz: number): void {
   syncFreqField();
 }
 tuner.onSelect = (loHz, hiHz) => {
+  if (inPictureMode()) return;
   if (currentMode === "radio" || currentMode === "replay") {
     // drag sets the demod bandwidth + re-centers the channel
     sock.send({
@@ -1867,8 +1875,9 @@ averaging.addEventListener("change", () =>
 
 // zoom out (×2) — widens the scan range or the captured band
 zoomOutBtn.addEventListener("click", () => {
-  // In the spectrum/replay views, this resets the display zoom (no retune).
-  if (currentMode === "radio" || currentMode === "replay") {
+  // In the radio/replay views and the picture strip, this resets the display
+  // zoom (no retune). Falling through below would clear the waterfall.
+  if (currentMode === "radio" || currentMode === "replay" || inPictureMode()) {
     tuner.resetView();
     return;
   }
