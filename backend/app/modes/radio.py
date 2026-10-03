@@ -284,9 +284,8 @@ class RadioMode(Mode):
         self._apt_dirty = False
         self.sstv_enabled = False    # decode SSTV image (auto-detects the mode)
         self._sstv: SstvDecoder | None = None
-        # Feed the picture decoder from a narrow channel that follows a drifting
-        # carrier (satellite Doppler); SSTV mode turns it on. NFM only.
-        self.afc_enabled = False
+        # SSTV over NFM is decoded from a narrow channel that follows a drifting
+        # carrier (satellite Doppler); what you hear is unaffected.
         self._track: FmTracker | None = None
         self._sstv_dirty = False
         self._need_rebuild = True
@@ -327,6 +326,8 @@ class RadioMode(Mode):
             self._rds_dirty = True       # different station -> clear RDS
             self._apt_dirty = True       # different pass -> restart the image
             self._sstv_dirty = True      # different signal -> restart SSTV detect
+            if self._track is not None:
+                self._track.reset()      # the old carrier estimate means nothing here
         if "bandwidth" in params and params["bandwidth"] is not None:
             self.bandwidth = float(params["bandwidth"])
             self._need_rebuild = True
@@ -516,7 +517,7 @@ class RadioMode(Mode):
         self._tones = None
         self._tone_last = None
         if self.demod in ("wfm", "nfm"):
-            if self.afc_enabled and self.demod == "nfm":
+            if self.sstv_enabled and self.demod == "nfm":
                 # Search the whole channel; demodulate only 13 kHz of it, centred
                 # on the carrier wherever Doppler has put it.
                 self._track = FmTracker(if_rate, audio_decim_for(if_rate),

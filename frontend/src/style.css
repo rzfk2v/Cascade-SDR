@@ -820,3 +820,14 @@ details.vfo-box[open] > summary::before { content: "▾ "; }
   }
   .ap-name { max-width: 40vw; }
 }
+
+/* The SSTV panel also serves SSTV decoding in Radio/Replay, where its channel
+   presets (they retune the dongle) and the mode's help don't apply. */
+#sstv-controls.in-radio .sstv-mode-only { display: none; }
+
+/* Replay transport: scrub bar, position, and skip / play-pause buttons. */
+.replay-transport { display: flex; flex-direction: column; gap: 0.3rem; margin-bottom: 0.5rem; }
+.replay-transport input[type="range"] { width: 100%; }
+.replay-time { margin: 0; font-variant-numeric: tabular-nums; color: var(--muted, #8b949e); font-size: 0.85em; }
+.replay-buttons { display: flex; gap: 0.3rem; }
+.replay-buttons button { flex: 1 1 0; padding-left: 0; padding-right: 0; }

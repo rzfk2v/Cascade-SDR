@@ -232,6 +232,14 @@ notice during the live session.
 
 - The capture's **center frequency and sample rate** are read from its filename, so
   the axis is labelled correctly.
+- **Transport:** play/pause, skip back or forward 10 s or 60 s, or drag the bar
+  to any point — the clock shows where you are in the capture. A jump restarts
+  the picture decoders (what came before no longer joins up with what follows).
+- **Decode a recorded SSTV pass:** click the signal, set **NFM**, widen the
+  bandwidth to cover the Doppler (**36 kHz** on 70 cm, as the ISS preset does),
+  tick **Decode SSTV image** in the Radio panel, then drag to just before the
+  picture. It's decoded exactly as live — following the Doppler, and found by
+  its syncs if the header is lost — with Save PNG in the SSTV panel.
 - Record captures with **Record IQ** in the Radio view (Recording panel).
 - A capture is the dongle's bytes verbatim. If the disk can't keep up —
   2.4 MS/s needs a sustained 4.8 MB/s, which a network share over WiFi often
@@ -544,8 +552,9 @@ decoder, no external tool.
 - The picture builds **top-down** over ~1–2 min. **Save PNG** downloads the
   full-resolution image; **Clear** restarts.
 - For **HF SSTV** (e.g. 14.230 MHz USB — needs an HF upconverter for an RTL-SDR),
-  open **Radio**, switch demod to **USB**, tune the signal, and toggle **SSTV**
-  on — the same decoder runs. Record IQ to decode a transmission again in Replay.
+  open **Radio**, switch demod to **USB**, tune the signal, and tick **Decode
+  SSTV image** in the Radio panel — the same decoder runs. Record IQ to decode a
+  transmission again in Replay (see *Replay*).
 
 > The tone's instantaneous frequency carries the picture (1500 Hz = black …
 > 2300 Hz = white, 1200 Hz = line sync). The YUV modes (Robot, PD) carry luma

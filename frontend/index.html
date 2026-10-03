@@ -265,7 +265,7 @@
 
         <section class="group" id="sstv-controls" hidden>
           <h2>SSTV (image)</h2>
-          <label>Frequency
+          <label class="sstv-mode-only">Frequency
             <select id="sstv-freq">
               <option value="144500000" data-bw="12500">2 m calling · 144.500</option>
               <option value="437550000" data-bw="36000">ISS 70 cm · 437.550</option>
@@ -278,16 +278,16 @@
             <button id="sstv-save">⤓ Save PNG</button>
             <button id="sstv-clear">Clear</button>
           </div>
-          <p class="hint">Slow-scan TV pictures. Default is the 2 m calling
+          <p class="hint sstv-mode-only">Slow-scan TV pictures. Default is the 2 m calling
             frequency <b>144.500 MHz</b> (NBFM); pick an <b>ISS</b> downlink
             for an ARISS event — the channel filter is widened there so the
             Doppler drift across a pass stays inside it. <b>Squelch</b> (above)
             mutes the hiss between transmissions without affecting the decode;
             each finished picture stays until the next one starts. The mode (Martin /
             Scottie / Robot / PD) is auto-detected from the VIS header — a
-            picture builds top-down over ~1–2 min. For HF SSTV (e.g. 14.230 MHz) open <b>Radio</b>, switch to
-            USB, tune, and turn on the SSTV toggle. Record IQ to decode again in
-            Replay.</p>
+            picture builds top-down over ~1–2 min. For HF SSTV (e.g. 14.230 MHz) open <b>Radio</b>,
+            switch to USB, tune, and tick <b>Decode SSTV image</b>. Record IQ to
+            decode a pass again in <b>Replay</b> the same way.</p>
         </section>
 
         <section class="group" id="pager-controls" hidden>
@@ -336,6 +336,18 @@
         <section class="group" id="replay-controls" hidden>
           <h2>Replay</h2>
           <p id="replay-status" class="status-line">pick a recording…</p>
+          <div id="replay-transport" class="replay-transport" hidden>
+            <input id="replay-seek" type="range" min="0" max="1" step="0.1" value="0"
+                   aria-label="Position in the recording" />
+            <p class="replay-time"><span id="replay-pos">0:00</span> / <span id="replay-dur">0:00</span></p>
+            <div class="replay-buttons">
+              <button id="replay-back60" title="Back 60 s">« 60s</button>
+              <button id="replay-back10" title="Back 10 s">‹ 10s</button>
+              <button id="replay-play" title="Play / pause">⏸</button>
+              <button id="replay-fwd10" title="Forward 10 s">10s ›</button>
+              <button id="replay-fwd60" title="Forward 60 s">60s »</button>
+            </div>
+          </div>
           <label class="check"><input id="replay-apt" type="checkbox" /> Decode as APT image (137 MHz pass)</label>
           <div id="replay-list" class="bm-list"></div>
           <p class="hint">Plays a saved <b>.cu8</b> capture through the spectrum +
@@ -353,6 +365,7 @@
           </label>
           <label class="check"><input id="stereo-on" type="checkbox" /> FM stereo</label>
           <label class="check"><input id="rds-on" type="checkbox" /> RDS (FM station info)</label>
+          <label class="check"><input id="sstv-decode" type="checkbox" /> Decode SSTV image</label>
           <label class="check"><input id="nb-on" type="checkbox" /> Noise blanker (impulse noise)</label>
           <label class="check"><input id="notch-on" type="checkbox" /> Notch
             <input id="notch-hz" type="number" min="50" max="20000" step="10" value="1000" class="inline-num" /> Hz

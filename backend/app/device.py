@@ -732,9 +732,10 @@ class DeviceManager:
         cur_path: Optional[Path] = None
         try:
             mode.on_start()
+            last_report = 0.0
             while not self._stop_event.is_set():
                 path = getattr(mode, "file_path", None)
-                if path is None or not getattr(mode, "playing", False):
+                if path is None:
                     time.sleep(0.1)
                     continue
                 if path != cur_path:
@@ -742,6 +743,15 @@ class DeviceManager:
                         f.close()
                     f = open(path, "rb")
                     cur_path = path
+                # A transport jump applies even while paused (scrub, then play).
+                take = getattr(mode, "take_seek", None)
+                jump = take() if take is not None else None
+                if jump is not None:
+                    f.seek(int(jump * self.sample_rate) * 2)   # whole IQ pairs
+                    mode.on_seek(f.tell() / 2.0 / max(1.0, self.sample_rate))
+                if not getattr(mode, "playing", False):
+                    time.sleep(0.1)
+                    continue
                 raw = f.read(mode.block_size * 2)  # 2 uint8 bytes per IQ sample
                 if not raw:
                     f.seek(0)  # loop
@@ -751,6 +761,11 @@ class DeviceManager:
                 block = iq_from_bytes(raw)
                 t0 = time.monotonic()
                 mode.process(block)
+                if hasattr(mode, "position_s"):
+                    mode.position_s = f.tell() / 2.0 / max(1.0, self.sample_rate)
+                    if t0 - last_report >= 0.5:          # the client's progress readout
+                        last_report = t0
+                        mode._announce_replay()
                 # pace to the capture's real-time duration
                 dur = block.size / max(1.0, self.sample_rate)
                 rest = dur - (time.monotonic() - t0)

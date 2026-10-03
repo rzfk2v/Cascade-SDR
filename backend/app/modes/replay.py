@@ -38,6 +38,9 @@ class ReplayMode(RadioMode):
         super().__init__(manager)
         self.file_path: Path | None = None
         self.playing = False
+        self.position_s = 0.0           # where the worker is in the file
+        self.duration_s = 0.0
+        self._seek: float | None = None  # a jump the worker should make (seconds)
 
     # --- configuration from the client --------------------------------------
     def configure(self, params: dict) -> None:
@@ -46,6 +49,13 @@ class ReplayMode(RadioMode):
         if "playing" in params and params["playing"] is not None:
             self.playing = bool(params["playing"])
             self._announce_replay()
+        # Transport: jump to a position, or skip relative to the current one.
+        # The worker makes the jump (it owns the file), even while paused.
+        if params.get("seek") is not None:
+            self._seek = self._clamp(float(params["seek"]))
+        elif params.get("skip") is not None:
+            base = self._seek if self._seek is not None else self.position_s
+            self._seek = self._clamp(base + float(params["skip"]))
         # demod / bandwidth / volume / squelch / deemph / tuned_freq
         super().configure(params)
 
@@ -63,6 +73,9 @@ class ReplayMode(RadioMode):
         if meta:
             self.manager.center_freq, self.manager.sample_rate = meta
         self.file_path = target
+        self.duration_s = target.stat().st_size / 2.0 / max(1.0, self.manager.sample_rate)
+        self.position_s = 0.0
+        self._seek = None
         self.playing = True
         self._user_tuned = False          # start silent on a fresh file
         self.tuned_freq = self.manager.center_freq
@@ -72,11 +85,32 @@ class ReplayMode(RadioMode):
         self._announce_radio()
         self._announce_replay()
 
+    def _clamp(self, t: float) -> float:
+        return float(min(max(t, 0.0), max(0.0, self.duration_s - 0.1)))
+
+    def take_seek(self) -> float | None:
+        """The pending jump, if any (worker thread): taken exactly once."""
+        t, self._seek = self._seek, None
+        return t
+
+    def on_seek(self, position_s: float) -> None:
+        """The stream just jumped (worker thread): what came before no longer
+        joins up with what follows, so restart anything that tracks the signal."""
+        self.position_s = position_s
+        self._sstv_dirty = True
+        self._apt_dirty = True
+        self._rds_dirty = True
+        if self._track is not None:
+            self._track.reset()
+        self._announce_replay()
+
     def _replay_status_msg(self) -> dict:
         return {
             "type": "replay_status",
             "file": self.file_path.name if self.file_path else None,
             "playing": self.playing,
+            "position": round(self.position_s, 1),
+            "duration": round(self.duration_s, 1),
         }
 
     def _announce_replay(self) -> None:

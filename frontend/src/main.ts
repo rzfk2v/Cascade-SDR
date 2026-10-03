@@ -197,12 +197,21 @@ let desiredGainDb = 0; // last manual gain (dB), used before the step list arriv
 const radioControls = document.getElementById("radio-controls")!;
 const replayControls = document.getElementById("replay-controls")!;
 const replayStatus = document.getElementById("replay-status")!;
+const replayTransport = document.getElementById("replay-transport")!;
+const replaySeek = document.getElementById("replay-seek") as HTMLInputElement;
+const replayPos = document.getElementById("replay-pos")!;
+const replayDur = document.getElementById("replay-dur")!;
+const replayPlayBtn = document.getElementById("replay-play") as HTMLButtonElement;
+let replayPlaying = false;
+let replayScrubbing = false;   // don't fight the slider while it's being dragged
 const replayList = document.getElementById("replay-list")!;
 let replayFile: string | null = null;
 const demodSel = document.getElementById("demod") as HTMLSelectElement;
 const deemphSel = document.getElementById("deemph") as HTMLSelectElement;
 const stereoOn = document.getElementById("stereo-on") as HTMLInputElement;
 const rdsOn = document.getElementById("rds-on") as HTMLInputElement;
+// SSTV in Radio/Replay: HF SSTV, or a recorded pass played back.
+const sstvDecode = document.getElementById("sstv-decode") as HTMLInputElement;
 const nbOn = document.getElementById("nb-on") as HTMLInputElement;
 const notchOn = document.getElementById("notch-on") as HTMLInputElement;
 const notchHz = document.getElementById("notch-hz") as HTMLInputElement;
@@ -417,7 +426,7 @@ sock.onJson((msg) => {
       ismControls.hidden = msg.mode !== "ism";
       satControls.hidden = msg.mode !== "satellite";
       aptControls.hidden = msg.mode !== "apt";
-      sstvControls.hidden = msg.mode !== "sstv";
+      updateSstvPanel(msg.mode);
       pagerControls.hidden = msg.mode !== "pager";
       dabControls.hidden = msg.mode !== "dab";
       zoomOutBtn.hidden = !["scan", "spectrum", "radio", "replay", "sstv", "apt"].includes(msg.mode);
@@ -495,6 +504,17 @@ sock.onJson((msg) => {
       break;
     case "replay_status":
       replayFile = msg.file;
+      replayPlaying = !!msg.playing;
+      replayTransport.hidden = !msg.file;
+      replayPlayBtn.textContent = replayPlaying ? "⏸" : "▶";
+      if (typeof msg.duration === "number") {
+        replaySeek.max = String(msg.duration);
+        replayDur.textContent = fmtClock(msg.duration);
+      }
+      if (typeof msg.position === "number" && !replayScrubbing) {
+        replaySeek.value = String(msg.position);
+        replayPos.textContent = fmtClock(msg.position);
+      }
       replayStatus.textContent = msg.file
         ? `${msg.playing ? "▶" : "⏸"} ${msg.file.replace("iq_", "").replace(".cu8", "")}`
         : "pick a recording…";
@@ -502,7 +522,7 @@ sock.onJson((msg) => {
       break;
     case "radio_level":
       if (msg.afc) {
-        const hz = parseFloat(sstvFreq.value) + msg.afc.hz;
+        const hz = viewTuned + msg.afc.hz;     // the channel, in any mode
         const off = `${msg.afc.hz >= 0 ? "+" : "−"}${Math.abs(msg.afc.hz / 1000).toFixed(1)} kHz`;
         sstvTrack.textContent = msg.afc.lock
           ? `following the signal · ${(hz / 1e6).toFixed(4)} MHz (Doppler ${off})`
@@ -777,7 +797,7 @@ function showView(mode: string): void {
   const isAcars = mode === "acars";
   const isIsm = mode === "ism";
   const isApt = mode === "apt" || (mode === "replay" && replayApt.checked);
-  const isSstv = mode === "sstv";
+  const isSstv = mode === "sstv" || sstvInRadio(mode);
   const isPager = mode === "pager";
   const isScanner = mode === "scanner";
   const isSat = mode === "satellite";
@@ -1399,6 +1419,7 @@ function sendRadioPrefs(): void {
       deemph: parseFloat(deemphSel.value),
       rds: rdsOn.checked,
       stereo: stereoOn.checked,
+      sstv: sstvDecode.checked,
       nb: nbOn.checked,
       notch: notchOn.checked,
       notch_hz: parseFloat(notchHz.value) || 1000,
@@ -1980,6 +2001,50 @@ document.getElementById("apt-clear")!.addEventListener("click", () => {
   aptLineCount = 0;
   aptStatus.textContent = "cleared";
 });
+// The SSTV panel (status, Save PNG, Clear) also serves SSTV decoding in Radio
+// and Replay, minus its channel presets, which retune the dongle.
+function sstvInRadio(mode: string): boolean {
+  return (mode === "radio" || mode === "replay") && sstvDecode.checked;
+}
+function updateSstvPanel(mode: string): void {
+  sstvControls.hidden = !(mode === "sstv" || sstvInRadio(mode));
+  sstvControls.classList.toggle("in-radio", sstvInRadio(mode));
+}
+sstvDecode.addEventListener("change", () => {
+  if (sstvDecode.checked) {
+    sstvImage.clear();
+    sstvRowCount = 0;
+    sstvBy = "";
+    sstvStatus.textContent = "waiting for a transmission…";
+  }
+  sock.send({ cmd: "config", params: { sstv: sstvDecode.checked } });
+  updateSstvPanel(currentMode);
+  showView(currentMode);
+  persist();
+});
+// --- Replay transport ------------------------------------------------------
+function fmtClock(s: number): string {
+  const t = Math.max(0, Math.floor(s));
+  return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`;
+}
+replayPlayBtn.addEventListener("click", () =>
+  sock.send({ cmd: "config", params: { playing: !replayPlaying } }),
+);
+for (const [id, secs] of [["replay-back60", -60], ["replay-back10", -10],
+                          ["replay-fwd10", 10], ["replay-fwd60", 60]] as const) {
+  document.getElementById(id)!.addEventListener("click", () =>
+    sock.send({ cmd: "config", params: { skip: secs } }),
+  );
+}
+replaySeek.addEventListener("input", () => {      // dragging: just show where
+  replayScrubbing = true;
+  replayPos.textContent = fmtClock(parseFloat(replaySeek.value));
+});
+replaySeek.addEventListener("change", () => {     // released: jump there
+  replayScrubbing = false;
+  sock.send({ cmd: "config", params: { seek: parseFloat(replaySeek.value) } });
+});
+
 replayApt.addEventListener("change", () => {
   if (replayApt.checked) { aptImage.clear(); aptLineCount = 0; }
   sock.send({ cmd: "config", params: { apt: replayApt.checked } });
@@ -2105,7 +2170,7 @@ const persistValues: Record<string, HTMLInputElement | HTMLSelectElement> = {
 };
 const persistChecks: Record<string, HTMLInputElement> = {
   gainAuto, biasTee, wfAuto, peakHold, rdsOn, stereoOn, showTracks,
-  rtlAgc, nbOn, notchOn, voiceSql, scannerVoice,
+  rtlAgc, nbOn, notchOn, voiceSql, scannerVoice, sstvDecode,
 };
 vfoRows.forEach((e, i) => {
   persistValues[`vfo${i + 1}Freq`] = e.freq;

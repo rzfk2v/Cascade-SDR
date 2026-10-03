@@ -359,9 +359,9 @@ events, with a wider filter that absorbs the Doppler drift over a pass. It's a *
 are converted back to RGB).
 
 For **HF SSTV** (e.g. 14.230 MHz, an HF upconverter required for an RTL-SDR),
-open **Radio**, switch the demod to **USB**, tune the signal, and turn on the
-**SSTV** toggle — the same decoder runs. Record IQ during a transmission to
-decode it again later in Replay.
+open **Radio**, switch the demod to **USB**, tune the signal, and tick
+**Decode SSTV image** in the Radio panel — the same decoder runs. Record IQ
+during a transmission to decode it again later in Replay, the same way.
 
 ### Pager (POCSAG/FLEX) (◆)
 Select **Pager**: the backend pipes `rtl_fm` (NBFM audio) into

@@ -229,6 +229,10 @@ class FmTracker:
     def out_rate(self) -> float:
         return self._chan.out_rate
 
+    def reset(self) -> None:
+        """Forget the carrier (the channel was retuned): search afresh from nominal."""
+        self.offset, self.locked, self._ema, self._blocks = 0.0, False, None, 0
+
     def _estimate(self, bb: np.ndarray) -> None:
         k = bb.size // self.SEG
         if k == 0:
