@@ -287,8 +287,11 @@ details.vfo-box[open] > summary::before { content: "▾ "; }
 
 .zoom-out {
   position: absolute;
-  top: 1rem;
-  right: 1rem;
+  /* just below the scope (26% of the view above the 22 px axis), so it never
+     covers the scope's noise readout — the short waterfall strip above an
+     SSTV/APT picture put that readout right where the button was */
+  top: calc((100% - 22px) * 0.26 + 6px);
+  right: 0.6rem;
   z-index: 5;
   background: rgba(22, 27, 34, 0.85);
   border: 1px solid var(--border);

@@ -1372,6 +1372,9 @@ document.getElementById("mode-tabs")!.addEventListener("click", async (e) => {
     waterfall.clear();
     scope.clear();
   }
+  // SSTV decoding in Radio/Replay is a choice for this visit, not a setting:
+  // kept, a tick made in Replay left Radio in the picture layout.
+  sstvDecode.checked = false;
   sock.send({ cmd: "set_mode", mode });
   if (mode === "radio" || mode === "replay") sendRadioPrefs();
   if (mode === "scanner") sendScannerPrefs();
@@ -2170,7 +2173,7 @@ const persistValues: Record<string, HTMLInputElement | HTMLSelectElement> = {
 };
 const persistChecks: Record<string, HTMLInputElement> = {
   gainAuto, biasTee, wfAuto, peakHold, rdsOn, stereoOn, showTracks,
-  rtlAgc, nbOn, notchOn, voiceSql, scannerVoice, sstvDecode,
+  rtlAgc, nbOn, notchOn, voiceSql, scannerVoice,
 };
 vfoRows.forEach((e, i) => {
   persistValues[`vfo${i + 1}Freq`] = e.freq;
