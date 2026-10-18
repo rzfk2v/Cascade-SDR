@@ -2237,7 +2237,7 @@ function renderBookmarks(): void {
     .map((b, i) => {
       const label = b.name || `${b.mhz.toFixed(3)} MHz`;
       const sub = `${b.demod ? b.demod.toUpperCase() + " · " : ""}${b.mhz.toFixed(3)}`;
-      return `<div class="bm-row"><button class="recall" data-i="${i}">${label} <span class="muted">${sub}</span></button><button class="del" data-i="${i}" title="delete">×</button></div>`;
+      return `<div class="bm-row"><button class="recall" data-i="${i}">${esc(label)} <span class="muted">${esc(sub)}</span></button><button class="del" data-i="${i}" title="delete">×</button></div>`;
     })
     .join("");
 }
@@ -2323,15 +2323,17 @@ function renderDirectory(): void {
       (e) => !q || e.name.toLowerCase().includes(q) || e.mhz.toFixed(4).includes(q),
     );
     if (!hits.length) continue;
-    html += `<div class="dir-cat">${cat.name}</div>`;
+    // Entries can come from an imported file (someone else's list), so every
+    // field is escaped — an unescaped name could carry markup or script.
+    html += `<div class="dir-cat">${esc(cat.name)}</div>`;
     for (const e of hits) {
       shown++;
       const idx = cat.entries.indexOf(e);
-      const note = e.note ? `<span class="dir-note">${e.note}</span>` : "";
+      const note = e.note ? `<span class="dir-note">${esc(e.note)}</span>` : "";
       html +=
-        `<button class="dir-row" data-cat="${cat.name}" data-i="${idx}">` +
-        `<span class="dir-name">${e.name}</span>` +
-        `<span class="dir-freq">${e.mhz.toFixed(4).replace(/0+$/, "").replace(/\.$/, "")} <i>${e.demod.toUpperCase()}</i></span>` +
+        `<button class="dir-row" data-cat="${esc(cat.name)}" data-i="${idx}">` +
+        `<span class="dir-name">${esc(e.name)}</span>` +
+        `<span class="dir-freq">${e.mhz.toFixed(4).replace(/0+$/, "").replace(/\.$/, "")} <i>${esc(e.demod.toUpperCase())}</i></span>` +
         note +
         `</button>`;
     }
