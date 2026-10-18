@@ -95,12 +95,22 @@ async def api_recordings() -> dict:
 
 @app.delete("/api/recordings/{name}")
 async def delete_recording(name: str) -> dict:
-    # guard against path traversal — only allow plain .cu8 names in the dir
-    target = (RECORDINGS_DIR / name).resolve()
-    if target.parent != RECORDINGS_DIR.resolve() or target.suffix != ".cu8":
+    # Only a recording the listing above shows can go, found by name among
+    # them: nothing the client sends is ever used as a path, so there's no
+    # traversal to guard against in the first place.
+    target = next((p for p in RECORDINGS_DIR.glob("*.cu8") if p.name == name), None)
+    if target is None:
         raise HTTPException(status_code=400, detail="bad name")
     target.unlink(missing_ok=True)
     return {"ok": True}
+
+
+_IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg")
+
+
+def _satellite_images() -> list:
+    return [p for p in SATELLITE_DIR.rglob("*")
+            if p.is_file() and p.suffix.lower() in _IMAGE_SUFFIXES]
 
 
 @app.get("/api/satellite")
@@ -108,21 +118,20 @@ async def api_satellite() -> dict:
     """Images SatDump has produced, newest first (experimental mode)."""
     SATELLITE_DIR.mkdir(parents=True, exist_ok=True)
     items = []
-    for p in sorted(SATELLITE_DIR.rglob("*"), key=lambda x: x.name, reverse=True):
-        if p.is_file() and p.suffix.lower() in (".png", ".jpg", ".jpeg"):
-            st = p.stat()
-            items.append({"name": p.name, "path": str(p.relative_to(SATELLITE_DIR)),
-                          "size": st.st_size, "mtime": st.st_mtime})
+    for p in sorted(_satellite_images(), key=lambda x: x.name, reverse=True):
+        st = p.stat()
+        items.append({"name": p.name, "path": str(p.relative_to(SATELLITE_DIR)),
+                      "size": st.st_size, "mtime": st.st_mtime})
     return {"products": items}
 
 
 @app.delete("/api/satellite/{path:path}")
 async def delete_product(path: str) -> dict:
-    # Same guard as the recordings endpoint: stay inside the directory, images only.
-    target = (SATELLITE_DIR / path).resolve()
-    root = SATELLITE_DIR.resolve()
-    if not str(target).startswith(str(root) + "/") or target.suffix.lower() not in (
-            ".png", ".jpg", ".jpeg"):
+    # As for recordings: only an image the listing shows, found by the
+    # relative path the listing gave out — never a path built from the request.
+    target = next((p for p in _satellite_images()
+                   if str(p.relative_to(SATELLITE_DIR)) == path), None)
+    if target is None:
         raise HTTPException(status_code=400, detail="bad name")
     target.unlink(missing_ok=True)
     return {"ok": True}
